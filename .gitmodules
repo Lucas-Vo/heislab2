@@ -1,0 +1,9 @@
+[submodule "Project-resources"]
+	path = Project-resources
+	url = https://github.com/TTK4145/Project-resources.git
+[submodule "App/elev_algo/driver-go"]
+	path = App/elev_algo/driver-go
+	url = https://github.com/TTK4145/driver-go.git
+[submodule "lab_2"]
+	path = lab_2
+	url = https://github.com/ITK-TTK4235/lab_2.git
