@@ -1,4 +1,4 @@
-package main
+package elevalgo
 
 import (
 	"Driver-go/elevio"
@@ -64,7 +64,7 @@ func requests_chooseDirection(e Elevator) DirnBehaviourPair {
 			return DirnBehaviourPair{elevio.MD_Stop, EB_Idle}
 		}
 
-	case elevio.MD_Stop: 
+	case elevio.MD_Stop:
 		if requests_here(e) != 0 {
 			return DirnBehaviourPair{elevio.MD_Stop, EB_DoorOpen}
 		} else if requests_above(e) != 0 {

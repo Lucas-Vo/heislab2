@@ -1,4 +1,4 @@
-package main
+package elevalgo
 
 import (
 	"Driver-go/elevio"
@@ -47,6 +47,7 @@ func eb_toString(eb ElevatorBehaviour) string {
 		return "EB_UNDEFINED"
 	}
 }
+
 // TODO: consider removing
 func elevator_print(es Elevator) {
 	fmt.Println("  +--------------------+")
