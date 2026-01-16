@@ -15,7 +15,6 @@ type caseFunc func(key, val string)
 
 func (f caseFunc) apply(key, val string) { f(key, val) }
 
-
 func ConLoad(file string, cases ...Case) {
 	f, err := os.Open(file)
 	if err != nil {
@@ -77,7 +76,7 @@ func ConEnum[T any](key string, dest *T, matches ...EnumMatch[T]) Case {
 			}
 		}
 	})
-}W
+}
 
 type EnumMatch[T any] struct {
 	name  string
