@@ -37,9 +37,6 @@ func assignerThread(
 
 	for {
 		select {
-		case <-ctx.Done():
-			return
-
 		case networkSnapshot := <-networkSnapshotCh:
 			jsonBytes, err := json.Marshal(networkSnapshot)
 			if err != nil {
@@ -67,32 +64,16 @@ func assignerThread(
 
 		case <-time.After(NETWORK_PACKET_TIMEOUT * time.Second):
 			fmt.Println("From network update timeout")
-
-		case <-ctx.Done():
-			return
 		}
-
 		// Wait for ack (or timeout), then forward the current tasks to FSM
 		select {
-		case <-ctx.Done():
-			return
-
 		case <-networkAckCh:
-			select {
-			case elevatorTasksCh <- currentElevInput:
-			case <-ctx.Done():
-				return
-			}
+			elevatorTasksCh <- currentElevInput
 
 		case <-time.After(NETWORK_ACK_TIMEOUT * time.Second):
-			select {
-			case elevatorTasksCh <- currentElevInput:
-			case <-ctx.Done():
-				return
-			}
+			elevatorTasksCh <- currentElevInput
 			fmt.Println("Acknowledgement from network timeout")
 		}
-
 		// Avoid busy looping; also respects ctx
 		select {
 		case <-time.After(100 * time.Millisecond):

@@ -4,6 +4,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"strconv"
 	"time"
@@ -55,12 +56,14 @@ func networkThread(
 			wv.MarkReadyIfCoherent(theWorldIsReady)
 			wv.PublishWorld(networkStateOfTheWorld)
 			wv.Broadcast(ns)
+			fmt.Println("La Manana ",ns)
 
 		case ns := <-elevalgoServiced:
 			wv.ApplyUpdate(selfKey, ns, elevnetwork.UpdateServiced)
 			wv.MarkReadyIfCoherent(theWorldIsReady)
 			wv.PublishWorld(networkStateOfTheWorld)
 			wv.Broadcast(ns)
+			fmt.Println("Serviced elevatohs ",ns)
 
 		case in := <-incomingFrames:
 			var ns common.NetworkState
@@ -68,6 +71,7 @@ func networkThread(
 				continue
 			}
 			fromKey := strconv.Itoa(in.from)
+			fmt.Println("Incoming frames (Im comming)",ns)
 
 			wv.ApplyUpdate(fromKey, ns, elevnetwork.UpdateFromPeer)
 			wv.MarkReadyIfCoherent(theWorldIsReady)
