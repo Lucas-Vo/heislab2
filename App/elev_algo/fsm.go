@@ -1,4 +1,4 @@
-package main
+package elev_algo
 
 import (
 	"Driver-go/elevio"
@@ -8,7 +8,7 @@ import (
 var elevator Elevator
 var outputDevice ElevOutputDevice
 
-func fsm_init() {
+func Fsm_init() {
 	elevator = elevator_uninitialized()
 
 	ConLoad("elevator.con",
@@ -19,25 +19,25 @@ func fsm_init() {
 		),
 	)
 
-	outputDevice = elevio_getOutputDevice()
+	outputDevice = Elevio_getOutputDevice()
 }
 
-func setAllLights(es Elevator) {
+func SetAllLights(es Elevator) {
 	for floor := range N_FLOORS {
 		for btn := range N_BUTTONS {
-			outputDevice.requestButtonLight(floor, elevio.ButtonType(btn), es.requests[floor][btn])
+			outputDevice.RequestButtonLight(floor, elevio.ButtonType(btn), es.requests[floor][btn])
 		}
 	}
 }
 
-func fsm_onInitBetweenFloors() {
+func Fsm_onInitBetweenFloors() {
 	outputDevice.motorDirection(elevio.MD_Down)
 	elevator.dirn = elevio.MD_Down
 	elevator.behaviour = EB_Moving
 }
 
-func fsm_onRequestButtonPress(btn_floor int, btn_type elevio.ButtonType) {
-	fmt.Printf("\n\n%s(%d, %s)\n", "fsm_onRequestButtonPress", btn_floor, elevio_button_toString(btn_type))
+func Fsm_onRequestButtonPress(btn_floor int, btn_type elevio.ButtonType) {
+	fmt.Printf("\n\n%s(%d, %s)\n", "Fsm_onRequestButtonPress", btn_floor, elevio_button_toString(btn_type))
 	elevator_print(elevator)
 
 	switch elevator.behaviour {
@@ -71,14 +71,14 @@ func fsm_onRequestButtonPress(btn_floor int, btn_type elevio.ButtonType) {
 		}
 	}
 
-	setAllLights(elevator)
+	SetAllLights(elevator)
 
 	fmt.Printf("\nNew state:\n")
 	elevator_print(elevator)
 }
 
-func fsm_onFloorArrival(newFloor int) {
-	fmt.Printf("\n\n%s(%d)\n", "fsm_onFloorArrival", newFloor)
+func Fsm_onFloorArrival(newFloor int) {
+	fmt.Printf("\n\n%s(%d)\n", "Fsm_onFloorArrival", newFloor)
 	elevator_print(elevator)
 
 	elevator.floor = newFloor
@@ -91,7 +91,7 @@ func fsm_onFloorArrival(newFloor int) {
 			outputDevice.doorLight(true)
 			elevator = requests_clearAtCurrentFloor(elevator)
 			timer_start(elevator.config.doorOpenDuration_s)
-			setAllLights(elevator)
+			SetAllLights(elevator)
 			elevator.behaviour = EB_DoorOpen
 		}
 	default:
@@ -102,8 +102,8 @@ func fsm_onFloorArrival(newFloor int) {
 	elevator_print(elevator)
 }
 
-func fsm_onDoorTimeout() {
-	fmt.Printf("\n\n%s()\n", "fsm_onDoorTimeout")
+func Fsm_onDoorTimeout() {
+	fmt.Printf("\n\n%s()\n", "Fsm_onDoorTimeout")
 	elevator_print(elevator)
 
 	switch elevator.behaviour {
@@ -116,7 +116,7 @@ func fsm_onDoorTimeout() {
 		case EB_DoorOpen:
 			timer_start(elevator.config.doorOpenDuration_s)
 			elevator = requests_clearAtCurrentFloor(elevator)
-			setAllLights(elevator)
+			SetAllLights(elevator)
 
 		case EB_Moving, EB_Idle:
 			outputDevice.doorLight(false)
