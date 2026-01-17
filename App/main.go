@@ -1,14 +1,15 @@
 package main
 
 import (
-	
 
 	// Adjust these imports to your actual module path:
 	//"elevator/elevnetwork"
+	"elevator/common"
 	. "elevator/common"
-
 	//quic "github.com/quic-go/quic-go"
 )
+
+
 
 func main() {
 	// filip til lucas
@@ -22,7 +23,9 @@ func main() {
 	// vetle til filip
 	assignerOutput := make(chan ElevInput)
 
+	cfg := common.DefaultConfig()
+
 	go networkthread(elevalgoServiced,elevalgoLaManana,networkStateOfTheWorld,theWorldIsReady)
-	go assignerThread(networkStateOfTheWorld,theWorldIsReady,assignerOutput)
+	go assignerThread(cfg,networkStateOfTheWorld,theWorldIsReady,assignerOutput)
 	go fsmthread(assignerOutput,elevalgoServiced,elevalgoLaManana)
 }
