@@ -13,7 +13,7 @@ import (
 func main() {
 	// filip til lucas
 	elevalgoServiced := make(chan NetworkState)
-	elevalgoStateOfTheCountry := make(chan NetworkState)
+	elevalgoLaManana := make(chan NetworkState)
 
 	// lucas til vetle
 	networkStateOfTheWorld := make(chan NetworkState)
@@ -22,7 +22,7 @@ func main() {
 	// vetle til filip
 	assignerOutput := make(chan ElevInput)
 
-	go networkthread(elevalgoServiced,elevalgoStateOfTheCountry,networkStateOfTheWorld,theWorldIsReady)
+	go networkthread(elevalgoServiced,elevalgoLaManana,networkStateOfTheWorld,theWorldIsReady)
 	go assignerThread(networkStateOfTheWorld,theWorldIsReady,assignerOutput)
-	go fsmthread(assignerOutput)
+	go fsmthread(assignerOutput,elevalgoServiced,elevalgoLaManana)
 }

@@ -7,6 +7,6 @@ import (
 	//"encoding/json"
 )
 
-func fsmthread(assignerOutput chan<- ElevInput){
+func fsmthread(assignerOutput chan<- ElevInput,in <-chan NetworkState, out <-chan NetworkState){
 	return
 }
