@@ -5,6 +5,7 @@ import (
 	// Adjust these imports to your actual module path:
 	//"elevator/elevnetwork"
 	"context"
+	"elevator/common"
 	. "elevator/common"
 	"os"
 	"os/signal"
@@ -37,11 +38,9 @@ func main() {
 	// vetle til filip
 	assignerOutput := make(chan ElevInput)
 
-	cfg := DefaultConfig()
+	cfg := common.DefaultConfig()
 
-	go networkthread(ctx, cfg, elevalgoServiced, elevalgoLaManana, networkStateOfTheWorld, theWorldIsReady, snapshotToFSM)
-	go assignerThread(networkStateOfTheWorld, theWorldIsReady, assignerOutput)
-	go fsmthread(assignerOutput, elevalgoServiced, elevalgoLaManana, snapshotToFSM)
-
-	<-ctx.Done()
+	go networkthread(elevalgoServiced, elevalgoLaManana, networkStateOfTheWorld, theWorldIsReady)
+	go assignerThread(cfg, networkStateOfTheWorld, theWorldIsReady, assignerOutput)
+	go fsmthread(assignerOutput, elevalgoServiced, elevalgoLaManana)
 }
