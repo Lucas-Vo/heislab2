@@ -1,4 +1,4 @@
-package main
+package elev_algo
 
 import "Driver-go/elevio"
 
@@ -10,30 +10,30 @@ const (
 
 // structs
 type ElevInputDevice struct {
-	floorSensor   func() int
-	requestButton func(int, elevio.ButtonType) int
+	FloorSensor   func() int
+	RequestButton func(int, elevio.ButtonType) int
 	stopButton    func() int
 	obstruction   func() int
 }
 
 type ElevOutputDevice struct {
 	floorIndicator     func(int)
-	requestButtonLight func(int, elevio.ButtonType, bool)
+	RequestButtonLight func(int, elevio.ButtonType, bool)
 	doorLight          func(bool)
 	stopButtonLight    func(bool)
 	motorDirection     func(elevio.MotorDirection)
 }
 
-func elevio_init(addr string) {
+func Elevio_init(addr string) {
 	elevio.Init(addr, N_FLOORS)
 }
 
-func elevio_getInputDevice() ElevInputDevice {
+func Elevio_getInputDevice() ElevInputDevice {
 	return ElevInputDevice{
-		floorSensor: func() int {
+		FloorSensor: func() int {
 			return elevio.GetFloor()
 		},
-		requestButton: func(f int, b elevio.ButtonType) int {
+		RequestButton: func(f int, b elevio.ButtonType) int {
 			if elevio.GetButton(b, f) {
 				return 1
 			}
@@ -54,12 +54,12 @@ func elevio_getInputDevice() ElevInputDevice {
 	}
 }
 
-func elevio_getOutputDevice() ElevOutputDevice {
+func Elevio_getOutputDevice() ElevOutputDevice {
 	return ElevOutputDevice{
 		floorIndicator: func(floor int) {
 			elevio.SetFloorIndicator(floor)
 		},
-		requestButtonLight: func(f int, b elevio.ButtonType, v bool) {
+		RequestButtonLight: func(f int, b elevio.ButtonType, v bool) {
 			elevio.SetButtonLamp(b, f, v)
 		},
 		doorLight: func(v bool) {
