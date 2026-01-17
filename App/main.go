@@ -7,12 +7,17 @@ import (
 	"context"
 	"elevator/common"
 	. "elevator/common"
+	"fmt"
 	"os"
 	"os/signal"
 	//quic "github.com/quic-go/quic-go"
 )
 
 func main() {
+	// start elevator
+	common.ElevioInit("localhost:15657")
+	input := common.ElevioGetInputDevice()
+
 	// ctrl + c handling
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -38,9 +43,15 @@ func main() {
 	// vetle til filip
 	assignerOutput := make(chan ElevInput)
 
-	cfg := common.DefaultConfig()
+	cfg, _, err := common.DefaultConfig()
+	if err != nil {
+		fmt.Println("Error loading config")
 
-	go networkthread(elevalgoServiced, elevalgoLaManana, networkStateOfTheWorld, theWorldIsReady)
-	go assignerThread(cfg, networkStateOfTheWorld, theWorldIsReady, assignerOutput)
-	go fsmthread(assignerOutput, elevalgoServiced, elevalgoLaManana)
+	}
+
+	go networkThread(ctx, cfg, elevalgoServiced, elevalgoLaManana, networkStateOfTheWorld, theWorldIsReady, snapshotToFSM)
+	go assignerThread(ctx, cfg, networkStateOfTheWorld, theWorldIsReady, assignerOutput)
+	go fsmThread(ctx, cfg, input, assignerOutput, elevalgoServiced, elevalgoLaManana, snapshotToFSM)
+	<-ctx.Done()
+	fmt.Println("Shutting down")
 }

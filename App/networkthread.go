@@ -19,7 +19,7 @@ type InFrame struct {
 	frame []byte
 }
 
-func networkthread(
+func networkThread(
 	ctx context.Context,
 	cfg common.Config,
 	elevalgoServiced <-chan common.NetworkState,
@@ -28,7 +28,9 @@ func networkthread(
 	theWorldIsReady chan<- bool,
 	snapshotToFSM chan<- common.NetworkState,
 ) {
-	selfKey, peers, pm, incomingFrames := initp2p(cfg, ctx)
+	// selfKey is now part of cfg (assumes cfg.InitSelf() or MustDefaultConfig() already called)
+	selfKey := cfg.SelfKey
+	peers, pm, incomingFrames := initp2p(cfg, ctx)
 
 	wv := elevnetwork.NewWorldView(pm)
 
@@ -82,25 +84,28 @@ func networkthread(
 func initp2p(
 	cfg common.Config,
 	ctx context.Context,
-) (myID string, myPeers map[int]string, peerManager *elevnetwork.PeerManager, incoming <-chan InFrame) {
-	selfID, err := cfg.DetectSelfID()
-	if err != nil {
-		log.Fatalf("DetectSelfID: %v", err)
+) (peers map[int]string, pm *elevnetwork.PeerManager, incoming <-chan InFrame) {
+	// Prefer cfg.SelfID if present; fall back to detection
+	selfID := cfg.SelfID
+	if selfID == 0 {
+		id, err := cfg.DetectSelfID()
+		if err != nil {
+			log.Fatalf("DetectSelfID: %v", err)
+		}
+		selfID = id
 	}
-	selfKey := strconv.Itoa(selfID)
-	log.Printf("Self detected as elevator %d", selfID)
 
 	peers, _, err := cfg.PeerAddrs()
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Printf("Configured peers: %v", peers)
+	log.Printf("Self=%d peers=%v", selfID, peers)
 
 	quicConf := &quic.Config{
 		KeepAlivePeriod: 2 * time.Second,
 	}
 
-	pm := elevnetwork.NewPeerManager(selfID, elevnetwork.QUIC_FRAME_SIZE)
+	pm = elevnetwork.NewPeerManager(selfID, elevnetwork.QUIC_FRAME_SIZE)
 
 	incomingFrames := make(chan InFrame, 64)
 
@@ -113,7 +118,6 @@ func initp2p(
 				select {
 				case incomingFrames <- InFrame{from: from, frame: cp}:
 				default:
-					// drop if overloaded
 				}
 			})
 		})
@@ -137,5 +141,5 @@ func initp2p(
 		}
 	}
 
-	return selfKey, peers, pm, incomingFrames
+	return peers, pm, incomingFrames
 }

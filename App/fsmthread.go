@@ -1,64 +1,118 @@
 package main
 
 import (
-	"Driver-go/elevio"
-	. "elevator/common"
-	"elevator/elev_algo"
-	"fmt"
+	elevio "Driver-go/elevio"
+	"context"
+	"log"
 	"time"
+
+	"elevator/common"
+	"elevator/elevfsm"
 )
 
-func fsmthread(assignerOutput chan<- ElevInput, in <-chan NetworkState, out <-chan NetworkState) {
-	fmt.Printf("Started!\n")
+func fsmThread(
+	ctx context.Context,
+	cfg common.Config,
+	input common.ElevInputDevice,
+	assignerOutput <-chan common.ElevInput,
+	elevalgoServiced chan<- common.NetworkState,
+	elevalgoLaManana chan<- common.NetworkState,
+	snapshotFromNetwork <-chan common.NetworkState, // network -> fsm
+) {
+	log.Printf("fsmThread started (self=%s)", cfg.SelfKey)
 
-	elev_algo.Elevio_init("localhost:15657")
-	elev_algo.Fsm_init()
+	elevfsm.Fsm_init()
 
-	inputPollRate_ms := 25
-	elev_algo.ConLoad("elevator.con",
-		elev_algo.ConVal("inputPollRate_ms", &inputPollRate_ms, "%d"),
+	inputPollRateMs := 25
+	elevfsm.ConLoad("elevator.con",
+		elevfsm.ConVal("inputPollRate_ms", &inputPollRateMs, "%d"),
 	)
-	input := elev_algo.Elevio_getInputDevice()
 
 	if input.FloorSensor() == -1 {
-		elev_algo.Fsm_onInitBetweenFloors()
+		elevfsm.Fsm_onInitBetweenFloors()
 	}
 
-	// C: static int prev[N_FLOORS][N_BUTTONS];
-	var prevReq [elev_algo.N_FLOORS][elev_algo.N_BUTTONS]int
+	glue := elevfsm.NewFsmGlueState(cfg)
+	glue.TryLoadSnapshot(ctx, snapshotFromNetwork, 2*time.Second)
 
-	// C: static int prev = -1;
+	var prevReq [common.N_FLOORS][common.N_BUTTONS]int
 	prevFloor := -1
 
+	ticker := time.NewTicker(time.Duration(inputPollRateMs) * time.Millisecond)
+	defer ticker.Stop()
+
 	for {
-		{ // Request button
-			for f := 0; f < elev_algo.N_FLOORS; f++ {
-				for b := 0; b < elev_algo.N_BUTTONS; b++ {
+		select {
+		case <-ctx.Done():
+			return
+
+		case task := <-assignerOutput:
+			glue.ApplyAssignerTask(task)
+			// optional: publish update so network/assigner sees we’re alive
+			select {
+			case elevalgoLaManana <- glue.Snapshot():
+			default:
+			}
+
+		case <-ticker.C:
+			changedNew := false
+			changedServiced := false
+
+			// Request buttons
+			for f := 0; f < common.N_FLOORS; f++ {
+				for b := 0; b < common.N_BUTTONS; b++ {
 					v := input.RequestButton(f, elevio.ButtonType(b))
 					if v != 0 && v != prevReq[f][b] {
-						elev_algo.Fsm_onRequestButtonPress(f, elevio.ButtonType(b))
+						elevfsm.Fsm_onRequestButtonPress(f, elevio.ButtonType(b))
+
+						switch elevio.ButtonType(b) {
+						case elevio.BT_HallUp:
+							glue.SetHallButton(f, true, true)
+							changedNew = true
+						case elevio.BT_HallDown:
+							glue.SetHallButton(f, false, true)
+							changedNew = true
+						case elevio.BT_Cab:
+							glue.SetCabRequest(f, true)
+							changedNew = true
+						}
 					}
 					prevReq[f][b] = v
 				}
 			}
-		}
 
-		{ // Floor sensor
+			// Floor sensor
 			f := input.FloorSensor()
 			if f != -1 && f != prevFloor {
-				elev_algo.Fsm_onFloorArrival(f)
+				elevfsm.Fsm_onFloorArrival(f)
+				glue.SetFloor(f)
+				changedNew = true
 			}
 			prevFloor = f
-		}
 
-		{ // Timer
-			if elev_algo.Timer_timedOut() != 0 {
-				elev_algo.Timer_stop()
-				elev_algo.Fsm_onDoorTimeout()
+			// Timer
+			if elevfsm.Timer_timedOut() != 0 {
+				elevfsm.Timer_stop()
+				elevfsm.Fsm_onDoorTimeout()
+
+				if glue.ClearAtCurrentFloorIfAny() {
+					changedServiced = true
+				}
+			}
+
+			// Publish FULL state to network thread
+			if changedServiced {
+				select {
+				case elevalgoServiced <- glue.Snapshot():
+				default:
+				}
+			}
+			if changedNew {
+				select {
+				case elevalgoLaManana <- glue.Snapshot():
+				default:
+				}
 			}
 		}
-
-		time.Sleep(time.Duration(inputPollRate_ms) * time.Millisecond)
 	}
-
 }

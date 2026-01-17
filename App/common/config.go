@@ -11,20 +11,38 @@ type Config struct {
 
 	// Addresses indexed by elevator id: 1..N (id 0 unused)
 	AddrByID map[int]string
+
+	// Filled by InitSelf() or by DefaultConfig()/MustDefaultConfig().
+	SelfID  int
+	SelfKey string
 }
 
-
-func DefaultConfig() Config {
-	return Config{
+// DefaultConfig builds the config AND detects self.
+// Safe version: returns err if self cannot be detected.
+func DefaultConfig() (Config, string, error) {
+	cfg := Config{
 		Port: 4242,
 		AddrByID: map[int]string{
 			1: "10.100.23.35:4242",
 			2: "10.100.23.36:4242",
 			3: "10.100.23.37:4242",
-			// Add elevator 4 later with one line:
-			// 4: "10.100.23.38:4242",
 		},
 	}
+	if err := cfg.InitSelf(); err != nil {
+		return Config{}, "", err
+	}
+	return cfg, cfg.SelfKey, nil
+}
+
+// InitSelf detects and stores SelfID/SelfKey inside cfg.
+func (c *Config) InitSelf() error {
+	id, err := c.DetectSelfID()
+	if err != nil {
+		return err
+	}
+	c.SelfID = id
+	c.SelfKey = fmt.Sprintf("%d", id)
+	return nil
 }
 
 // ListenAddr returns an address suitable for binding a listener on all interfaces.
@@ -40,7 +58,6 @@ func (c Config) DetectSelfID() (int, error) {
 		return 0, err
 	}
 
-	// Deterministic iteration for stable behavior/logging.
 	ids := make([]int, 0, len(c.AddrByID))
 	for id := range c.AddrByID {
 		ids = append(ids, id)
@@ -67,19 +84,16 @@ func (c Config) DetectSelfID() (int, error) {
 	return matches[0], nil
 }
 
-// SelfAddr returns the configured dial/advertise address for the detected self.
-func (c Config) SelfAddr() (string, int, error) {
-	id, err := c.DetectSelfID()
-	if err != nil {
-		return "", 0, err
-	}
-	return c.AddrByID[id], id, nil
-}
-
+// PeerAddrs returns all peers excluding self.
+// Uses stored SelfID if present; otherwise detects.
 func (c Config) PeerAddrs() (map[int]string, int, error) {
-	selfID, err := c.DetectSelfID()
-	if err != nil {
-		return nil, 0, err
+	selfID := c.SelfID
+	if selfID == 0 {
+		var err error
+		selfID, err = c.DetectSelfID()
+		if err != nil {
+			return nil, 0, err
+		}
 	}
 
 	peers := make(map[int]string, len(c.AddrByID)-1)
@@ -100,7 +114,6 @@ func hostIPFromAddr(addr string) (net.IP, error) {
 	if ip == nil {
 		return nil, fmt.Errorf("host is not an IP: %q", host)
 	}
-	// Normalize (so IPv4-in-IPv6 compares cleanly)
 	if v4 := ip.To4(); v4 != nil {
 		return v4, nil
 	}
@@ -115,7 +128,6 @@ func localInterfaceIPs() (map[string]bool, error) {
 
 	ips := make(map[string]bool)
 	for _, iface := range ifaces {
-		// Ignore interfaces that are down.
 		if iface.Flags&net.FlagUp == 0 {
 			continue
 		}
@@ -136,7 +148,6 @@ func localInterfaceIPs() (map[string]bool, error) {
 			if ip == nil || ip.IsLoopback() {
 				continue
 			}
-			// Keep only IPv4 for your current config (which is IPv4).
 			if v4 := ip.To4(); v4 != nil {
 				ips[v4.String()] = true
 			}

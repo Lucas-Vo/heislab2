@@ -13,4 +13,4 @@ require (
 	golang.org/x/sys v0.35.0 // indirect
 )
 
-replace Driver-go => ./elev_algo/driver-go
+replace Driver-go => ./driver-go

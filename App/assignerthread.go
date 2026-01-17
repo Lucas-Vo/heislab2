@@ -1,82 +1,103 @@
 package main
 
 import (
-	//standard
-	"time"
+	"context"
+	"encoding/json"
 	"fmt"
 	"os/exec"
-	"strconv"
-	"encoding/json"
-	"runtime"
-	//user defined
+	"time"
+
 	. "elevator/common"
 )
 
-//constants
+// constants (seconds)
 const (
-	NETWORK_ACK_TIMEOUT = 2
+	NETWORK_ACK_TIMEOUT    = 2
 	NETWORK_PACKET_TIMEOUT = 2
+
+	HRA_EXECUTABLE = "hall_request_assigner" // Linux only
 )
-/**
-* @brief 
-*
-*
-*/
-func assignerThread(cfg Config,network_snapshot_ch <-chan NetworkState,network_ack_ch <-chan bool, elevator_tasks_ch chan<- ElevInput){
 
-	hraExecutable := ""
-    switch runtime.GOOS {
-        case "linux":   hraExecutable  = "hall_request_assigner"
-        case "windows": hraExecutable  = "hall_request_assigner.exe"
-        default:        panic("OS not supported")
-    }
-
-	elevatorID, err := cfg.DetectSelfID()
-	if err != nil {
-		fmt.Println("json.Unmarshal error: ", err)
+func assignerThread(
+	ctx context.Context,
+	cfg Config,
+	networkSnapshotCh <-chan NetworkState,
+	networkAckCh <-chan bool,
+	elevatorTasksCh chan<- ElevInput,
+) {
+	// Use cfg.SelfKey (string "1","2",...)
+	selfKey := cfg.SelfKey
+	if selfKey == "" {
+		// fallback if caller didn't init self (shouldn't happen if you use MustDefaultConfig / InitSelf)
+		fmt.Println("assignerThread: cfg.SelfKey is empty (did you call cfg.InitSelf()?)")
+		return
 	}
 
 	var currentElevInput ElevInput
+
 	for {
-		
 		select {
-		case network_snapshot := <-network_snapshot_ch:
-			jsonBytes, err := json.Marshal(network_snapshot)
+		case <-ctx.Done():
+			return
+
+		case networkSnapshot := <-networkSnapshotCh:
+			jsonBytes, err := json.Marshal(networkSnapshot)
 			if err != nil {
-				fmt.Println("json.Marshal error: ", err)
+				fmt.Println("json.Marshal error:", err)
+				break
 			}
 
-			//run assigner script
-			ret, err := exec.Command("../hall_request_assigner/"+hraExecutable, "-i", string(jsonBytes)).CombinedOutput()
+			// Linux-only: run external assigner
+			ret, err := exec.Command("../hall_request_assigner/"+HRA_EXECUTABLE, "-i", string(jsonBytes)).CombinedOutput()
 			if err != nil {
-				fmt.Println("exec.Command error: ", err)
+				fmt.Println("exec.Command error:", err)
 				fmt.Println(string(ret))
+				break
 			}
-			
-			//parse data
+
+			// parse assigner output
 			var output map[string][][2]bool
-			err = json.Unmarshal(ret, &output)
-			if err != nil {
-				fmt.Println("json.Unmarshal error: ", err)
+			if err := json.Unmarshal(ret, &output); err != nil {
+				fmt.Println("json.Unmarshal error:", err)
+				break
 			}
 
-			//select relevant elevator
-			currentElevInput = ElevInput{HallTask:output[strconv.Itoa(elevatorID)]}
+			// pick tasks for THIS elevator
+			currentElevInput = ElevInput{HallTask: output[selfKey]}
 
-		case <-time.After(NETWORK_PACKET_TIMEOUT*time.Second):
+		case <-time.After(NETWORK_PACKET_TIMEOUT * time.Second):
 			fmt.Println("From network update timeout")
+
+		case <-ctx.Done():
+			return
 		}
 
-		select{
-		case <-network_ack_ch:
-			elevator_tasks_ch <- currentElevInput
+		// Wait for ack (or timeout), then forward the current tasks to FSM
+		select {
+		case <-ctx.Done():
+			return
 
-		case <-time.After(NETWORK_ACK_TIMEOUT*time.Second):
-			elevator_tasks_ch <- currentElevInput
+		case <-networkAckCh:
+			select {
+			case elevatorTasksCh <- currentElevInput:
+			case <-ctx.Done():
+				return
+			}
+
+		case <-time.After(NETWORK_ACK_TIMEOUT * time.Second):
+			select {
+			case elevatorTasksCh <- currentElevInput:
+			case <-ctx.Done():
+				return
+			}
 			fmt.Println("Acknowledgement from network timeout")
 		}
 
-	//thread sleep
-	time.Sleep(100*time.Millisecond)
+		// Avoid busy looping; also respects ctx
+		select {
+		case <-time.After(100 * time.Millisecond):
+		case <-ctx.Done():
+			return
+		}
 	}
 }
