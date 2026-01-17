@@ -13,6 +13,7 @@ type Config struct {
 	AddrByID map[int]string
 }
 
+
 func DefaultConfig() Config {
 	return Config{
 		Port: 4242,
