@@ -48,7 +48,7 @@ func assignerThread(
 			}
 
 			// Linux-only: run external assigner
-			ret, err := exec.Command("../hall_request_assigner/"+HRA_EXECUTABLE, "-i", string(jsonBytes)).CombinedOutput()
+			ret, err := exec.Command("./elevassigner/"+HRA_EXECUTABLE, "-i", string(jsonBytes)).CombinedOutput()
 			if err != nil {
 				fmt.Println("exec.Command error:", err)
 				fmt.Println(string(ret))
