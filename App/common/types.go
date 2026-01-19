@@ -1,21 +1,22 @@
 package common
 
 type ElevState struct {
-    Behavior    string      `json:"behaviour"`
-    Floor       int         `json:"floor"` 
-    Direction   string      `json:"direction"`
-    CabRequests []bool      `json:"cabRequests"`
+	Behavior    string `json:"behaviour"`
+	Floor       int    `json:"floor"`
+	Direction   string `json:"direction"`
+	CabRequests []bool `json:"cabRequests"`
 }
 
 type NetworkState struct {
-    HallRequests    [][2]bool		`json:"hallRequests"`
-    States          map[string]ElevState     `json:"states"`
+	HallRequests [][2]bool            `json:"hallRequests"`
+	States       map[string]ElevState `json:"states"`
+	Alive        map[string]bool      `json:"alive"`
 }
 
 type ElevInput struct {
-    HallTask    	[][2]bool			`json:"HallTask"`
+	HallTask [][2]bool `json:"HallTask"`
 }
 
 type HRAOutput struct {
-	HallTasks		[]ElevInput			`json:"HallTasks"`
+	HallTasks []ElevInput `json:"HallTasks"`
 }
