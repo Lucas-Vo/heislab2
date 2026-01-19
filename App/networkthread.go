@@ -43,20 +43,32 @@ func networkThread(
 
 		case ns := <-elevalgoLaManana:
 			wv.ApplyUpdateAndPublish(selfKey, ns, elevnetwork.UpdateNewRequests, theWorldIsReady, networkStateOfTheWorld)
-			wv.Broadcast(ns)
+			wv.BroadcastLocal(elevnetwork.UpdateNewRequests, ns)
 
 		case ns := <-elevalgoServiced:
 			wv.ApplyUpdateAndPublish(selfKey, ns, elevnetwork.UpdateServiced, theWorldIsReady, networkStateOfTheWorld)
-			wv.Broadcast(ns)
+			wv.BroadcastLocal(elevnetwork.UpdateServiced, ns)
 
 		case in := <-incomingFrames:
-			var ns common.NetworkState
-			if err := json.Unmarshal(common.TrimZeros(in.Frame), &ns); err != nil {
+			var msg elevnetwork.NetMsg
+			if err := json.Unmarshal(common.TrimZeros(in.Frame), &msg); err != nil {
 				continue
 			}
+
 			fromKey := strconv.Itoa(in.FromID)
+
+			// Dynamic membership
 			wv.ExpectPeer(fromKey)
-			wv.ApplyUpdateAndPublish(fromKey, ns, elevnetwork.UpdateExternal, theWorldIsReady, networkStateOfTheWorld)
+
+			// Dedupe (prevents loops), then apply, then forward unchanged
+			if !wv.ShouldAcceptMsg(msg) {
+				continue
+			}
+
+			wv.ApplyUpdateAndPublish(fromKey, msg.State, msg.Kind, theWorldIsReady, networkStateOfTheWorld)
+
+			// Forward so 1->2->3 works even without 1-3
+			wv.BroadcastMsg(msg)
 
 		case <-ticker.C:
 			wv.PublishWorld(networkStateOfTheWorld)
