@@ -57,7 +57,7 @@ func (pm *PeerManager) ConnectedPeerIDs() []int {
 func StartP2P(
 	ctx context.Context,
 	cfg common.Config,
-) (peers map[int]string, pm *PeerManager, incoming <-chan IncomingFrame) {
+) (pm *PeerManager, incoming <-chan IncomingFrame) {
 	// Prefer cfg.SelfID if present; fall back to detection
 	selfID := cfg.SelfID
 	if selfID == 0 {
@@ -87,19 +87,11 @@ func StartP2P(
 	// Dial rule: only dial higher IDs
 	for peerID, peerAddr := range peers {
 		if selfID < peerID {
-			go func(id int, addr string) {
-				for ctx.Err() == nil {
-					if err := pm.dialPeer(ctx, addr, quicConf); err == nil {
-						log.Printf("Connected (dial) to elev-%d at %s", id, addr)
-						return
-					}
-					time.Sleep(1 * time.Second)
-				}
-			}(peerID, peerAddr)
+			go dialLoop(ctx, pm, peerID, peerAddr, quicConf)
 		}
 	}
 
-	return peers, pm, incomingFrames
+	return pm, incomingFrames
 }
 
 func newPeerManager(selfID int, frameSize int) *PeerManager {
@@ -185,31 +177,22 @@ func (pm *PeerManager) handleIncomingConn(
 		return
 	}
 
-	// Read their HELLO first.
+	helloDone := make(chan int, 1)
+
+	go readIncomingStream(
+		ctx,
+		st,
+		pm.frameSize,
+		func(id int) {
+			helloDone <- id
+		},
+		onFrame,
+	)
+
 	var peerID int
-	helloDone := make(chan struct{})
-
-	go func() {
-		_ = ReadFixedFramesQUIC(ctx, st, pm.frameSize, func(frame []byte) {
-			// First valid hello sets peerID and signals done.
-			if peerID == 0 {
-				if id, ok := decodeHelloFrame(frame); ok {
-					peerID = id
-					close(helloDone)
-					return
-				}
-				// Ignore junk until we see HELLO.
-				return
-			}
-			// After HELLO, treat frames as app data.
-			if onFrame != nil {
-				onFrame(peerID, frame)
-			}
-		})
-	}()
-
 	select {
-	case <-helloDone:
+	case peerID = <-helloDone:
+
 	case <-time.After(3 * time.Second):
 		_ = st.Close()
 		_ = conn.CloseWithError(0, "hello timeout")
@@ -298,4 +281,43 @@ func runListener(ctx context.Context, cfg common.Config, quicConf *quic.Config, 
 	if err != nil && ctx.Err() == nil {
 		log.Printf("ListenQUIC error: %v", err)
 	}
+}
+
+func dialLoop(ctx context.Context, pm *PeerManager, id int, addr string, conf *quic.Config) {
+	for ctx.Err() == nil {
+		if err := pm.dialPeer(ctx, addr, conf); err == nil {
+			log.Printf("Connected (dial) to elev-%d at %s", id, addr)
+			return
+		}
+		time.Sleep(1 * time.Second)
+	}
+}
+
+func readIncomingStream(
+	ctx context.Context,
+	st *quic.Stream,
+	frameSize int,
+	onHello func(peerID int),
+	onFrame func(peerID int, frame []byte),
+) {
+	var peerID int
+
+	_ = ReadFixedFramesQUIC(ctx, st, frameSize, func(frame []byte) {
+		// Expect HELLO first
+		if peerID == 0 {
+			if id, ok := decodeHelloFrame(frame); ok {
+				peerID = id
+				if onHello != nil {
+					onHello(peerID)
+				}
+			}
+			// Ignore everything until HELLO
+			return
+		}
+
+		// Normal application frames
+		if onFrame != nil {
+			onFrame(peerID, frame)
+		}
+	})
 }

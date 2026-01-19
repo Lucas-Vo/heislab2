@@ -15,33 +15,48 @@ const (
 type UpdateKind int
 
 const (
-	UpdateNewRequests UpdateKind = iota // OR merge hallRequests
-	UpdateServiced                      // AND merge hallRequests
-	UpdateFromPeer                      // OR merge (default for peer info)
+	UpdateNewRequests UpdateKind = iota // OR merge
+	UpdateExternal                      // OR merge
+	UpdateServiced                      // AND merge
 )
 
-// worldView holds shared state + mutex. Helpers are methods (no passing mutex around).
 type WorldView struct {
-	mu        sync.Mutex
-	world     common.NetworkState
-	seen      map[string]bool
-	ready     bool
-	lastHeard map[string]time.Time
-	aliveTTL  time.Duration
+	mu              sync.Mutex
+	world           common.NetworkState
+	seen            map[string]bool
+	ready           bool
+	lastHeard       map[string]time.Time
+	aliveTimeToLive time.Duration
 
 	pm *PeerManager
 }
 
-func NewWorldView(pm *PeerManager) *WorldView {
+func NewWorldView(pm *PeerManager, cfg common.Config) *WorldView {
+	expected := cfg.ExpectedKeys()
+
+	seen := make(map[string]bool, len(expected))
+	lastHeard := make(map[string]time.Time, len(expected))
+	for _, k := range expected {
+		seen[k] = false
+	}
+
 	return &WorldView{
 		world: common.NetworkState{
 			HallRequests: nil,
 			States:       make(map[string]common.ElevState),
 		},
-		seen:      make(map[string]bool),
-		lastHeard: make(map[string]time.Time),
-		aliveTTL:  WV_TIMEOUT_DURATION * time.Second,
-		pm:        pm,
+		seen:            seen,
+		lastHeard:       lastHeard,
+		aliveTimeToLive: WV_TIMEOUT_DURATION * time.Second,
+		pm:              pm,
+	}
+}
+
+func (wv *WorldView) ExpectPeer(id string) {
+	wv.mu.Lock()
+	defer wv.mu.Unlock()
+	if _, ok := wv.seen[id]; !ok {
+		wv.seen[id] = false
 	}
 }
 
@@ -106,7 +121,7 @@ func (wv *WorldView) PublishWorld(ch chan<- common.NetworkState) {
 func (wv *WorldView) mergeHall(current, incoming [][2]bool, kind UpdateKind) [][2]bool {
 	out := make([][2]bool, common.N_FLOORS)
 
-	for i := 0; i < common.N_FLOORS; i++ {
+	for i := range common.N_FLOORS {
 		if kind == UpdateServiced {
 			out[i][0] = current[i][0] && incoming[i][0]
 			out[i][1] = current[i][1] && incoming[i][1]
@@ -130,7 +145,7 @@ func (wv *WorldView) applyUpdate(fromKey string, ns common.NetworkState, kind Up
 		wv.world.States = make(map[string]common.ElevState)
 	}
 	switch kind {
-	case UpdateFromPeer:
+	case UpdateExternal:
 		// Only accept the sender's own state
 		if st, ok := ns.States[fromKey]; ok {
 			wv.world.States[fromKey] = common.CopyElevState(st)
@@ -157,7 +172,7 @@ func (wv *WorldView) publishWorld(ch chan<- common.NetworkState) {
 	alive := make(map[string]bool, len(wv.seen))
 	for id := range wv.seen {
 		t, ok := wv.lastHeard[id]
-		alive[id] = ok && now.Sub(t) <= wv.aliveTTL
+		alive[id] = ok && now.Sub(t) <= wv.aliveTimeToLive
 	}
 	cp.Alive = alive
 
@@ -200,5 +215,5 @@ func (wv *WorldView) isAliveLocked(id string, now time.Time) bool {
 	if !ok {
 		return false
 	}
-	return now.Sub(t) <= wv.aliveTTL
+	return now.Sub(t) <= wv.aliveTimeToLive
 }

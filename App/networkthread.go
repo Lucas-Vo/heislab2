@@ -26,15 +26,10 @@ func networkThread(
 ) {
 
 	selfKey := cfg.SelfKey
-	peers, pm, incomingFrames := elevnetwork.StartP2P(ctx, cfg)
+	pm, incomingFrames := elevnetwork.StartP2P(ctx, cfg)
 
-	wv := elevnetwork.NewWorldView(pm)
-
-	// init seen-table (self + all peers)
-	wv.MarkUnseen(selfKey)
-	for id := range peers {
-		wv.MarkUnseen(strconv.Itoa(id))
-	}
+	wv := elevnetwork.NewWorldView(pm, cfg)
+	wv.ExpectPeer(selfKey)
 
 	ticker := time.NewTicker(300 * time.Millisecond)
 	defer ticker.Stop()
@@ -60,7 +55,8 @@ func networkThread(
 				continue
 			}
 			fromKey := strconv.Itoa(in.FromID)
-			wv.ApplyUpdateAndPublish(fromKey, ns, elevnetwork.UpdateFromPeer, theWorldIsReady, networkStateOfTheWorld)
+			wv.ExpectPeer(fromKey)
+			wv.ApplyUpdateAndPublish(fromKey, ns, elevnetwork.UpdateExternal, theWorldIsReady, networkStateOfTheWorld)
 
 		case <-ticker.C:
 			wv.PublishWorld(networkStateOfTheWorld)
