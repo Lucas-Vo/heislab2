@@ -12,7 +12,6 @@ import (
 
 // constants (seconds)
 const (
-	NETWORK_ACK_TIMEOUT    = 2
 	NETWORK_PACKET_TIMEOUT = 2
 
 	HRA_EXECUTABLE = "hall_request_assigner"
@@ -33,16 +32,15 @@ func assignerThread(
 	}
 
 	// state variables
-	var currentElevInput ElevInput
-	var ackTimeout bool
+	currentElevInput := ElevInput{HallTask: make([][2]bool, 0)}
+	ackTimeout := false
 
 	for {
 		select {
 		case networkSnapshot := <-networkSnapshotCh:
 			ackTimeout = false
 			
-			// remove stale elevators from snapshot
-			elevassigner.FilterStaleStates(&networkSnapshot)
+			elevassigner.RemoveStaleStates(&networkSnapshot)
 			
 			// serialize snapshot to JSON
 			jsonBytes, err := json.Marshal(networkSnapshot)
@@ -51,12 +49,11 @@ func assignerThread(
 				
 			}
 
-			// Linux-only: run external assigner with snapshot as input
+			// Run external hall request assigner executable
 			ret, err := exec.Command("./elevassigner/"+HRA_EXECUTABLE, "-i", string(jsonBytes)).CombinedOutput()
 			if err != nil {
 				fmt.Println("exec.Command error:", err)
 				fmt.Println(string(ret))
-				
 			}
 
 			// parse assigner output
