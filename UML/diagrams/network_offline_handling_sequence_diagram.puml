@@ -1,0 +1,44 @@
+@startuml Thread Handle Request Sequence Diagram
+    participant Elevator1
+    participant Elevator2
+    Elevator1->>Elevator1: init()
+    activate Elevator1
+    Elevator1->>Elevator2: Ask for previous state/config
+    Elevator2-->>Elevator1: nack()/timeout()
+    Elevator1->>Elevator1: Update own snapshot
+
+    Elevator2->>Elevator2: init()
+    activate Elevator2
+    Elevator2->>Elevator1: Ask for previous state/config, broadcast snapshot
+    Elevator1-->>Elevator2: ack(), broadcast snapshot
+    Elevator2->>Elevator2: Update own snapshot
+    
+    alt order completed on elevator 2, network intact
+    Elevator2->>Elevator2: Order completed, Update own snapshot
+
+    loop while snapshot mismatch or not timeout
+        Elevator2->>Elevator1: broadcast snapshot
+        Elevator1->>Elevator1: Update own snapshot
+        Elevator1-->>Elevator2: ack(), broadcast snapshot
+        Elevator2->>Elevator2: Compare snapshots, Update own snapshot
+    end
+    Elevator1->>Elevator1: Reassign calls to own elevator
+    Elevator2->>Elevator2: Reassign calls to own elevator
+    end
+
+    alt order completed on elevator 2, network down
+    Elevator2->>Elevator2: Order completed, Update own snapshot
+    
+    loop while snapshot mismatch or not timeout
+        Elevator2-x Elevator1: broadcast snapshot
+        Elevator1->>Elevator1: Idle wait
+        Elevator2->>Elevator2: No ack received, retry
+    end
+
+    Elevator2->>Elevator2: Assign Elevator1 as stale, Reassign calls to own elevator
+    Elevator1->>Elevator1: No updates, remain idle/ serve own calls
+    end
+
+    deactivate Elevator1
+    deactivate Elevator2
+@enduml

@@ -1,5 +1,5 @@
-@startuml
-skinparam classAttributeIconSize 0
+@startuml Network Sequence Diagram
+    skinparam classAttributeIconSize 0
     participant Elevator1
     participant Elevator2
     Elevator1->>Elevator1: init()
