@@ -50,7 +50,7 @@ func main() {
 	}
 
 	go networkThread(ctx, cfg, elevalgoServiced, elevalgoLaManana, networkStateOfTheWorld, theWorldIsReady, snapshotToFSM)
-	go assignerThread(ctx, cfg, networkStateOfTheWorld, theWorldIsReady, assignerOutput)
+	go assignerThread(ctx, cfg, networkStateOfTheWorld, assignerOutput)
 	go fsmThread(ctx, cfg, input, assignerOutput, elevalgoServiced, elevalgoLaManana, snapshotToFSM)
 	<-ctx.Done()
 	fmt.Println("Shutting down")
