@@ -1,0 +1,1 @@
+ctx -> context, cfg ->config, and all other abbreviations so that no abbreviations that are not NASA or NATO is used

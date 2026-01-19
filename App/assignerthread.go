@@ -2,82 +2,67 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"os/exec"
 	"time"
-
+	"elevator/elevassigner"
 	. "elevator/common"
+
 )
 
 // constants (seconds)
 const (
 	NETWORK_ACK_TIMEOUT    = 2
 	NETWORK_PACKET_TIMEOUT = 2
-
-	HRA_EXECUTABLE = "hall_request_assigner" // Linux only
 )
 
 func assignerThread(
-	ctx context.Context,
-	cfg Config,
+	context context.Context,
+	config Config,
 	networkSnapshotCh <-chan NetworkState,
 	networkAckCh <-chan bool,
 	elevatorTasksCh chan<- ElevInput,
 ) {
-	// Use cfg.SelfKey (string "1","2",...)
-	selfKey := cfg.SelfKey
+	// Use config.SelfKey (string "1","2",...)
+	selfKey := config.SelfKey
 	if selfKey == "" {
 		// fallback if caller didn't init self (shouldn't happen if you use MustDefaultConfig / InitSelf)
-		fmt.Println("assignerThread: cfg.SelfKey is empty (did you call cfg.InitSelf()?)")
+		fmt.Println("assignerThread: config.SelfKey is empty (did you call config.InitSelf()?)")
 		return
 	}
 
+	// state variables
 	var currentElevInput ElevInput
+	var err error
+	var ackTimeout bool
 
 	for {
 		select {
 		case networkSnapshot := <-networkSnapshotCh:
-			jsonBytes, err := json.Marshal(networkSnapshot)
+			currentElevInput, err = elevassigner.AssignRequests(networkSnapshot, selfKey)
 			if err != nil {
-				fmt.Println("json.Marshal error:", err)
-				break
+				fmt.Println("assignerThread: elevassigner.AssignRequests error:", err)
 			}
-
-			// Linux-only: run external assigner
-			ret, err := exec.Command("./elevassigner/"+HRA_EXECUTABLE, "-i", string(jsonBytes)).CombinedOutput()
-			if err != nil {
-				fmt.Println("exec.Command error:", err)
-				fmt.Println(string(ret))
-				break
-			}
-
-			// parse assigner output
-			var output map[string][][2]bool
-			if err := json.Unmarshal(ret, &output); err != nil {
-				fmt.Println("json.Unmarshal error:", err)
-				break
-			}
-
-			// pick tasks for THIS elevator
-			currentElevInput = ElevInput{HallTask: output[selfKey]}
 
 		case <-time.After(NETWORK_PACKET_TIMEOUT * time.Second):
-			fmt.Println("From network update timeout")
+			fmt.Println("Snapshot from network update timeout")
+		
 		}
-		// Wait for ack (or timeout), then forward the current tasks to FSM
 		select {
 		case <-networkAckCh:
 			elevatorTasksCh <- currentElevInput
+			ackTimeout = false
 
 		case <-time.After(NETWORK_ACK_TIMEOUT * time.Second):
-			elevatorTasksCh <- currentElevInput
-			fmt.Println("Acknowledgement from network timeout")
+			if !ackTimeout {
+				elevatorTasksCh <- currentElevInput	
+				ackTimeout = true
+			}
+			fmt.Println("Acknowledgement from network timeout, holding further updates until next network ack")
 		}
-		// Avoid busy looping; also respects ctx
+		// Avoid busy looping; also respects context
 		select {
 		case <-time.After(100 * time.Millisecond):
-		case <-ctx.Done():
+		case <-context.Done():
 			return
 		}
 	}
