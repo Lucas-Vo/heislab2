@@ -1,3 +1,7 @@
+// from incomingFrames   -> external lucas got updates
+// from elevalgoLaManana -> filip has a new local request
+// from elevalgoServiced -> filip has finished a request
+
 // networkthread.go
 package main
 
@@ -56,10 +60,10 @@ func networkThread(
 				continue
 			}
 			fromKey := strconv.Itoa(in.FromID)
-
 			wv.ApplyUpdateAndPublish(fromKey, ns, elevnetwork.UpdateFromPeer, theWorldIsReady, networkStateOfTheWorld)
 
 		case <-ticker.C:
+			wv.PublishWorld(networkStateOfTheWorld)
 			if !snapshotSent {
 				snapshotSent = wv.MaybeSendSnapshotToFSM(snapshotToFSM)
 			}

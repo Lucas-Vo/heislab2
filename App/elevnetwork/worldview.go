@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	WORLDVIEW_WD = 2
+	WV_TIMEOUT_DURATION = 2
 )
 
 type UpdateKind int
@@ -40,7 +40,7 @@ func NewWorldView(pm *PeerManager) *WorldView {
 		},
 		seen:      make(map[string]bool),
 		lastHeard: make(map[string]time.Time),
-		aliveTTL:  WORLDVIEW_WD * time.Second,
+		aliveTTL:  WV_TIMEOUT_DURATION * time.Second,
 		pm:        pm,
 	}
 }
@@ -97,53 +97,24 @@ func (wv *WorldView) ApplyUpdateAndPublish(
 	wv.publishWorld(networkStateOfTheWorld)
 }
 
-func (wv *WorldView) mergeHall(dst, src [][2]bool, kind UpdateKind) [][2]bool {
-	n := max(len(dst), len(src))
-	if n == 0 {
-		return nil
-	}
-	out := make([][2]bool, n)
+func (wv *WorldView) PublishWorld(ch chan<- common.NetworkState) {
+	wv.publishWorld(ch)
+}
 
-	switch kind {
-	case UpdateServiced:
-		// AND elementwise: true && false clears
-		for i := range n {
-			aSet := i < len(dst)
-			bSet := i < len(src)
+/* helper functions */
 
-			var a, b [2]bool
-			if aSet {
-				a = dst[i]
-			}
-			if bSet {
-				b = src[i]
-			}
+func (wv *WorldView) mergeHall(current, incoming [][2]bool, kind UpdateKind) [][2]bool {
+	out := make([][2]bool, common.N_FLOORS)
 
-			if aSet && bSet {
-				out[i][0] = a[0] && b[0]
-				out[i][1] = a[1] && b[1]
-			} else if aSet {
-				out[i] = a
-			} else {
-				out[i] = b
-			}
-		}
-
-	default:
-		// OR elementwise: accumulate new info
-		for i := range n {
-			var a, b [2]bool
-			if i < len(dst) {
-				a = dst[i]
-			}
-			if i < len(src) {
-				b = src[i]
-			}
-			out[i][0] = a[0] || b[0]
-			out[i][1] = a[1] || b[1]
+	for i := 0; i < common.N_FLOORS; i++ {
+		if kind == UpdateServiced {
+			out[i][0] = current[i][0] && incoming[i][0]
+			out[i][1] = current[i][1] && incoming[i][1]
+		} else {
+			out[i][0] = current[i][0] || incoming[i][0]
+			out[i][1] = current[i][1] || incoming[i][1]
 		}
 	}
-
 	return out
 }
 
