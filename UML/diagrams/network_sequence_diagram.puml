@@ -1,0 +1,34 @@
+@startuml Network Sequence Diagram
+    skinparam classAttributeIconSize 0
+    participant Elevator1
+    participant Elevator2
+    Elevator1->>Elevator1: init()
+    activate Elevator1
+    Elevator1->>Elevator2: Ask for previous state/config
+    Elevator2-->>Elevator1: nack()/timeout()
+    Elevator1->>Elevator1: Update own snapshot
+
+    Elevator2->>Elevator2: init()
+    activate Elevator2
+    Elevator2->>Elevator1: Ask for previous state/config, broadcast snapshot
+    Elevator1-->>Elevator2: ack(), broadcast snapshot
+    Elevator2->>Elevator2: Update own snapshot
+    alt hall button pushed on Elevator1
+        Elevator1->>Elevator1: New elevator call, Update own snapshot
+        Elevator1->>Elevator2: broadcast new snapshot
+        Elevator2->>Elevator2: Update own snapshot
+        Elevator2-->>Elevator1: ack(), broadcast snapshot
+
+        loop while snapshot mismatch or not timeout
+            Elevator1->>Elevator2: broadcast snapshot
+            Elevator2->>Elevator2: Update own snapshot
+            Elevator2-->>Elevator1: ack(), broadcast snapshot
+            Elevator1->>Elevator1: Update own snapshot
+        end
+        Elevator1->>Elevator1: Reassign calls to own elevator
+        Elevator2->>Elevator2: Reassign calls to own elevator
+    end
+
+    deactivate Elevator1
+    deactivate Elevator2
+@enduml

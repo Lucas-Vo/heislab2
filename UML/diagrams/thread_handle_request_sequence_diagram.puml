@@ -1,0 +1,31 @@
+@startuml Thread Handle Request Sequence Diagram
+    participant Network
+    participant Assigner
+    participant Elevator
+
+    Network->>Network:init()
+    activate Network
+    Assigner->>Assigner:init()
+    activate Assigner
+    Elevator->>Elevator:init()
+    
+    activate Elevator
+
+    Elevator->>Network: Send elevator status
+    Network->>Network: Broadcast snapshot to network
+
+    loop while data invalid and not timeout
+    Network->>Assigner: Send updated snapshot from network
+    Assigner->>Assigner: Calculate best assignment
+    Network->>Network: Compare own data to received data
+    end
+    Network->>Assigner: Data valid ack
+    Assigner->>Elevator: Share best assignment
+    Elevator->>Elevator: Calculate best path, run elevator
+    Elevator->>Network: Share elevator status
+    Network->>Network: Broadcast snapshot to network
+
+    deactivate Network
+    deactivate Assigner
+    deactivate Elevator
+@enduml
