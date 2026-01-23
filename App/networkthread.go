@@ -6,6 +6,7 @@
 // - make a smart alg for detecting when filip data is stale
 // - rewrite ready logic, should only publish when worldview is coherent
 // - verify that when you start existing again/reconnect that the last snapshot is uploaded
+// - rename networkstate to snapshot
 
 // networkthread.go
 package main
