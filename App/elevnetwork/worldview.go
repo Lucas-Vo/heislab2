@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	WV_TIMEOUT_DURATION = 2
+	WV_TIMEOUT_DURATION = 10
 )
 
 type UpdateKind int
@@ -31,6 +31,7 @@ type WorldView struct {
 	world           common.NetworkState
 	seen            map[string]bool
 	ready           bool
+	readyCond       *sync.Cond
 	lastHeard       map[string]time.Time
 	aliveTimeToLive time.Duration
 
@@ -42,7 +43,7 @@ type WorldView struct {
 }
 
 func NewWorldView(pm *PeerManager, cfg common.Config) *WorldView {
-	return &WorldView{
+	wv := &WorldView{
 		world: common.NetworkState{
 			HallRequests: make([][2]bool, common.N_FLOORS),
 			States:       make(map[string]common.ElevState),
@@ -57,6 +58,8 @@ func NewWorldView(pm *PeerManager, cfg common.Config) *WorldView {
 
 		pm: pm,
 	}
+	wv.readyCond = sync.NewCond(&wv.mu)
+	return wv
 }
 
 func (wv *WorldView) ExpectPeer(id string) {
@@ -65,12 +68,6 @@ func (wv *WorldView) ExpectPeer(id string) {
 	if _, ok := wv.seen[id]; !ok {
 		wv.seen[id] = false
 	}
-}
-
-func (wv *WorldView) MarkUnseen(id string) {
-	wv.mu.Lock()
-	defer wv.mu.Unlock()
-	wv.seen[id] = false
 }
 
 func (wv *WorldView) BroadcastLocal(kind UpdateKind, ns common.NetworkState) {
@@ -118,43 +115,27 @@ func (wv *WorldView) ShouldAcceptMsg(msg NetMsg) bool {
 	return true
 }
 
-func (wv *WorldView) MaybeSendSnapshotToFSM(snapshotToFSM chan<- common.NetworkState) bool {
-	if snapshotToFSM == nil {
-		return false
-	}
-
-	wv.mu.Lock()
-	ready := wv.ready
-	cp := common.DeepCopyNetworkState(wv.world)
-	wv.mu.Unlock()
-
-	if !ready {
-		return false
-	}
-
-	select {
-	case snapshotToFSM <- cp:
-		log.Printf("Sent snapshot to FSM (post-ready)")
-		return true
-	default:
-		return false
-	}
-}
-
 func (wv *WorldView) ApplyUpdateAndPublish(
 	fromKey string,
 	ns common.NetworkState,
 	kind UpdateKind,
-	theWorldIsReady chan<- bool,
 	networkStateOfTheWorld chan<- common.NetworkState,
 ) {
 	wv.applyUpdate(fromKey, ns, kind)
-	wv.markReadyIfCoherent(theWorldIsReady)
-	wv.publishWorld(networkStateOfTheWorld)
+	justBecameReady := wv.markReadyIfCoherent()
+	if justBecameReady || wv.IsReady() {
+		wv.publishWorld(networkStateOfTheWorld)
+	}
 }
 
 func (wv *WorldView) PublishWorld(ch chan<- common.NetworkState) {
 	wv.publishWorld(ch)
+}
+
+func (wv *WorldView) IsReady() bool {
+	wv.mu.Lock()
+	defer wv.mu.Unlock()
+	return wv.ready
 }
 
 /* helper functions */
@@ -232,21 +213,23 @@ func (wv *WorldView) publishWorld(ch chan<- common.NetworkState) {
 	}
 }
 
-func (wv *WorldView) markReadyIfCoherent(theWorldIsReady chan<- bool) {
+func (wv *WorldView) markReadyIfCoherent() bool {
 	wv.mu.Lock()
 	defer wv.mu.Unlock()
 
 	if wv.ready {
-		return
+		return false
 	}
 	if wv.isCoherentLocked() {
 		wv.ready = true
-		select {
-		case theWorldIsReady <- true:
-		default:
-		}
+
+		// Wake anyone waiting on readiness (internal condition, not a channel)
+		wv.readyCond.Broadcast()
+
 		log.Printf("World view is coherent: ready=true")
+		return true
 	}
+	return false
 }
 
 func (wv *WorldView) isCoherentLocked() bool {
@@ -256,12 +239,4 @@ func (wv *WorldView) isCoherentLocked() bool {
 		}
 	}
 	return true
-}
-
-func (wv *WorldView) isAliveLocked(id string, now time.Time) bool {
-	t, ok := wv.lastHeard[id]
-	if !ok {
-		return false
-	}
-	return now.Sub(t) <= wv.aliveTimeToLive
 }

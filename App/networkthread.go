@@ -2,6 +2,9 @@
 // from elevalgoLaManana -> filip has a new local request
 // from elevalgoServiced -> filip has finished a request
 
+// TODO:
+// - make a smart alg for detecting when filip data is stale
+
 // networkthread.go
 package main
 
@@ -21,7 +24,6 @@ func networkThread(
 	elevalgoServiced <-chan common.NetworkState,
 	elevalgoLaManana <-chan common.NetworkState,
 	networkStateOfTheWorld chan<- common.NetworkState,
-	theWorldIsReady chan<- bool,
 	snapshotToFSM chan<- common.NetworkState,
 ) {
 
@@ -34,19 +36,17 @@ func networkThread(
 	ticker := time.NewTicker(300 * time.Millisecond)
 	defer ticker.Stop()
 
-	snapshotSent := false
-
 	for {
 		select {
 		case <-ctx.Done():
 			return
 
 		case ns := <-elevalgoLaManana:
-			wv.ApplyUpdateAndPublish(selfKey, ns, elevnetwork.UpdateNewRequests, theWorldIsReady, networkStateOfTheWorld)
+			wv.ApplyUpdateAndPublish(selfKey, ns, elevnetwork.UpdateNewRequests, networkStateOfTheWorld)
 			wv.BroadcastLocal(elevnetwork.UpdateNewRequests, ns)
 
 		case ns := <-elevalgoServiced:
-			wv.ApplyUpdateAndPublish(selfKey, ns, elevnetwork.UpdateServiced, theWorldIsReady, networkStateOfTheWorld)
+			wv.ApplyUpdateAndPublish(selfKey, ns, elevnetwork.UpdateServiced, networkStateOfTheWorld)
 			wv.BroadcastLocal(elevnetwork.UpdateServiced, ns)
 
 		case in := <-incomingFrames:
@@ -65,16 +65,18 @@ func networkThread(
 				continue
 			}
 
-			wv.ApplyUpdateAndPublish(fromKey, msg.State, msg.Kind, theWorldIsReady, networkStateOfTheWorld)
+			wv.ApplyUpdateAndPublish(fromKey, msg.State, msg.Kind, networkStateOfTheWorld)
 
 			// Forward so 1->2->3 works even without 1-3
 			wv.BroadcastMsg(msg)
 
 		case <-ticker.C:
-			wv.PublishWorld(networkStateOfTheWorld)
-			if !snapshotSent {
-				snapshotSent = wv.MaybeSendSnapshotToFSM(snapshotToFSM)
+			// Only publish outward once the world is coherent/ready.
+			if wv.IsReady() {
+				wv.PublishWorld(networkStateOfTheWorld)
+				wv.PublishWorld(snapshotToFSM)
 			}
+
 		}
 	}
 }
