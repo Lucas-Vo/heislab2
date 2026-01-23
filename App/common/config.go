@@ -156,3 +156,17 @@ func localInterfaceIPs() (map[string]bool, error) {
 	}
 	return ips, nil
 }
+
+func (c Config) ExpectedKeys() []string {
+	ids := make([]int, 0, len(c.AddrByID))
+	for id := range c.AddrByID {
+		ids = append(ids, id)
+	}
+	sort.Ints(ids)
+
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, fmt.Sprintf("%d", id))
+	}
+	return out
+}

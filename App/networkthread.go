@@ -1,3 +1,10 @@
+// from incomingFrames   -> external lucas got updates
+// from elevalgoLaManana -> filip has a new local request
+// from elevalgoServiced -> filip has finished a request
+
+// TODO:
+// - make a smart alg for detecting when filip data is stale
+
 // networkthread.go
 package main
 
@@ -17,25 +24,17 @@ func networkThread(
 	elevalgoServiced <-chan common.NetworkState,
 	elevalgoLaManana <-chan common.NetworkState,
 	networkStateOfTheWorld chan<- common.NetworkState,
-	theWorldIsReady chan<- bool,
 	snapshotToFSM chan<- common.NetworkState,
 ) {
 
 	selfKey := cfg.SelfKey
-	peers, pm, incomingFrames := elevnetwork.StartP2P(ctx, cfg)
+	pm, incomingFrames := elevnetwork.StartP2P(ctx, cfg)
 
-	wv := elevnetwork.NewWorldView(pm)
-
-	// init seen-table (self + all peers)
-	wv.MarkUnseen(selfKey)
-	for id := range peers {
-		wv.MarkUnseen(strconv.Itoa(id))
-	}
+	wv := elevnetwork.NewWorldView(pm, cfg)
+	wv.ExpectPeer(selfKey)
 
 	ticker := time.NewTicker(300 * time.Millisecond)
 	defer ticker.Stop()
-
-	snapshotSent := false
 
 	for {
 		select {
@@ -43,26 +42,41 @@ func networkThread(
 			return
 
 		case ns := <-elevalgoLaManana:
-			wv.ApplyUpdateAndPublish(selfKey, ns, elevnetwork.UpdateNewRequests, theWorldIsReady, networkStateOfTheWorld)
-			wv.Broadcast(ns)
+			wv.ApplyUpdateAndPublish(selfKey, ns, elevnetwork.UpdateNewRequests, networkStateOfTheWorld)
+			wv.BroadcastLocal(elevnetwork.UpdateNewRequests, ns)
 
 		case ns := <-elevalgoServiced:
-			wv.ApplyUpdateAndPublish(selfKey, ns, elevnetwork.UpdateServiced, theWorldIsReady, networkStateOfTheWorld)
-			wv.Broadcast(ns)
+			wv.ApplyUpdateAndPublish(selfKey, ns, elevnetwork.UpdateServiced, networkStateOfTheWorld)
+			wv.BroadcastLocal(elevnetwork.UpdateServiced, ns)
 
 		case in := <-incomingFrames:
-			var ns common.NetworkState
-			if err := json.Unmarshal(common.TrimZeros(in.Frame), &ns); err != nil {
+			var msg elevnetwork.NetMsg
+			if err := json.Unmarshal(common.TrimZeros(in.Frame), &msg); err != nil {
 				continue
 			}
+
 			fromKey := strconv.Itoa(in.FromID)
 
-			wv.ApplyUpdateAndPublish(fromKey, ns, elevnetwork.UpdateFromPeer, theWorldIsReady, networkStateOfTheWorld)
+			// Dynamic membership
+			wv.ExpectPeer(fromKey)
+
+			// Dedupe (prevents loops), then apply, then forward unchanged
+			if !wv.ShouldAcceptMsg(msg) {
+				continue
+			}
+
+			wv.ApplyUpdateAndPublish(fromKey, msg.State, msg.Kind, networkStateOfTheWorld)
+
+			// Forward so 1->2->3 works even without 1-3
+			wv.BroadcastMsg(msg)
 
 		case <-ticker.C:
-			if !snapshotSent {
-				snapshotSent = wv.MaybeSendSnapshotToFSM(snapshotToFSM)
+			// Only publish outward once the world is coherent/ready.
+			if wv.IsReady() {
+				wv.PublishWorld(networkStateOfTheWorld)
+				wv.PublishWorld(snapshotToFSM)
 			}
+
 		}
 	}
 }

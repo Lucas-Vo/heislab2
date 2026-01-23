@@ -38,7 +38,6 @@ func main() {
 
 	// lucas til vetle
 	networkStateOfTheWorld := make(chan NetworkState)
-	theWorldIsReady := make(chan bool)
 
 	// vetle til filip
 	assignerOutput := make(chan ElevInput)
@@ -49,7 +48,7 @@ func main() {
 
 	}
 
-	go networkThread(ctx, cfg, elevalgoServiced, elevalgoLaManana, networkStateOfTheWorld, theWorldIsReady, snapshotToFSM)
+	go networkThread(ctx, cfg, elevalgoServiced, elevalgoLaManana, networkStateOfTheWorld, snapshotToFSM)
 	go assignerThread(ctx, cfg, networkStateOfTheWorld, assignerOutput)
 	go fsmThread(ctx, cfg, input, assignerOutput, elevalgoServiced, elevalgoLaManana, snapshotToFSM)
 	<-ctx.Done()
