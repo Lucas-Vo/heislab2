@@ -33,22 +33,17 @@ func assignerThread(
 
 	// state variables
 	currentElevInput := ElevInput{HallTask: make([][2]bool, 0)}
-	ackTimeout := false
 
 	for {
 		select {
 		case networkSnapshot := <-networkSnapshotCh:
-			ackTimeout = false
 
-			fmt.Println("before formatting: ", networkSnapshot)
 			//delete elevators marked stale
 			err := elevassigner.RemoveStaleStates(&networkSnapshot, selfKey)
 			if err != nil {
 				fmt.Println("removing stale states error: ", err)
 				break
 			}
-
-			fmt.Println("after formatting: ", networkSnapshot)
 
 			// serialize snapshot to JSON
 			jsonBytes, err := json.Marshal(networkSnapshot)
@@ -72,18 +67,13 @@ func assignerThread(
 				fmt.Println("json.Unmarshal error:", err)
 				break
 			}
-			fmt.Println("Command return: ", output)
 
 			// pick tasks for THIS elevator to send to fsmthread
 			currentElevInput = ElevInput{HallTask: output[selfKey]}
 			elevatorTasksCh <- currentElevInput
 
 		case <-time.After(NETWORK_PACKET_TIMEOUT * time.Second):
-			fmt.Println("Snapshot from network update timeout, holding further updates until next network ack")
-			if !ackTimeout {
-				elevatorTasksCh <- currentElevInput
-				ackTimeout = true
-			}
+			fmt.Println("Snapshot from network update timeout, withholding updates until next network ack")
 		}
 
 		// Avoid busy looping; also respects context
