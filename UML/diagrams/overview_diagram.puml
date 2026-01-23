@@ -1,0 +1,30 @@
+@startuml
+title Elevator System – Thread Communication Diagram
+
+' ===== Styling =====
+skinparam componentStyle rectangle
+skinparam shadowing false
+skinparam ArrowColor black
+skinparam ArrowFontSize 12
+
+' ===== Threads =====
+rectangle "networkThread\n(Vetle)" as Network #ADD8E6
+rectangle "assignerThread\n(Vetle)" as Assigner #7CFC00
+rectangle "fsmThread\n(Lucas)" as FSM #FFDAB9
+
+' ===== Channels / Communication =====
+
+' Filip → Lucas
+FSM --> Network : elevalgoServiced\n(elevalgoServiced chan NetworkState)
+FSM --> Network : elevalgoLaManana\n(elevalgoLaManana chan NetworkState)
+
+' Lucas → Filip
+Network --> FSM : snapshotToFSM\n(snapshotToFSM chan NetworkState)
+
+' Lucas → Vetle
+Network --> Assigner : networkStateOfTheWorld\n(chan NetworkState)
+
+' Vetle → Filip
+Assigner --> FSM : assignerOutput\n(chan ElevInput)
+
+@enduml

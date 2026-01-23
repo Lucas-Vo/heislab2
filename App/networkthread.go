@@ -1,9 +1,11 @@
 // from incomingFrames   -> external lucas got updates
-// from elevalgoLaManana -> filip has a new local request
-// from elevalgoServiced -> filip has finished a request
+// from fsmUpdateCh -> filip has a new local request
+// from fsmServicedCh -> filip has finished a request
 
 // TODO:
 // - make a smart alg for detecting when filip data is stale
+// - rewrite ready logic, should only publish when worldview is coherent
+// - verify that when you start existing again/reconnect that the last snapshot is uploaded
 
 // networkthread.go
 package main
@@ -21,10 +23,10 @@ import (
 func networkThread(
 	ctx context.Context,
 	cfg common.Config,
-	elevalgoServiced <-chan common.NetworkState,
-	elevalgoLaManana <-chan common.NetworkState,
-	networkStateOfTheWorld chan<- common.NetworkState,
-	snapshotToFSM chan<- common.NetworkState,
+	fsmServicedCh <-chan common.NetworkState,
+	fsmUpdateCh <-chan common.NetworkState,
+	networkWorldViewAssignerCh chan<- common.NetworkState,
+	networkWorldViewFSMCh chan<- common.NetworkState,
 ) {
 
 	selfKey := cfg.SelfKey
@@ -41,12 +43,12 @@ func networkThread(
 		case <-ctx.Done():
 			return
 
-		case ns := <-elevalgoLaManana:
-			wv.ApplyUpdateAndPublish(selfKey, ns, elevnetwork.UpdateNewRequests, networkStateOfTheWorld)
+		case ns := <-fsmUpdateCh:
+			wv.ApplyUpdateAndPublish(selfKey, ns, elevnetwork.UpdateNewRequests, networkWorldViewAssignerCh)
 			wv.BroadcastLocal(elevnetwork.UpdateNewRequests, ns)
 
-		case ns := <-elevalgoServiced:
-			wv.ApplyUpdateAndPublish(selfKey, ns, elevnetwork.UpdateServiced, networkStateOfTheWorld)
+		case ns := <-fsmServicedCh:
+			wv.ApplyUpdateAndPublish(selfKey, ns, elevnetwork.UpdateServiced, networkWorldViewAssignerCh)
 			wv.BroadcastLocal(elevnetwork.UpdateServiced, ns)
 
 		case in := <-incomingFrames:
@@ -65,7 +67,7 @@ func networkThread(
 				continue
 			}
 
-			wv.ApplyUpdateAndPublish(fromKey, msg.State, msg.Kind, networkStateOfTheWorld)
+			wv.ApplyUpdateAndPublish(fromKey, msg.State, msg.Kind, networkWorldViewAssignerCh)
 
 			// Forward so 1->2->3 works even without 1-3
 			wv.BroadcastMsg(msg)
@@ -73,10 +75,9 @@ func networkThread(
 		case <-ticker.C:
 			// Only publish outward once the world is coherent/ready.
 			if wv.IsReady() {
-				wv.PublishWorld(networkStateOfTheWorld)
-				wv.PublishWorld(snapshotToFSM)
+				wv.PublishWorld(networkWorldViewAssignerCh)
+				wv.PublishWorld(networkWorldViewFSMCh)
 			}
-
 		}
 	}
 }

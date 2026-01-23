@@ -1,32 +1,33 @@
 @startuml Network Sequence Diagram
     skinparam classAttributeIconSize 0
-    participant Elevator1
-    participant Elevator2
-    Elevator1->>Elevator1: init()
-    activate Elevator1
-    Elevator1->>Elevator2: Ask for previous state/config
-    Elevator2-->>Elevator1: nack()/timeout()
-    Elevator1->>Elevator1: Update own snapshot
+    participant Elevator1 #fd94dcff
+    participant Elevator2 #fba29aff
+    Elevator1->>Elevator1: init() on 1st floor
+    activate Elevator1 #fd94dcff
+    Elevator2->>Elevator2: init() on 3rd floor
+    activate Elevator2 #fba29aff
 
-    Elevator2->>Elevator2: init()
-    activate Elevator2
-    Elevator2->>Elevator1: Ask for previous state/config, broadcast snapshot
-    Elevator1-->>Elevator2: ack(), broadcast snapshot
-    Elevator2->>Elevator2: Update own snapshot
-    alt hall button pushed on Elevator1
-        Elevator1->>Elevator1: New elevator call, Update own snapshot
-        Elevator1->>Elevator2: broadcast new snapshot
-        Elevator2->>Elevator2: Update own snapshot
-        Elevator2-->>Elevator1: ack(), broadcast snapshot
+    Elevator1->>Elevator1: hall button 4th floor pressed
+    Elevator1->>Elevator2: broadcast WorldView
+    Elevator2->>Elevator1: broadcast WorldView
+    Elevator1->>Elevator2: broadcast WorldView
 
-        loop while snapshot mismatch or not timeout
-            Elevator1->>Elevator2: broadcast snapshot
-            Elevator2->>Elevator2: Update own snapshot
-            Elevator2-->>Elevator1: ack(), broadcast snapshot
-            Elevator1->>Elevator1: Update own snapshot
-        end
-        Elevator1->>Elevator1: Reassign calls to own elevator
-        Elevator2->>Elevator2: Reassign calls to own elevator
+    Elevator2->>Elevator2: Request is assigned to Elevator2
+    Elevator1->>Elevator1: Request is assigned to Elevator2
+
+    alt Elevator2 services request
+        Elevator2->>Elevator2: elevator moves to 4th floor
+        Elevator2->>Elevator1: broadcast WorldView
+
+    end
+    alt Elevator2 dies on the way up
+        Elevator2->>Elevator2: elevator moves to 4th floor
+        Elevator2--x Elevator2: <color:red>(dies)</color>
+        deactivate Elevator2
+        Elevator1->>Elevator1: Network timeout, Elevator2 is marked dead
+        Elevator1->>Elevator1: Assigner timeout
+        Elevator1->>Elevator1: elevator moves to 4th floor
+
     end
 
     deactivate Elevator1
