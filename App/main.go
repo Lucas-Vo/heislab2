@@ -30,17 +30,17 @@ func main() {
 	}()
 
 	// filip til lucas
-	elevalgoServiced := make(chan NetworkState)
-	elevalgoLaManana := make(chan NetworkState)
+	fsmServicedCh := make(chan NetworkState)
+	fsmUpdateCh := make(chan NetworkState)
 
 	// lucas til filip
-	snapshotToFSM := make(chan NetworkState)
+	networkSnapshot2Ch := make(chan NetworkState)
 
 	// lucas til vetle
-	networkStateOfTheWorld := make(chan NetworkState)
+	networkSnapshot1Ch := make(chan NetworkState)
 
 	// vetle til filip
-	assignerOutput := make(chan ElevInput)
+	assignerOutputCh := make(chan ElevInput)
 
 	cfg, _, err := common.DefaultConfig()
 	if err != nil {
@@ -48,9 +48,10 @@ func main() {
 
 	}
 
-	go networkThread(ctx, cfg, elevalgoServiced, elevalgoLaManana, networkStateOfTheWorld, snapshotToFSM)
-	go assignerThread(ctx, cfg, networkStateOfTheWorld, assignerOutput)
-	go fsmThread(ctx, cfg, input, assignerOutput, elevalgoServiced, elevalgoLaManana, snapshotToFSM)
+	go networkThread(ctx, cfg, fsmServicedCh, fsmUpdateCh, networkSnapshot1Ch, networkSnapshot2Ch)
+	go assignerThread(ctx, cfg, networkSnapshot1Ch, assignerOutputCh)
+	go fsmThread(ctx, cfg, input, assignerOutputCh, fsmServicedCh, fsmUpdateCh, networkSnapshot2Ch)
 	<-ctx.Done()
 	fmt.Println("Shutting down")
+
 }
