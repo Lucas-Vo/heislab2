@@ -37,10 +37,10 @@ func Fsm_init() {
 	SetAllLights(elevator)
 }
 
-// NEW: Call this whenever you want lamps to reflect a NetworkState.
+// NEW: Call this whenever you want lamps to reflect a Snapshot.
 // - hall lamps: ns.HallRequests
 // - cab lamps:  ns.States[selfKey].CabRequests
-func SetAllRequestLightsFromNetworkState(ns common.NetworkState, selfKey string) {
+func SetAllRequestLightsFromSnapshot(ns common.Snapshot, selfKey string) {
 	// Update hall lamp buffer if present
 	if ns.HallRequests != nil {
 		if hallLamp == nil || len(hallLamp) != common.N_FLOORS {

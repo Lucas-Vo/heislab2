@@ -17,8 +17,8 @@ func CopyElevState(st ElevState) ElevState {
 	return cp
 }
 
-func DeepCopyNetworkState(ns NetworkState) NetworkState {
-	out := NetworkState{
+func DeepCopySnapshot(ns Snapshot) Snapshot {
+	out := Snapshot{
 		HallRequests: nil,
 		States:       make(map[string]ElevState, len(ns.States)),
 	}

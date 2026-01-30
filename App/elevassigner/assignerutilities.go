@@ -9,7 +9,7 @@ const HRA_EXECUTABLE = "hall_request_assigner" // Linux only
 
 // RemoveStaleStates removes the elevator states for the nodes that are marked as stale.
 // It mutates networkSnapshot by deleting entries from networkSnapshot.States.
-func RemoveStaleStates(networkSnapshot *NetworkState, selfKey string) error {
+func RemoveStaleStates(networkSnapshot *Snapshot, selfKey string) error {
 	var removeStaleStatesErr error = errors.New("no elevator states are marked alive")
 	for id, alive := range networkSnapshot.Alive {
 		if id == selfKey && !alive {

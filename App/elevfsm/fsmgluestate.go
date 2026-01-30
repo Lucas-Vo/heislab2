@@ -52,11 +52,11 @@ func (s *FsmGlueState) SelfKey() string { return s.selfKey }
 // UPDATED: now returns (snapshot, ok). Also uses MergeNetworkSnapshot (includes self cab requests).
 func (s *FsmGlueState) TryLoadSnapshot(
 	ctx context.Context,
-	snapshotFromNetwork <-chan common.NetworkState,
+	snapshotFromNetwork <-chan common.Snapshot,
 	timeout time.Duration,
-) (common.NetworkState, bool) {
+) (common.Snapshot, bool) {
 	if snapshotFromNetwork == nil {
-		return common.NetworkState{}, false
+		return common.Snapshot{}, false
 	}
 
 	t := time.NewTimer(timeout)
@@ -85,10 +85,10 @@ func (s *FsmGlueState) TryLoadSnapshot(
 
 	case <-t.C:
 		log.Printf("FSM snapshot timeout; continuing without snapshot")
-		return common.NetworkState{}, false
+		return common.Snapshot{}, false
 
 	case <-ctx.Done():
-		return common.NetworkState{}, false
+		return common.Snapshot{}, false
 	}
 }
 
@@ -99,7 +99,7 @@ func (s *FsmGlueState) ApplyAssignerTask(task common.ElevInput) {
 }
 
 // NEW: merges snapshot and ALSO merges self cab requests (so cab lamps can be driven by snapshots).
-func (s *FsmGlueState) MergeNetworkSnapshot(snap common.NetworkState) {
+func (s *FsmGlueState) MergeNetworkSnapshot(snap common.Snapshot) {
 	// First do the old merge (hall requests, alive, other elevators, self non-cab fields)
 	s.MergeNetworkSnapshotNoSelfCab(snap)
 
@@ -133,7 +133,7 @@ func (s *FsmGlueState) MergeNetworkSnapshot(snap common.NetworkState) {
 }
 
 // Existing merge (does NOT overwrite self cab requests)
-func (s *FsmGlueState) MergeNetworkSnapshotNoSelfCab(snap common.NetworkState) {
+func (s *FsmGlueState) MergeNetworkSnapshotNoSelfCab(snap common.Snapshot) {
 	if snap.HallRequests != nil {
 		s.hallRequests = cloneHall(snap.HallRequests)
 	}
@@ -256,8 +256,8 @@ func (s *FsmGlueState) ClearAtCurrentFloorIfAny() bool {
 	return changed
 }
 
-func (s *FsmGlueState) Snapshot() common.NetworkState {
-	return common.NetworkState{
+func (s *FsmGlueState) Snapshot() common.Snapshot {
+	return common.Snapshot{
 		HallRequests: cloneHall(s.hallRequests),
 		States:       cloneStates(s.states),
 		Alive:        cloneAlive(s.alive),

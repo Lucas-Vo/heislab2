@@ -10,15 +10,15 @@ import (
 	"elevator/elevnetwork"
 )
 
-const INITIAL_CONTACT_TIMEOUT = 5 * time.Second
+const INITIAL_CONTACT_TIMEOUT = 10 * time.Second
 
 func networkThread(
 	ctx context.Context,
 	cfg common.Config,
-	fsmServicedCh <-chan common.NetworkState,
-	fsmUpdateCh <-chan common.NetworkState,
-	networkWorldViewAssignerCh chan<- common.NetworkState,
-	networkWorldViewFSMCh chan<- common.NetworkState,
+	elevServicedCh <-chan common.Snapshot,
+	elevRequestCh <-chan common.Snapshot,
+	netSnap1Ch chan<- common.Snapshot,
+	netSnap2Ch chan<- common.Snapshot,
 ) {
 	selfKey := cfg.SelfKey
 	pm, incomingFrames := elevnetwork.StartP2P(ctx, cfg)
@@ -36,15 +36,14 @@ func networkThread(
 		case <-ctx.Done():
 			return
 
-		// Local FSM updates (blocked until initial contact)
-		case ns := <-fsmUpdateCh:
+		case ns := <-elevRequestCh:
 			if !wv.IsReady() {
 				continue
 			}
-			wv.ApplyUpdate(selfKey, ns, elevnetwork.UpdateNewRequests)
-			wv.BroadcastWorld(elevnetwork.UpdateNewRequests)
+			wv.ApplyUpdate(selfKey, ns, elevnetwork.UpdateRequests)
+			wv.BroadcastWorld(elevnetwork.UpdateRequests)
 
-		case ns := <-fsmServicedCh:
+		case ns := <-elevServicedCh:
 			if !wv.IsReady() {
 				continue
 			}
@@ -59,27 +58,22 @@ func networkThread(
 			}
 
 			fromKey := strconv.Itoa(in.FromID)
-			// Dedupe
 			if !wv.ShouldAcceptMsg(msg) {
 				continue
 			}
 
-			// Apply (this will also mark readiness if fromKey != self)
-			wv.ApplyUpdate(fromKey, msg.State, msg.Kind)
+			wv.ApplyUpdate(fromKey, msg.Snapshot, msg.Kind)
 
 			wv.RelayMsg(msg)
 
-		// Readiness timeout: allow local operation even if no peer was heard
 		case <-contactTimer.C:
 			wv.ForceReady()
 
 		// Publishing rule
 		case <-ticker.C:
-			// Only publish when coherent among alive peers.
-			// (You can choose to also require IsReady(), but coherency check already covers "have data".)
 			if wv.IsCoherent() {
-				wv.PublishWorld(networkWorldViewAssignerCh)
-				wv.PublishWorld(networkWorldViewFSMCh)
+				wv.PublishWorld(netSnap1Ch)
+				wv.PublishWorld(netSnap2Ch)
 			}
 		}
 	}

@@ -7,7 +7,7 @@ type ElevState struct {
 	CabRequests []bool `json:"cabRequests"`
 }
 
-type NetworkState struct {
+type Snapshot struct {
 	HallRequests [][2]bool            `json:"hallRequests"`
 	States       map[string]ElevState `json:"states"`
 	Alive        map[string]bool      `json:"alive"`

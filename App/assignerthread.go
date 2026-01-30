@@ -20,7 +20,7 @@ const (
 func assignerThread(
 	context context.Context,
 	config Config,
-	networkSnapshotCh <-chan NetworkState,
+	networkSnapshotCh <-chan Snapshot,
 	elevatorTasksCh chan<- ElevInput,
 ) {
 	// Use config.SelfKey (string "1","2",...)

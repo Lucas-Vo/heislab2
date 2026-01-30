@@ -13,39 +13,36 @@ const WV_TIMEOUT_DURATION = 10
 type UpdateKind int
 
 const (
-	UpdateNewRequests UpdateKind = iota // OR merge
-	UpdateServiced                      // AND merge
+	UpdateRequests UpdateKind = iota // OR merge
+	UpdateServiced                   // AND merge
 )
 
 type NetMsg struct {
-	Kind   UpdateKind          `json:"kind"`
-	Origin string              `json:"origin"`
-	Seq    uint64              `json:"seq"`
-	State  common.NetworkState `json:"state"`
+	Kind     UpdateKind      `json:"kind"`
+	Origin   string          `json:"origin"`
+	Counter  uint64          `json:"counter"`
+	Snapshot common.Snapshot `json:"snapshot"`
 }
 
 type WorldView struct {
 	mu sync.Mutex
 
-	// Configured membership (static, sorted)
+	// Statically configured membership from config.go
 	peers []string
 
-	// Our locally merged worldview (what we publish)
-	world common.NetworkState
+	world common.Snapshot
 
-	// Liveness + coherence inputs
 	lastHeard    map[string]time.Time
-	lastSnapshot map[string]common.NetworkState
-	ttl          time.Duration
+	lastSnapshot map[string]common.Snapshot
+	peerTimeout  time.Duration
 
-	// Readiness = initial contact from any peer != self (or forced by timeout)
+	// set true when received a snapshot or timeout
 	ready bool
 
 	selfKey string
 
-	// Dedupe + local seq
-	orderCounter uint64
-	latestCount  map[string]uint64 // origin -> max seq processed
+	counter     uint64
+	latestCount map[string]uint64
 
 	pm *PeerManager
 }
@@ -54,23 +51,24 @@ func NewWorldView(pm *PeerManager, cfg common.Config) *WorldView {
 	wv := &WorldView{
 		peers: cfg.ExpectedKeys(),
 
-		world: common.NetworkState{
+		world: common.Snapshot{
 			HallRequests: make([][2]bool, common.N_FLOORS),
 			States:       make(map[string]common.ElevState),
 		},
 
 		lastHeard:    make(map[string]time.Time),
-		lastSnapshot: make(map[string]common.NetworkState),
-		ttl:          WV_TIMEOUT_DURATION * time.Second,
+		lastSnapshot: make(map[string]common.Snapshot),
+		peerTimeout:  WV_TIMEOUT_DURATION * time.Second,
 
 		ready:   false,
 		selfKey: cfg.SelfKey,
 
-		orderCounter: 0,
-		latestCount:  make(map[string]uint64),
+		counter:     0,
+		latestCount: make(map[string]uint64),
 
 		pm: pm,
 	}
+	wv.world.States = make(map[string]common.ElevState)
 	return wv
 }
 
@@ -86,61 +84,43 @@ func (wv *WorldView) ForceReady() {
 	wv.mu.Unlock()
 }
 
-func (wv *WorldView) World() common.NetworkState {
+func (wv *WorldView) World() common.Snapshot {
 	wv.mu.Lock()
 	defer wv.mu.Unlock()
-	return common.DeepCopyNetworkState(wv.world)
+	return common.DeepCopySnapshot(wv.world)
 }
 
 func (wv *WorldView) ShouldAcceptMsg(msg NetMsg) bool {
 	wv.mu.Lock()
 	defer wv.mu.Unlock()
 
-	maxSeq := wv.latestCount[msg.Origin]
-	if msg.Seq <= maxSeq {
+	maxcounter := wv.latestCount[msg.Origin]
+	if msg.Counter <= maxcounter {
 		return false
 	}
-	wv.latestCount[msg.Origin] = msg.Seq
+	wv.latestCount[msg.Origin] = msg.Counter
 	return true
 }
 
-func (wv *WorldView) ApplyUpdate(fromKey string, ns common.NetworkState, kind UpdateKind) {
+func (wv *WorldView) ApplyUpdate(fromKey string, ns common.Snapshot, kind UpdateKind) {
 	wv.mu.Lock()
 	defer wv.mu.Unlock()
 
-	now := time.Now()
+	wv.lastHeard[fromKey] = time.Now()
+	wv.lastSnapshot[fromKey] = common.DeepCopySnapshot(ns)
 
-	// Liveness
-	wv.lastHeard[fromKey] = now
-
-	// Readiness = heard someone else.
-	// On the first peer contact, force OR-merge semantics.
 	if !wv.ready && fromKey != wv.selfKey {
+		kind = UpdateRequests
+		wv.recoverCabRequests(ns)
 		wv.ready = true
-		kind = UpdateNewRequests
 	}
 
-	// Save snapshot for coherency checks (deep copy)
-	wv.lastSnapshot[fromKey] = common.DeepCopyNetworkState(ns)
-
-	// Merge snapshot into our local worldview
 	wv.mergeSnapshot(fromKey, ns, kind)
 }
 
-func (wv *WorldView) mergeSnapshot(fromKey string, ns common.NetworkState, kind UpdateKind) {
-	// Ensure hall size (defensive)
-	if wv.world.HallRequests == nil || len(wv.world.HallRequests) != common.N_FLOORS {
-		wv.world.HallRequests = make([][2]bool, common.N_FLOORS)
-	}
+func (wv *WorldView) mergeSnapshot(fromKey string, ns common.Snapshot, kind UpdateKind) {
 
-	// Merge hall requests (OR/AND based on kind)
 	wv.world.HallRequests = mergeHall(wv.world.HallRequests, ns.HallRequests, kind)
-
-	// Merge elevator states with ownership rule:
-	// - never allow a peer to overwrite our own self state
-	if wv.world.States == nil {
-		wv.world.States = make(map[string]common.ElevState)
-	}
 
 	for k, st := range ns.States {
 		if k == wv.selfKey && fromKey != wv.selfKey {
@@ -150,15 +130,36 @@ func (wv *WorldView) mergeSnapshot(fromKey string, ns common.NetworkState, kind 
 	}
 }
 
-func (wv *WorldView) PublishWorld(ch chan<- common.NetworkState) {
+func (wv *WorldView) recoverCabRequests(ns common.Snapshot) {
+	peerSelf, ok := ns.States[wv.selfKey]
+	if !ok {
+		return
+	}
+
+	localSelf := wv.world.States[wv.selfKey]
+
+	n := len(peerSelf.CabRequests)
+	if len(localSelf.CabRequests) < n {
+		tmp := make([]bool, n)
+		copy(tmp, localSelf.CabRequests)
+		localSelf.CabRequests = tmp
+	}
+	for i := range n {
+		localSelf.CabRequests[i] = localSelf.CabRequests[i] || peerSelf.CabRequests[i]
+	}
+
+	wv.world.States[wv.selfKey] = localSelf
+}
+
+func (wv *WorldView) PublishWorld(ch chan<- common.Snapshot) {
 	wv.mu.Lock()
-	cp := common.DeepCopyNetworkState(wv.world)
+	cp := common.DeepCopySnapshot(wv.world)
 
 	now := time.Now()
 	alive := make(map[string]bool, len(wv.peers))
 	for _, id := range wv.peers {
 		t, ok := wv.lastHeard[id]
-		alive[id] = ok && now.Sub(t) <= wv.ttl
+		alive[id] = ok && now.Sub(t) <= wv.peerTimeout
 	}
 	cp.Alive = alive
 	wv.mu.Unlock()
@@ -175,33 +176,34 @@ func (wv *WorldView) IsCoherent() bool {
 
 	now := time.Now()
 
-	refSet := false
-	var ref common.NetworkState
-
+	alive := make([]string, 0, len(wv.peers))
 	for _, id := range wv.peers {
 		t, ok := wv.lastHeard[id]
-		alive := ok && now.Sub(t) <= wv.ttl
-		if !alive {
-			continue
+		if ok && now.Sub(t) <= wv.peerTimeout {
+			alive = append(alive, id)
 		}
+	}
 
+	if len(alive) <= 1 {
+		return true
+	}
+
+	refID := alive[0]
+	refSnap, ok := wv.lastSnapshot[refID]
+	if !ok {
+		return false // alive but no snapshot stored
+	}
+
+	for _, id := range alive[1:] {
 		snap, ok := wv.lastSnapshot[id]
 		if !ok {
-			return false // alive but no snapshot stored
+			return false
 		}
-
-		if !refSet {
-			ref = snap
-			refSet = true
-			continue
-		}
-
-		if !EqualWorldview(ref, snap) {
+		if !EqualWorldview(refSnap, snap) {
 			return false
 		}
 	}
 
-	// 0 or 1 alive peers => coherent
 	return true
 }
 
@@ -211,15 +213,15 @@ func (wv *WorldView) BroadcastWorld(kind UpdateKind) {
 	}
 
 	wv.mu.Lock()
-	wv.orderCounter++
+	wv.counter++
 
-	snapshot := common.DeepCopyNetworkState(wv.world)
+	snapshot := common.DeepCopySnapshot(wv.world)
 
 	msg := NetMsg{
-		Kind:   kind,
-		Origin: wv.selfKey,
-		Seq:    wv.orderCounter,
-		State:  snapshot,
+		Kind:     kind,
+		Origin:   wv.selfKey,
+		Counter:  wv.counter,
+		Snapshot: snapshot,
 	}
 	wv.mu.Unlock()
 
@@ -246,7 +248,7 @@ func mergeHall(current, incoming [][2]bool, kind UpdateKind) [][2]bool {
 	copy(inc, incoming)
 
 	out := make([][2]bool, common.N_FLOORS)
-	for i := 0; i < common.N_FLOORS; i++ {
+	for i := range common.N_FLOORS {
 		if kind == UpdateServiced {
 			out[i][0] = current[i][0] && inc[i][0]
 			out[i][1] = current[i][1] && inc[i][1]
@@ -259,7 +261,7 @@ func mergeHall(current, incoming [][2]bool, kind UpdateKind) [][2]bool {
 }
 
 // Ignore Alive; compare HallRequests + States.
-func EqualWorldview(a, b common.NetworkState) bool {
+func EqualWorldview(a, b common.Snapshot) bool {
 	if len(a.HallRequests) != len(b.HallRequests) {
 		return false
 	}

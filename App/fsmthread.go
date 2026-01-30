@@ -15,9 +15,9 @@ func fsmThread(
 	cfg common.Config,
 	input common.ElevInputDevice,
 	assignerOutputCh <-chan common.ElevInput,
-	fsmServicedCh chan<- common.NetworkState,
-	fsmUpdateCh chan<- common.NetworkState,
-	networkSnapshot2Ch <-chan common.NetworkState, // network -> fsm
+	fsmServicedCh chan<- common.Snapshot,
+	fsmUpdateCh chan<- common.Snapshot,
+	networkSnapshot2Ch <-chan common.Snapshot, // network -> fsm
 ) {
 	log.Printf("fsmThread started (self=%s)", cfg.SelfKey)
 
@@ -39,10 +39,10 @@ func fsmThread(
 
 	// Try to load a startup snapshot (and sync lights from it if we got one).
 	if snap, ok := glue.TryLoadSnapshot(ctx, netSnapCh, 2*time.Second); ok {
-		elevfsm.SetAllRequestLightsFromNetworkState(snap, cfg.SelfKey)
+		elevfsm.SetAllRequestLightsFromSnapshot(snap, cfg.SelfKey)
 	} else {
 		// Ensure lights reflect whatever we have locally at startup (typically all off).
-		elevfsm.SetAllRequestLightsFromNetworkState(glue.Snapshot(), cfg.SelfKey)
+		elevfsm.SetAllRequestLightsFromSnapshot(glue.Snapshot(), cfg.SelfKey)
 	}
 
 	var prevReq [common.N_FLOORS][common.N_BUTTONS]int
@@ -69,7 +69,7 @@ func fsmThread(
 			// Turn on/off lights based on the snapshot we just received:
 			// - Hall lamps from snap.HallRequests
 			// - Cab lamps from snap.States[self].CabRequests
-			elevfsm.SetAllRequestLightsFromNetworkState(glue.Snapshot(), cfg.SelfKey)
+			elevfsm.SetAllRequestLightsFromSnapshot(glue.Snapshot(), cfg.SelfKey)
 
 		case task := <-assignerOutputCh:
 			glue.ApplyAssignerTask(task)
@@ -130,7 +130,7 @@ func fsmThread(
 			// (so the FSM won't overwrite network-based lamps).
 			if changedNew || changedServiced {
 				snap := glue.Snapshot()
-				elevfsm.SetAllRequestLightsFromNetworkState(snap, cfg.SelfKey)
+				elevfsm.SetAllRequestLightsFromSnapshot(snap, cfg.SelfKey)
 
 				// Publish FULL state to network thread
 				if changedServiced {
