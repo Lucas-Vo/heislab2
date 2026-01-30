@@ -1,46 +1,46 @@
 @startuml Thread Handle Request Sequence Diagram
     participant Network #9efe9eff
     participant Assigner #LightBlue
-    participant Elevator #FFE5B4
+    participant ElevatorControl #FFE5B4
 
     Network->>Network:init()
     activate Network #9efe9eff
     Assigner->>Assigner:init()
     activate Assigner #LightBlue
-    Elevator->>Elevator:init() 
-    activate Elevator #FFE5B4
+    ElevatorControl->>ElevatorControl:init() 
+    activate ElevatorControl #FFE5B4
     Network->>Network: Receive initial WorldView
-    Network->>Elevator: Send initial WorldView
+    Network->>ElevatorControl: Send initial WorldView
 
     loop Regular loop
-    Elevator->>Network: Update WorldView (update)
+    ElevatorControl->>Network: Update WorldView (update)
     Network->>Network: Broadcast WorldView to Network
     Network->>Network: Make sure WorldView is coherent among nodes
     Network->>Assigner: Send WorldView
-    Network->>Elevator: Send WorldView
-    Elevator->>Elevator: Service lights
+    Network->>ElevatorControl: Send WorldView
+    ElevatorControl->>ElevatorControl: Service lights
 
     Assigner->>Assigner: Calculate best assignment
-    Assigner->>Elevator: Share best assignment
-    Elevator->>Elevator: Service assignment
-    Elevator->>Network: Update WorldView (serviced)
+    Assigner->>ElevatorControl: Share best assignment
+    ElevatorControl->>ElevatorControl: Service assignment
+    ElevatorControl->>Network: Update WorldView (serviced)
     end
 
     alt Network timeout
-    Elevator->>Network: Update WorldView (update)
+    ElevatorControl->>Network: Update WorldView (update)
     Network->>Network: Broadcast WorldView to Network 
     Network--x Network: Make sure WorldView is coherent among nodes <color:red>(failed)</color>
 
 
     Assigner->>Assigner: Network timeout
     Assigner->>Assigner: Go inactive
-    Elevator->>Elevator: Assigner timeout
-    Elevator->>Elevator: Activate local control
-    Elevator->>Elevator: Service assignment
-    Elevator->>Network: Update WorldView (serviced)
+    ElevatorControl->>ElevatorControl: Assigner timeout
+    ElevatorControl->>ElevatorControl: Activate local control
+    ElevatorControl->>ElevatorControl: Service assignment
+    ElevatorControl->>Network: Update WorldView (serviced)
     end
 
     deactivate Network
     deactivate Assigner
-    deactivate Elevator
+    deactivate ElevatorControl
 @enduml
