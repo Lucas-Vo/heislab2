@@ -15,14 +15,14 @@ rectangle "fsmThread\n(Lucas)" as FSM #FFDAB9
 ' ===== Channels / Communication =====
 
 ' Filip → Lucas
-FSM --> Network : elevalgoServiced\n(elevalgoServiced chan NetworkState)
-FSM --> Network : elevalgoLaManana\n(elevalgoLaManana chan NetworkState)
+FSM --> Network : elevalgoServiced\n(elevalgoServiced chan Snapshot)
+FSM --> Network : elevalgoLaManana\n(elevalgoLaManana chan Snapshot)
 
 ' Lucas → Filip
-Network --> FSM : snapshotToFSM\n(snapshotToFSM chan NetworkState)
+Network --> FSM : snapshotToFSM\n(snapshotToFSM chan Snapshot)
 
 ' Lucas → Vetle
-Network --> Assigner : networkStateOfTheWorld\n(chan NetworkState)
+Network --> Assigner : SnapshotOfTheWorld\n(chan Snapshot)
 
 ' Vetle → Filip
 Assigner --> FSM : assignerOutput\n(chan ElevInput)

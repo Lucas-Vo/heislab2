@@ -13,7 +13,7 @@
     Network->>ElevatorControl: Send initial WorldView
 
     loop Regular loop
-    ElevatorControl->>Network: Update WorldView (update)
+    ElevatorControl->>Network: Update WorldView (update requests)
     Network->>Network: Broadcast WorldView to Network
     Network->>Network: Make sure WorldView is coherent among nodes
     Network->>Assigner: Send WorldView
@@ -23,11 +23,11 @@
     Assigner->>Assigner: Calculate best assignment
     Assigner->>ElevatorControl: Share best assignment
     ElevatorControl->>ElevatorControl: Service assignment
-    ElevatorControl->>Network: Update WorldView (serviced)
+    ElevatorControl->>Network: Update WorldView (update serviced)
     end
 
     alt Network timeout
-    ElevatorControl->>Network: Update WorldView (update)
+    ElevatorControl->>Network: Update WorldView (update requests)
     Network->>Network: Broadcast WorldView to Network 
     Network--x Network: Make sure WorldView is coherent among nodes <color:red>(failed)</color>
 
@@ -37,7 +37,7 @@
     ElevatorControl->>ElevatorControl: Assigner timeout
     ElevatorControl->>ElevatorControl: Activate local control
     ElevatorControl->>ElevatorControl: Service assignment
-    ElevatorControl->>Network: Update WorldView (serviced)
+    ElevatorControl->>Network: Update WorldView (update serviced)
     end
 
     deactivate Network
