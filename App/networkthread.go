@@ -1,14 +1,3 @@
-// from incomingFrames   -> external lucas got updates
-// from fsmUpdateCh -> filip has a new local request
-// from fsmServicedCh -> filip has finished a request
-
-// TODO:
-// - make a smart alg for detecting when filip data is stale
-// - rewrite ready logic, should only publish when worldview is coherent
-// - verify that when you start existing again/reconnect that the last snapshot is uploaded
-// - rename networkstate to snapshot
-
-// networkthread.go
 package main
 
 import (
@@ -21,6 +10,8 @@ import (
 	"elevator/elevnetwork"
 )
 
+const INITIAL_CONTACT_TIMEOUT = 5 * time.Second
+
 func networkThread(
 	ctx context.Context,
 	cfg common.Config,
@@ -29,29 +20,38 @@ func networkThread(
 	networkWorldViewAssignerCh chan<- common.NetworkState,
 	networkWorldViewFSMCh chan<- common.NetworkState,
 ) {
-
 	selfKey := cfg.SelfKey
 	pm, incomingFrames := elevnetwork.StartP2P(ctx, cfg)
 
 	wv := elevnetwork.NewWorldView(pm, cfg)
-	wv.ExpectPeer(selfKey)
 
 	ticker := time.NewTicker(300 * time.Millisecond)
 	defer ticker.Stop()
+
+	contactTimer := time.NewTimer(INITIAL_CONTACT_TIMEOUT)
+	defer contactTimer.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
 
+		// Local FSM updates (blocked until initial contact)
 		case ns := <-fsmUpdateCh:
-			wv.ApplyUpdateAndPublish(selfKey, ns, elevnetwork.UpdateNewRequests, networkWorldViewAssignerCh)
-			wv.BroadcastLocal(elevnetwork.UpdateNewRequests, ns)
+			if !wv.IsReady() {
+				continue
+			}
+			wv.ApplyUpdate(selfKey, ns, elevnetwork.UpdateNewRequests)
+			wv.BroadcastWorld(elevnetwork.UpdateNewRequests)
 
 		case ns := <-fsmServicedCh:
-			wv.ApplyUpdateAndPublish(selfKey, ns, elevnetwork.UpdateServiced, networkWorldViewAssignerCh)
-			wv.BroadcastLocal(elevnetwork.UpdateServiced, ns)
+			if !wv.IsReady() {
+				continue
+			}
+			wv.ApplyUpdate(selfKey, ns, elevnetwork.UpdateServiced)
+			wv.BroadcastWorld(elevnetwork.UpdateServiced)
 
+		// Incoming messages
 		case in := <-incomingFrames:
 			var msg elevnetwork.NetMsg
 			if err := json.Unmarshal(common.TrimZeros(in.Frame), &msg); err != nil {
@@ -59,23 +59,25 @@ func networkThread(
 			}
 
 			fromKey := strconv.Itoa(in.FromID)
-
-			// Dynamic membership
-			wv.ExpectPeer(fromKey)
-
-			// Dedupe (prevents loops), then apply, then forward unchanged
+			// Dedupe
 			if !wv.ShouldAcceptMsg(msg) {
 				continue
 			}
 
-			wv.ApplyUpdateAndPublish(fromKey, msg.State, msg.Kind, networkWorldViewAssignerCh)
+			// Apply (this will also mark readiness if fromKey != self)
+			wv.ApplyUpdate(fromKey, msg.State, msg.Kind)
 
-			// Forward so 1->2->3 works even without 1-3
-			wv.BroadcastMsg(msg)
+			wv.RelayMsg(msg)
 
+		// Readiness timeout: allow local operation even if no peer was heard
+		case <-contactTimer.C:
+			wv.ForceReady()
+
+		// Publishing rule
 		case <-ticker.C:
-			// Only publish outward once the world is coherent/ready.
-			if wv.IsReady() {
+			// Only publish when coherent among alive peers.
+			// (You can choose to also require IsReady(), but coherency check already covers "have data".)
+			if wv.IsCoherent() {
 				wv.PublishWorld(networkWorldViewAssignerCh)
 				wv.PublishWorld(networkWorldViewFSMCh)
 			}
