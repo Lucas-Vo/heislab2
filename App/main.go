@@ -34,10 +34,10 @@ func main() {
 	fsmUpdateCh := make(chan NetworkState)
 
 	// lucas til filip
-	networkWorldViewFSMCh := make(chan NetworkState)
+	networkSnapshot2Ch := make(chan NetworkState)
 
 	// lucas til vetle
-	networkWorldViewAssignerCh := make(chan NetworkState)
+	networkSnapshot1Ch := make(chan NetworkState)
 
 	// vetle til filip
 	assignerOutputCh := make(chan ElevInput)
@@ -48,9 +48,10 @@ func main() {
 
 	}
 
-	go networkThread(ctx, cfg, fsmServicedCh, fsmUpdateCh, networkWorldViewAssignerCh, networkWorldViewFSMCh)
-	go assignerThread(ctx, cfg, networkWorldViewAssignerCh, assignerOutputCh)
-	go fsmThread(ctx, cfg, input, assignerOutputCh, fsmServicedCh, fsmUpdateCh, networkWorldViewFSMCh)
+	go networkThread(ctx, cfg, fsmServicedCh, fsmUpdateCh, networkSnapshot1Ch, networkSnapshot2Ch)
+	go assignerThread(ctx, cfg, networkSnapshot1Ch, assignerOutputCh)
+	go fsmThread(ctx, cfg, input, assignerOutputCh, fsmServicedCh, fsmUpdateCh, networkSnapshot2Ch)
 	<-ctx.Done()
 	fmt.Println("Shutting down")
+
 }
