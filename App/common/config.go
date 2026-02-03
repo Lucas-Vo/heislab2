@@ -23,7 +23,7 @@ func DefaultConfig() (Config, string, error) {
 	cfg := Config{
 		Port: 4242,
 		AddrByID: map[int]string{
-			1: "10.100.23.33:4242",
+			1: "10.100.23.28:4242",
 			2: "10.100.23.34:4242",
 			3: "10.100.23.35:4242",
 		},
