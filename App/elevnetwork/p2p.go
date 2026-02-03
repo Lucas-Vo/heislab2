@@ -300,7 +300,7 @@ func dialLoop(ctx context.Context, pm *PeerManager, id int, addr string, conf *q
 			log.Printf("Connected (dial) to elev-%d at %s", id, addr)
 			return
 		} else {
-			log.Printf("squash-bug")
+			log.Printf("dial to elev-%d (%s) failed: %v", id, addr, err)
 		}
 		time.Sleep(1 * time.Second)
 	}
