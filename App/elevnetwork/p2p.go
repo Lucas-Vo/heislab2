@@ -296,6 +296,8 @@ func runListener(ctx context.Context, cfg common.Config, quicConf *quic.Config, 
 
 func dialLoop(ctx context.Context, pm *PeerManager, id int, addr string, conf *quic.Config) {
 	for ctx.Err() == nil {
+		log.Printf("dialLoop: attempting elev-%d at %s", id, addr)
+
 		if err := pm.dialPeer(ctx, addr, conf); err == nil {
 			log.Printf("Connected (dial) to elev-%d at %s", id, addr)
 			return
