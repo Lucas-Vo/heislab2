@@ -6,6 +6,7 @@ import (
 	"elevator/common"
 	"encoding/binary"
 	"fmt"
+	"io"
 	"log"
 	"sync"
 	"time"
@@ -126,41 +127,54 @@ func (pm *PeerManager) addOrReplace(p *peer) {
 }
 
 // DialPeer performs the HELLO exchange and registers the peer in the manager.
+// DialPeer performs the HELLO exchange and registers the peer in the manager.
+// It dials the remote QUIC endpoint, opens one bidirectional stream, sends our HELLO,
+// then reads exactly one fixed-size HELLO frame back (with a deadline).
 func (pm *PeerManager) dialPeer(ctx context.Context, peerAddr string, quicConf *quic.Config) error {
 	s, err := NewQUICSender(ctx, peerAddr, quicConf, 3*time.Second)
 	if err != nil {
 		return err
 	}
 
-	// HELLO: send our ID, then read their HELLO.
-	_, err = s.SendFixed(encodeHelloFrame(pm.selfID), pm.frameSize, 2*time.Second)
-	if err != nil {
+	// If anything fails after this point, close the connection/stream.
+	fail := func(e error) error {
 		_ = s.Close()
-		return fmt.Errorf("send hello: %w", err)
+		return e
 	}
 
-	var peerID int
-	readErr := ReadFixedFramesQUIC(ctx, s.Stream(), pm.frameSize, func(frame []byte) {
-		if id, ok := decodeHelloFrame(frame); ok {
-			peerID = id
-		}
-	})
-	if readErr != nil {
-		// readErr will often return nil if ctx canceled; but in dial path we expect one frame quickly.
+	// 1) Send our HELLO.
+	if _, err := s.SendFixed(encodeHelloFrame(pm.selfID), pm.frameSize, 2*time.Second); err != nil {
+		return fail(fmt.Errorf("send hello: %w", err))
 	}
 
-	if peerID == 0 {
-		_ = s.Close()
-		return fmt.Errorf("did not receive valid HELLO from %s", peerAddr)
+	// 2) Read exactly one fixed-size frame back (peer's HELLO) with a read deadline.
+	st := s.Stream()
+	if st == nil {
+		return fail(fmt.Errorf("stream is nil"))
+	}
+	if d, ok := interface{}(st).(interface{ SetReadDeadline(time.Time) error }); ok {
+		_ = d.SetReadDeadline(time.Now().Add(2 * time.Second))
 	}
 
+	buf := make([]byte, pm.frameSize)
+	if _, err := io.ReadFull(st, buf); err != nil {
+		return fail(fmt.Errorf("read hello: %w", err))
+	}
+
+	peerID, ok := decodeHelloFrame(buf)
+	if !ok || peerID <= 0 {
+		return fail(fmt.Errorf("invalid HELLO from %s", peerAddr))
+	}
+
+	// 3) Register this peer connection.
 	p := &peer{
 		id:     peerID,
 		conn:   s.Conn(),
-		stream: s.Stream(),
+		stream: st,
 		sender: s,
 	}
 	pm.addOrReplace(p)
+
 	return nil
 }
 
@@ -320,4 +334,25 @@ func readIncomingStream(
 			onFrame(peerID, frame)
 		}
 	})
+}
+
+func readOneFixedFrameWithDeadline(
+	ctx context.Context,
+	st *quic.Stream,
+	frameSize int,
+	timeout time.Duration,
+) ([]byte, error) {
+	if frameSize <= 0 {
+		frameSize = QUIC_FRAME_SIZE
+	}
+	if d, ok := interface{}(st).(interface{ SetReadDeadline(time.Time) error }); ok && timeout > 0 {
+		_ = d.SetReadDeadline(time.Now().Add(timeout))
+	}
+
+	buf := make([]byte, frameSize)
+	_, err := io.ReadFull(st, buf)
+	if err != nil {
+		return nil, err
+	}
+	return buf, nil
 }
