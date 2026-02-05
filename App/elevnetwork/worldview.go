@@ -240,7 +240,7 @@ func (wv *WorldView) sendMsg(msg NetMsg) {
 	if err != nil {
 		return
 	}
-	wv.pm.sendToAll(b, 150*time.Millisecond)
+	wv.pm.sendToAll(b, 800*time.Millisecond)
 }
 
 func mergeHall(current, incoming [][2]bool, kind UpdateKind) [][2]bool {

@@ -41,7 +41,7 @@ func assignerThread(
 			//delete elevators marked stale
 			err := elevassigner.RemoveStaleStates(&networkSnapshot, selfKey)
 			if err != nil {
-				fmt.Println("removing stale states error: ", err)
+				//fmt.Println("removing stale states error: ", err)
 				break
 			}
 

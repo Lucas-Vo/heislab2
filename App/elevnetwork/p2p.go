@@ -1,11 +1,11 @@
 package elevnetwork
 
-// imports
 import (
 	"context"
 	"elevator/common"
 	"encoding/binary"
 	"fmt"
+	"io"
 	"log"
 	"sync"
 	"time"
@@ -13,12 +13,10 @@ import (
 	quic "github.com/quic-go/quic-go"
 )
 
-// consts
 const (
 	helloMagic uint32 = 0x48454C4F // "HELO"
 )
 
-// exported types
 type IncomingFrame struct {
 	FromID int
 	Frame  []byte
@@ -30,20 +28,21 @@ type PeerManager struct {
 
 	mu    sync.RWMutex
 	peers map[int]*peer
+
+	incoming chan<- IncomingFrame
 }
 
-// non-exported types
-
 type peer struct {
-	id     int
+	id       int
+	outbound bool // true if we dialed and opened the stream
+
 	conn   *quic.Conn
 	stream *quic.Stream
 	sender *QUICSender
+
+	once sync.Once // ensure only one reader started per peer
 }
 
-/* exported functions */
-
-// ConnectedPeerIDs returns a snapshot list, useful for logging.
 func (pm *PeerManager) ConnectedPeerIDs() []int {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
@@ -54,11 +53,7 @@ func (pm *PeerManager) ConnectedPeerIDs() []int {
 	return out
 }
 
-func StartP2P(
-	ctx context.Context,
-	cfg common.Config,
-) (pm *PeerManager, incoming <-chan IncomingFrame) {
-	// Prefer cfg.SelfID if present; fall back to detection
+func StartP2P(ctx context.Context, cfg common.Config) (pm *PeerManager, incoming chan IncomingFrame) {
 	selfID := cfg.SelfID
 	if selfID == 0 {
 		id, err := cfg.DetectSelfID()
@@ -72,7 +67,7 @@ func StartP2P(
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Printf("Self=%d peers=%v", selfID, peers)
+	log.Printf("Self=%d peers=%v listen=%s", selfID, peers, cfg.ListenAddr())
 
 	quicConf := &quic.Config{
 		KeepAlivePeriod: 2 * time.Second,
@@ -81,8 +76,9 @@ func StartP2P(
 	pm = newPeerManager(selfID, QUIC_FRAME_SIZE)
 
 	incomingFrames := make(chan IncomingFrame, 64)
+	pm.incoming = incomingFrames
 
-	go runListener(ctx, cfg, quicConf, pm, incomingFrames)
+	go runListener(ctx, cfg, quicConf, pm)
 
 	// Dial rule: only dial higher IDs
 	for peerID, peerAddr := range peers {
@@ -105,6 +101,9 @@ func newPeerManager(selfID int, frameSize int) *PeerManager {
 	}
 }
 
+// Deterministic policy (matches your comment):
+// - If selfID < peerID: keep outbound (dial) and reject inbound duplicates.
+// - Else: keep inbound (accept) and reject outbound duplicates.
 func (pm *PeerManager) shouldKeep(outbound bool, peerID int) bool {
 	if pm.selfID < peerID {
 		return outbound
@@ -119,109 +118,226 @@ func (pm *PeerManager) addOrReject(p *peer) {
 	existing := pm.peers[p.id]
 	if existing == nil {
 		pm.peers[p.id] = p
+		log.Printf("peer %d registered (outbound=%v remote=%v). connected=%v", p.id, p.outbound, safeRemote(p.conn), pm.connectedIDsLocked())
 		return
 	}
 
-	_ = p.sender.Close() // close newcomer
-}
+	// If we already have a connection for this peer, decide deterministically which to keep.
+	keepNew := pm.shouldKeep(p.outbound, p.id)
 
-// DialPeer performs the HELLO exchange and registers the peer in the manager.
-func (pm *PeerManager) dialPeer(ctx context.Context, peerAddr string, quicConf *quic.Config) error {
-	s, err := NewQUICSender(ctx, peerAddr, quicConf, 3*time.Second)
-	if err != nil {
-		return err
-	}
-
-	// HELLO: send our ID, then read their HELLO.
-	_, err = s.SendFixed(encodeHelloFrame(pm.selfID), pm.frameSize, 2*time.Second)
-	if err != nil {
-		_ = s.Close()
-		return fmt.Errorf("send hello: %w", err)
-	}
-
-	var peerID int
-	readErr := ReadFixedFramesQUIC(ctx, s.Stream(), pm.frameSize, func(frame []byte) {
-		if id, ok := decodeHelloFrame(frame); ok {
-			peerID = id
+	if keepNew {
+		// Close old
+		if existing.sender != nil {
+			_ = existing.sender.Close()
+		} else if existing.conn != nil {
+			_ = existing.conn.CloseWithError(0, "replaced")
 		}
-	})
-	if readErr != nil {
-		// readErr will often return nil if ctx canceled; but in dial path we expect one frame quickly.
+		pm.peers[p.id] = p
+		log.Printf("peer %d replaced (kept new outbound=%v remote=%v). connected=%v", p.id, p.outbound, safeRemote(p.conn), pm.connectedIDsLocked())
+	} else {
+		// Reject new
+		if p.sender != nil {
+			_ = p.sender.Close()
+		} else if p.conn != nil {
+			_ = p.conn.CloseWithError(0, "rejected")
+		}
+		log.Printf("peer %d rejected duplicate (new outbound=%v). keeping outbound=%v", p.id, p.outbound, existing.outbound)
 	}
-
-	if peerID == 0 {
-		_ = s.Close()
-		return fmt.Errorf("did not receive valid HELLO from %s", peerAddr)
-	}
-
-	p := &peer{
-		id:     peerID,
-		conn:   s.Conn(),
-		stream: s.Stream(),
-		sender: s,
-	}
-	pm.addOrReplace(p)
-	return nil
 }
 
-// HandleIncomingConn accepts the first stream, does HELLO exchange, registers peer,
-// then continuously reads frames from that stream and calls onFrame.
-func (pm *PeerManager) handleIncomingConn(
-	ctx context.Context,
-	conn *quic.Conn,
-	onFrame func(fromPeerID int, frame []byte),
-) {
-	// Accept a stream from the dialer.
+func (pm *PeerManager) connectedIDsLocked() []int {
+	out := make([]int, 0, len(pm.peers))
+	for id := range pm.peers {
+		out = append(out, id)
+	}
+	return out
+}
+
+func safeRemote(c *quic.Conn) any {
+	if c == nil {
+		return nil
+	}
+	return c.RemoteAddr()
+}
+
+// Start exactly one read loop for a peer; pushes frames onto pm.incoming.
+func (pm *PeerManager) startReader(ctx context.Context, p *peer) {
+	p.once.Do(func() {
+		log.Printf("startReader: peer=%d outbound=%v remote=%v", p.id, p.outbound, safeRemote(p.conn))
+
+		go func(peerID int, st *quic.Stream) {
+			nFrames := 0
+
+			err := ReadFixedFramesQUIC(ctx, st, pm.frameSize, func(frame []byte) {
+				nFrames++
+				if nFrames <= 5 {
+					log.Printf("startReader: peer=%d got frame #%d len=%d head=%q",
+						peerID, nFrames, len(frame), string(frame[:min(16, len(frame))]))
+				}
+
+				ch := pm.incoming
+				if ch == nil {
+					log.Printf("startReader: peer=%d incoming channel is nil (dropping)", peerID)
+					return
+				}
+
+				select {
+				case ch <- IncomingFrame{FromID: peerID, Frame: frame}:
+				default:
+					// channel full => drop
+					log.Printf("startReader: peer=%d incoming channel FULL (dropping frame #%d)", peerID, nFrames)
+				}
+			})
+
+			log.Printf("startReader: peer=%d exited after %d frames, err=%v", peerID, nFrames, err)
+		}(p.id, p.stream)
+	})
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+// dialPeerOnce: connect + HELLO + register + start reader.
+// (outbound=true)
+func (pm *PeerManager) dialPeerOnce(ctx context.Context, peerAddr string, quicConf *quic.Config) (int, *QUICSender, error) {
+	attemptCtx, cancel := context.WithTimeout(ctx, 4*time.Second)
+	defer cancel()
+
+	s, err := NewQUICSender(attemptCtx, peerAddr, quicConf, 2*time.Second)
+	if err != nil {
+		return 0, nil, err
+	}
+	fail := func(e error) (int, *QUICSender, error) { _ = s.Close(); return 0, nil, e }
+
+	// Send our HELLO
+	if _, err := s.SendFixed(encodeHelloFrame(pm.selfID), pm.frameSize, 2*time.Second); err != nil {
+		return fail(fmt.Errorf("send hello: %w", err))
+	}
+
+	st := s.Stream()
+	if st == nil {
+		return fail(fmt.Errorf("stream is nil"))
+	}
+
+	// Read their HELLO
+	if d, ok := interface{}(st).(interface{ SetReadDeadline(time.Time) error }); ok {
+		_ = d.SetReadDeadline(time.Now().Add(2 * time.Second))
+		defer d.SetReadDeadline(time.Time{}) // clear
+	}
+
+	buf := make([]byte, pm.frameSize)
+	if _, err := io.ReadFull(st, buf); err != nil {
+		return fail(fmt.Errorf("read hello: %w", err))
+	}
+
+	peerID, ok := decodeHelloFrame(buf)
+	if !ok || peerID <= 0 {
+		return fail(fmt.Errorf("invalid HELLO from %s", peerAddr))
+	}
+
+	p := &peer{id: peerID, outbound: true, conn: s.Conn(), stream: st, sender: s}
+	pm.addOrReject(p)
+	// Start reader only if the peer we just created is the one stored.
+	pm.mu.RLock()
+	stored := pm.peers[peerID]
+	pm.mu.RUnlock()
+	if stored == p {
+		pm.startReader(ctx, p)
+	}
+
+	return peerID, s, nil
+}
+
+// dialLoop keeps the connection alive: connect -> wait for close -> reconnect.
+func dialLoop(ctx context.Context, pm *PeerManager, id int, addr string, conf *quic.Config) {
+	backoff := 200 * time.Millisecond
+	for ctx.Err() == nil {
+		log.Printf("dialLoop: attempting elev-%d at %s", id, addr)
+
+		peerID, sender, err := pm.dialPeerOnce(ctx, addr, conf)
+		if err != nil {
+			log.Printf("dial to elev-%d (%s) failed: %v", id, addr, err)
+			time.Sleep(backoff)
+			if backoff < 2*time.Second {
+				backoff *= 2
+			}
+			continue
+		}
+
+		backoff = 200 * time.Millisecond
+		log.Printf("Connected (dial) to elev-%d at %s (peerID=%d)", id, addr, peerID)
+
+		select {
+		case <-ctx.Done():
+			_ = sender.Close()
+			return
+		case <-sender.Conn().Context().Done():
+			_ = sender.Close()
+			log.Printf("dialLoop: connection to elev-%d ended, reconnecting", id)
+			time.Sleep(300 * time.Millisecond)
+		}
+	}
+}
+
+// Listener
+func runListener(ctx context.Context, cfg common.Config, quicConf *quic.Config, pm *PeerManager) {
+	err := ListenQUIC(ctx, cfg.ListenAddr(), quicConf, func(conn *quic.Conn) {
+		log.Printf("ACCEPT conn from %v", conn.RemoteAddr())
+		pm.handleIncomingConn(ctx, conn)
+	})
+	if err != nil && ctx.Err() == nil {
+		log.Printf("ListenQUIC error: %v", err)
+	}
+}
+
+// handleIncomingConn: accept stream, read HELLO, reply HELLO, register + start reader.
+// (outbound=false)
+func (pm *PeerManager) handleIncomingConn(ctx context.Context, conn *quic.Conn) {
 	st, err := conn.AcceptStream(ctx)
 	if err != nil {
 		return
 	}
 
-	helloDone := make(chan int, 1)
+	if d, ok := interface{}(st).(interface{ SetReadDeadline(time.Time) error }); ok {
+		_ = d.SetReadDeadline(time.Now().Add(2 * time.Second))
+		defer d.SetReadDeadline(time.Time{})
+	}
 
-	go readIncomingStream(
-		ctx,
-		st,
-		pm.frameSize,
-		func(id int) {
-			helloDone <- id
-		},
-		onFrame,
-	)
-
-	var peerID int
-	select {
-	case peerID = <-helloDone:
-
-	case <-time.After(3 * time.Second):
+	buf := make([]byte, pm.frameSize)
+	if _, err := io.ReadFull(st, buf); err != nil {
 		_ = st.Close()
-		_ = conn.CloseWithError(0, "hello timeout")
-		return
-	case <-ctx.Done():
-		_ = st.Close()
-		_ = conn.CloseWithError(0, "shutdown")
+		_ = conn.CloseWithError(0, "hello read failed")
 		return
 	}
 
-	// Send our HELLO back.
+	peerID, ok := decodeHelloFrame(buf)
+	if !ok {
+		_ = st.Close()
+		_ = conn.CloseWithError(0, "bad hello")
+		return
+	}
+
+	log.Printf("SERVER got HELLO peerID=%d from %v", peerID, conn.RemoteAddr())
+
 	_, _ = WriteFixedFrameQUIC(st, encodeHelloFrame(pm.selfID), pm.frameSize, 2*time.Second)
 
-	// Register peer with a QUICSender built from this conn+stream.
-	// (We wrap it so we can write using the same SendFixed path.)
 	s := &QUICSender{conn: conn, stream: st}
-	pm.addOrReplace(&peer{
-		id:     peerID,
-		conn:   conn,
-		stream: st,
-		sender: s,
-	})
+	p := &peer{id: peerID, outbound: false, conn: conn, stream: st, sender: s}
+	pm.addOrReject(p)
 
-	// Reader goroutine continues until stream closes.
+	pm.mu.RLock()
+	stored := pm.peers[peerID]
+	pm.mu.RUnlock()
+	if stored == p {
+		pm.startReader(ctx, p)
+	}
 }
 
-// encodeHelloFrame produces a fixed-size payload you send via WriteFixedFrameQUIC.
 func encodeHelloFrame(selfID int) []byte {
-	// We'll put a tiny header in the first bytes, rest zero-padded by WriteFixedFrameQUIC.
 	b := make([]byte, 8)
 	binary.BigEndian.PutUint32(b[0:4], helloMagic)
 	binary.BigEndian.PutUint32(b[4:8], uint32(selfID))
@@ -242,7 +358,7 @@ func decodeHelloFrame(frame []byte) (peerID int, ok bool) {
 	return id, true
 }
 
-// SendTo sends to one peer if connected.
+// SendTo / SendToAll
 func (pm *PeerManager) sendTo(peerID int, payload []byte, timeout time.Duration) error {
 	pm.mu.RLock()
 	p := pm.peers[peerID]
@@ -255,7 +371,6 @@ func (pm *PeerManager) sendTo(peerID int, payload []byte, timeout time.Duration)
 	return err
 }
 
-// SendToAll sends to all connected peers.
 func (pm *PeerManager) sendToAll(payload []byte, timeout time.Duration) {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
@@ -266,58 +381,4 @@ func (pm *PeerManager) sendToAll(payload []byte, timeout time.Duration) {
 		}
 		_, _ = p.sender.SendFixed(payload, pm.frameSize, timeout)
 	}
-}
-
-// Listener
-func runListener(ctx context.Context, cfg common.Config, quicConf *quic.Config, pm *PeerManager, incomingFrames chan<- IncomingFrame) {
-	err := ListenQUIC(ctx, cfg.ListenAddr(), quicConf, func(conn *quic.Conn) {
-		pm.handleIncomingConn(ctx, conn, func(from int, frame []byte) {
-			select {
-			case incomingFrames <- IncomingFrame{FromID: from, Frame: frame}:
-			default:
-			}
-		})
-	})
-	if err != nil && ctx.Err() == nil {
-		log.Printf("ListenQUIC error: %v", err)
-	}
-}
-
-func dialLoop(ctx context.Context, pm *PeerManager, id int, addr string, conf *quic.Config) {
-	for ctx.Err() == nil {
-		if err := pm.dialPeer(ctx, addr, conf); err == nil {
-			log.Printf("Connected (dial) to elev-%d at %s", id, addr)
-			return
-		}
-		time.Sleep(1 * time.Second)
-	}
-}
-
-func readIncomingStream(
-	ctx context.Context,
-	st *quic.Stream,
-	frameSize int,
-	onHello func(peerID int),
-	onFrame func(peerID int, frame []byte),
-) {
-	var peerID int
-
-	_ = ReadFixedFramesQUIC(ctx, st, frameSize, func(frame []byte) {
-		// Expect HELLO first
-		if peerID == 0 {
-			if id, ok := decodeHelloFrame(frame); ok {
-				peerID = id
-				if onHello != nil {
-					onHello(peerID)
-				}
-			}
-			// Ignore everything until HELLO
-			return
-		}
-
-		// Normal application frames
-		if onFrame != nil {
-			onFrame(peerID, frame)
-		}
-	})
 }

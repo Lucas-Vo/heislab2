@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"strconv"
 	"time"
 
@@ -52,6 +53,7 @@ func networkThread(
 
 		// Incoming messages
 		case in := <-incomingFrames:
+			log.Printf("incoming framce received")
 			var msg elevnetwork.NetMsg
 			if err := json.Unmarshal(common.TrimZeros(in.Frame), &msg); err != nil {
 				continue

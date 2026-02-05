@@ -25,8 +25,7 @@ func DefaultConfig() (Config, string, error) {
 		AddrByID: map[int]string{
 			1: "10.100.23.34:4242",
 			2: "10.100.23.35:4242",
-			3: "10.100.23.36:4242",
-			4: "10.100.23.37:4242",
+			3: "10.100.23.37:4242",
 		},
 	}
 	if err := cfg.InitSelf(); err != nil {
