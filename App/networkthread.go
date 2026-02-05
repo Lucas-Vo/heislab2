@@ -69,7 +69,7 @@ func networkThread(
 		case <-contactTimer.C:
 			wv.ForceReady()
 
-		// Publishing rule
+		// Publish to Assigner and Elevator Control
 		case <-ticker.C:
 			if wv.IsCoherent() {
 				wv.PublishWorld(netSnap1Ch)

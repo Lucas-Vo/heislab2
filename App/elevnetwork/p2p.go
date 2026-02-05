@@ -105,14 +105,14 @@ func newPeerManager(selfID int, frameSize int) *PeerManager {
 	}
 }
 
-/* unexported helpers */
+func (pm *PeerManager) shouldKeep(outbound bool, peerID int) bool {
+	if pm.selfID < peerID {
+		return outbound
+	}
+	return !outbound
+}
 
-// AddOrReplace registers a peer connection (dedupe). If a peer already exists, we keep the existing one
-// and close the new one OR replace based on a deterministic rule.
-//
-// Here: keep the connection initiated by the lower ID to reduce churn.
-// That means: if selfID < peerID, our outbound dial "wins"; else inbound "wins".
-func (pm *PeerManager) addOrReplace(p *peer) {
+func (pm *PeerManager) addOrReject(p *peer) {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
 

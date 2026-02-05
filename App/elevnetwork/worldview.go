@@ -30,7 +30,7 @@ type WorldView struct {
 	// Statically configured membership from config.go
 	peers []string
 
-	world common.Snapshot
+	snapshot common.Snapshot
 
 	lastHeard    map[string]time.Time
 	lastSnapshot map[string]common.Snapshot
@@ -51,7 +51,7 @@ func NewWorldView(pm *PeerManager, cfg common.Config) *WorldView {
 	wv := &WorldView{
 		peers: cfg.ExpectedKeys(),
 
-		world: common.Snapshot{
+		snapshot: common.Snapshot{
 			HallRequests: make([][2]bool, common.N_FLOORS),
 			States:       make(map[string]common.ElevState),
 		},
@@ -68,7 +68,7 @@ func NewWorldView(pm *PeerManager, cfg common.Config) *WorldView {
 
 		pm: pm,
 	}
-	wv.world.States = make(map[string]common.ElevState)
+	wv.snapshot.States = make(map[string]common.ElevState)
 	return wv
 }
 
@@ -84,10 +84,10 @@ func (wv *WorldView) ForceReady() {
 	wv.mu.Unlock()
 }
 
-func (wv *WorldView) World() common.Snapshot {
+func (wv *WorldView) extractSnapshot() common.Snapshot {
 	wv.mu.Lock()
 	defer wv.mu.Unlock()
-	return common.DeepCopySnapshot(wv.world)
+	return common.DeepCopySnapshot(wv.snapshot)
 }
 
 func (wv *WorldView) ShouldAcceptMsg(msg NetMsg) bool {
@@ -120,13 +120,13 @@ func (wv *WorldView) ApplyUpdate(fromKey string, ns common.Snapshot, kind Update
 
 func (wv *WorldView) mergeSnapshot(fromKey string, ns common.Snapshot, kind UpdateKind) {
 
-	wv.world.HallRequests = mergeHall(wv.world.HallRequests, ns.HallRequests, kind)
+	wv.snapshot.HallRequests = mergeHall(wv.snapshot.HallRequests, ns.HallRequests, kind)
 
 	for k, st := range ns.States {
 		if k == wv.selfKey && fromKey != wv.selfKey {
 			continue
 		}
-		wv.world.States[k] = common.CopyElevState(st)
+		wv.snapshot.States[k] = common.CopyElevState(st)
 	}
 }
 
@@ -136,7 +136,7 @@ func (wv *WorldView) recoverCabRequests(ns common.Snapshot) {
 		return
 	}
 
-	localSelf := wv.world.States[wv.selfKey]
+	localSelf := wv.snapshot.States[wv.selfKey]
 
 	n := len(peerSelf.CabRequests)
 	if len(localSelf.CabRequests) < n {
@@ -148,12 +148,12 @@ func (wv *WorldView) recoverCabRequests(ns common.Snapshot) {
 		localSelf.CabRequests[i] = localSelf.CabRequests[i] || peerSelf.CabRequests[i]
 	}
 
-	wv.world.States[wv.selfKey] = localSelf
+	wv.snapshot.States[wv.selfKey] = localSelf
 }
 
 func (wv *WorldView) PublishWorld(ch chan<- common.Snapshot) {
 	wv.mu.Lock()
-	cp := common.DeepCopySnapshot(wv.world)
+	cp := common.DeepCopySnapshot(wv.snapshot)
 
 	now := time.Now()
 	alive := make(map[string]bool, len(wv.peers))
@@ -215,7 +215,7 @@ func (wv *WorldView) BroadcastWorld(kind UpdateKind) {
 	wv.mu.Lock()
 	wv.counter++
 
-	snapshot := common.DeepCopySnapshot(wv.world)
+	snapshot := common.DeepCopySnapshot(wv.snapshot)
 
 	msg := NetMsg{
 		Kind:     kind,
