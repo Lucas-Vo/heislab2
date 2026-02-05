@@ -1,3 +1,4 @@
+// elevnetwork/worldview.go
 package elevnetwork
 
 import (
@@ -18,11 +19,40 @@ const (
 )
 
 type NetMsg struct {
-	Kind     UpdateKind      `json:"kind"`
 	Origin   string          `json:"origin"`
 	Counter  uint64          `json:"counter"`
 	Snapshot common.Snapshot `json:"snapshot"`
 }
+
+// ---- Transport abstraction (so WorldView only owns ONE handle) ----
+
+type Transport interface {
+	SendToAll(net UpdateKind, b []byte, deadline time.Duration)
+}
+
+type MuxTransport struct {
+	reqPM *PeerManager
+	svcPM *PeerManager
+}
+
+func NewMuxTransport(reqPM *PeerManager, svcPM *PeerManager) *MuxTransport {
+	return &MuxTransport{reqPM: reqPM, svcPM: svcPM}
+}
+
+func (mt *MuxTransport) SendToAll(net UpdateKind, b []byte, deadline time.Duration) {
+	switch net {
+	case UpdateRequests:
+		if mt.reqPM != nil {
+			mt.reqPM.sendToAll(b, deadline)
+		}
+	case UpdateServiced:
+		if mt.svcPM != nil {
+			mt.svcPM.sendToAll(b, deadline)
+		}
+	}
+}
+
+// ---- WorldView ----
 
 type WorldView struct {
 	mu sync.Mutex
@@ -44,10 +74,10 @@ type WorldView struct {
 	counter     uint64
 	latestCount map[string]uint64
 
-	pm *PeerManager
+	tx Transport
 }
 
-func NewWorldView(pm *PeerManager, cfg common.Config) *WorldView {
+func NewWorldView(tx Transport, cfg common.Config) *WorldView {
 	wv := &WorldView{
 		peers: cfg.ExpectedKeys(),
 
@@ -66,9 +96,8 @@ func NewWorldView(pm *PeerManager, cfg common.Config) *WorldView {
 		counter:     0,
 		latestCount: make(map[string]uint64),
 
-		pm: pm,
+		tx: tx,
 	}
-	wv.snapshot.States = make(map[string]common.ElevState)
 	return wv
 }
 
@@ -109,6 +138,7 @@ func (wv *WorldView) ApplyUpdate(fromKey string, ns common.Snapshot, kind Update
 	wv.lastHeard[fromKey] = time.Now()
 	wv.lastSnapshot[fromKey] = common.DeepCopySnapshot(ns)
 
+	// First contact: accept as "requests" snapshot and recover cab requests
 	if !wv.ready && fromKey != wv.selfKey {
 		kind = UpdateRequests
 		wv.recoverCabRequests(ns)
@@ -119,10 +149,10 @@ func (wv *WorldView) ApplyUpdate(fromKey string, ns common.Snapshot, kind Update
 }
 
 func (wv *WorldView) mergeSnapshot(fromKey string, ns common.Snapshot, kind UpdateKind) {
-
 	wv.snapshot.HallRequests = mergeHall(wv.snapshot.HallRequests, ns.HallRequests, kind)
 
 	for k, st := range ns.States {
+		// never overwrite our local self state with a remote copy
 		if k == wv.selfKey && fromKey != wv.selfKey {
 			continue
 		}
@@ -144,7 +174,7 @@ func (wv *WorldView) recoverCabRequests(ns common.Snapshot) {
 		copy(tmp, localSelf.CabRequests)
 		localSelf.CabRequests = tmp
 	}
-	for i := range n {
+	for i := 0; i < n; i++ {
 		localSelf.CabRequests[i] = localSelf.CabRequests[i] || peerSelf.CabRequests[i]
 	}
 
@@ -191,7 +221,7 @@ func (wv *WorldView) IsCoherent() bool {
 	refID := alive[0]
 	refSnap, ok := wv.lastSnapshot[refID]
 	if !ok {
-		return false // alive but no snapshot stored
+		return false
 	}
 
 	for _, id := range alive[1:] {
@@ -207,8 +237,9 @@ func (wv *WorldView) IsCoherent() bool {
 	return true
 }
 
-func (wv *WorldView) BroadcastWorld(kind UpdateKind) {
-	if wv.pm == nil {
+// Broadcast constructs a NetMsg from current snapshot and sends it on the correct net for the kind.
+func (wv *WorldView) Broadcast(kind UpdateKind) {
+	if wv.tx == nil {
 		return
 	}
 
@@ -216,31 +247,30 @@ func (wv *WorldView) BroadcastWorld(kind UpdateKind) {
 	wv.counter++
 
 	snapshot := common.DeepCopySnapshot(wv.snapshot)
-
 	msg := NetMsg{
-		Kind:     kind,
 		Origin:   wv.selfKey,
 		Counter:  wv.counter,
 		Snapshot: snapshot,
 	}
 	wv.mu.Unlock()
 
-	wv.sendMsg(msg)
+	wv.sendMsg(kind, msg)
 }
 
-func (wv *WorldView) RelayMsg(msg NetMsg) {
-	if wv.pm == nil {
+// Relay re-broadcasts an already-constructed msg on the SAME net it arrived on.
+func (wv *WorldView) Relay(kind UpdateKind, msg NetMsg) {
+	if wv.tx == nil {
 		return
 	}
-	wv.sendMsg(msg)
+	wv.sendMsg(kind, msg)
 }
 
-func (wv *WorldView) sendMsg(msg NetMsg) {
+func (wv *WorldView) sendMsg(kind UpdateKind, msg NetMsg) {
 	b, err := json.Marshal(msg)
 	if err != nil {
 		return
 	}
-	wv.pm.sendToAll(b, 800*time.Millisecond)
+	wv.tx.SendToAll(kind, b, 150*time.Millisecond)
 }
 
 func mergeHall(current, incoming [][2]bool, kind UpdateKind) [][2]bool {
@@ -248,7 +278,7 @@ func mergeHall(current, incoming [][2]bool, kind UpdateKind) [][2]bool {
 	copy(inc, incoming)
 
 	out := make([][2]bool, common.N_FLOORS)
-	for i := range common.N_FLOORS {
+	for i := 0; i < common.N_FLOORS; i++ {
 		if kind == UpdateServiced {
 			out[i][0] = current[i][0] && inc[i][0]
 			out[i][1] = current[i][1] && inc[i][1]

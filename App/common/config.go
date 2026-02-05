@@ -1,3 +1,4 @@
+// common/config.go
 package common
 
 import (
@@ -7,10 +8,11 @@ import (
 )
 
 type Config struct {
-	Port int
+	// Optional: keep if you want known ports, but StartP2P will now accept any port directly.
+	Ports []int
 
-	// Addresses indexed by elevator id: 1..N (id 0 unused)
-	AddrByID map[int]string
+	// Hosts indexed by elevator id: 1..N (id 0 unused)
+	HostByID map[int]string
 
 	// Filled by InitSelf() or by DefaultConfig()/MustDefaultConfig().
 	SelfID  int
@@ -21,11 +23,11 @@ type Config struct {
 // Safe version: returns err if self cannot be detected.
 func DefaultConfig() (Config, string, error) {
 	cfg := Config{
-		Port: 4242,
-		AddrByID: map[int]string{
-			1: "10.100.23.34:4242",
-			2: "10.100.23.35:4242",
-			3: "10.100.23.37:4242",
+		Ports: []int{4242, 4243},
+		HostByID: map[int]string{
+			1: "10.100.23.34",
+			2: "10.100.23.35",
+			3: "10.100.23.37",
 		},
 	}
 	if err := cfg.InitSelf(); err != nil {
@@ -45,33 +47,42 @@ func (c *Config) InitSelf() error {
 	return nil
 }
 
-// ListenAddr returns an address suitable for binding a listener on all interfaces.
-func (c Config) ListenAddr() string {
-	return fmt.Sprintf(":%d", c.Port)
+// ListenAddrForPort returns an address suitable for binding a listener on all interfaces.
+func (c Config) ListenAddrForPort(port int) string {
+	return fmt.Sprintf(":%d", port)
 }
 
-// DetectSelfID tries to determine which elevator this process is by matching
-// configured IPs against the machine's local interface IPs.
+// AddrByIDForPort returns full "ip:port" addrs for a given port.
+func (c Config) AddrByIDForPort(port int) map[int]string {
+	out := make(map[int]string, len(c.HostByID))
+	for id, host := range c.HostByID {
+		out[id] = fmt.Sprintf("%s:%d", host, port)
+	}
+	return out
+}
+
 func (c Config) DetectSelfID() (int, error) {
 	localIPs, err := localInterfaceIPs()
 	if err != nil {
 		return 0, err
 	}
 
-	ids := make([]int, 0, len(c.AddrByID))
-	for id := range c.AddrByID {
+	ids := make([]int, 0, len(c.HostByID))
+	for id := range c.HostByID {
 		ids = append(ids, id)
 	}
 	sort.Ints(ids)
 
 	matches := make([]int, 0, 1)
 	for _, id := range ids {
-		hostIP, err := hostIPFromAddr(c.AddrByID[id])
-		if err != nil {
-			return 0, fmt.Errorf("bad address for id %d (%q): %w", id, c.AddrByID[id], err)
+		ip := net.ParseIP(c.HostByID[id])
+		if ip == nil {
+			return 0, fmt.Errorf("host for id %d is not an IP: %q", id, c.HostByID[id])
 		}
-		if localIPs[hostIP.String()] {
-			matches = append(matches, id)
+		if v4 := ip.To4(); v4 != nil {
+			if localIPs[v4.String()] {
+				matches = append(matches, id)
+			}
 		}
 	}
 
@@ -84,9 +95,9 @@ func (c Config) DetectSelfID() (int, error) {
 	return matches[0], nil
 }
 
-// PeerAddrs returns all peers excluding self.
+// PeerAddrsForPort returns all peers excluding self for a given port.
 // Uses stored SelfID if present; otherwise detects.
-func (c Config) PeerAddrs() (map[int]string, int, error) {
+func (c Config) PeerAddrsForPort(port int) (map[int]string, int, error) {
 	selfID := c.SelfID
 	if selfID == 0 {
 		var err error
@@ -96,8 +107,10 @@ func (c Config) PeerAddrs() (map[int]string, int, error) {
 		}
 	}
 
-	peers := make(map[int]string, len(c.AddrByID)-1)
-	for id, addr := range c.AddrByID {
+	addrByID := c.AddrByIDForPort(port)
+
+	peers := make(map[int]string, len(addrByID)-1)
+	for id, addr := range addrByID {
 		if id != selfID {
 			peers[id] = addr
 		}
@@ -105,6 +118,22 @@ func (c Config) PeerAddrs() (map[int]string, int, error) {
 	return peers, selfID, nil
 }
 
+func (c Config) ExpectedKeys() []string {
+	ids := make([]int, 0, len(c.HostByID))
+	for id := range c.HostByID {
+		ids = append(ids, id)
+	}
+	sort.Ints(ids)
+
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, fmt.Sprintf("%d", id))
+	}
+	return out
+}
+
+// NOTE: hostIPFromAddr is no longer needed for self-detect since HostByID is already IPs,
+// but keep it if other code still uses it.
 func hostIPFromAddr(addr string) (net.IP, error) {
 	host, _, err := net.SplitHostPort(addr)
 	if err != nil {
@@ -154,18 +183,4 @@ func localInterfaceIPs() (map[string]bool, error) {
 		}
 	}
 	return ips, nil
-}
-
-func (c Config) ExpectedKeys() []string {
-	ids := make([]int, 0, len(c.AddrByID))
-	for id := range c.AddrByID {
-		ids = append(ids, id)
-	}
-	sort.Ints(ids)
-
-	out := make([]string, 0, len(ids))
-	for _, id := range ids {
-		out = append(out, fmt.Sprintf("%d", id))
-	}
-	return out
 }

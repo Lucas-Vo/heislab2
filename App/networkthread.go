@@ -1,10 +1,9 @@
+// networkthread.go
 package main
 
 import (
 	"context"
 	"encoding/json"
-	"log"
-	"strconv"
 	"time"
 
 	"elevator/common"
@@ -22,9 +21,12 @@ func networkThread(
 	netSnap2Ch chan<- common.Snapshot,
 ) {
 	selfKey := cfg.SelfKey
-	pm, incomingFrames := elevnetwork.StartP2P(ctx, cfg)
 
-	wv := elevnetwork.NewWorldView(pm, cfg)
+	pmReq, incomingReq := elevnetwork.StartP2P(ctx, cfg, 4242)
+	pmSvc, incomingSvc := elevnetwork.StartP2P(ctx, cfg, 4243)
+
+	tx := elevnetwork.NewMuxTransport(pmReq, pmSvc)
+	wv := elevnetwork.NewWorldView(tx, cfg)
 
 	ticker := time.NewTicker(300 * time.Millisecond)
 	defer ticker.Stop()
@@ -42,31 +44,40 @@ func networkThread(
 				continue
 			}
 			wv.ApplyUpdate(selfKey, ns, elevnetwork.UpdateRequests)
-			wv.BroadcastWorld(elevnetwork.UpdateRequests)
+			wv.Broadcast(elevnetwork.UpdateRequests)
 
 		case ns := <-elevServicedCh:
 			if !wv.IsReady() {
 				continue
 			}
 			wv.ApplyUpdate(selfKey, ns, elevnetwork.UpdateServiced)
-			wv.BroadcastWorld(elevnetwork.UpdateServiced)
+			wv.Broadcast(elevnetwork.UpdateServiced)
 
-		// Incoming messages
-		case in := <-incomingFrames:
-			log.Printf("incoming framce received")
+		case in := <-incomingReq:
 			var msg elevnetwork.NetMsg
-			if err := json.Unmarshal(common.TrimZeros(in.Frame), &msg); err != nil {
+			if err := json.Unmarshal(common.TrimZeros(in), &msg); err != nil {
 				continue
 			}
 
-			fromKey := strconv.Itoa(in.FromID)
 			if !wv.ShouldAcceptMsg(msg) {
 				continue
 			}
 
-			wv.ApplyUpdate(fromKey, msg.Snapshot, msg.Kind)
+			wv.ApplyUpdate(msg.Origin, msg.Snapshot, elevnetwork.UpdateRequests)
+			wv.Relay(elevnetwork.UpdateRequests, msg)
 
-			wv.RelayMsg(msg)
+		case in := <-incomingSvc:
+			var msg elevnetwork.NetMsg
+			if err := json.Unmarshal(common.TrimZeros(in), &msg); err != nil {
+				continue
+			}
+
+			if !wv.ShouldAcceptMsg(msg) {
+				continue
+			}
+
+			wv.ApplyUpdate(msg.Origin, msg.Snapshot, elevnetwork.UpdateServiced)
+			wv.Relay(elevnetwork.UpdateServiced, msg)
 
 		case <-contactTimer.C:
 			wv.ForceReady()

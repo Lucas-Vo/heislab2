@@ -17,11 +17,6 @@ const (
 	helloMagic uint32 = 0x48454C4F // "HELO"
 )
 
-type IncomingFrame struct {
-	FromID int
-	Frame  []byte
-}
-
 type PeerManager struct {
 	selfID    int
 	frameSize int
@@ -29,7 +24,7 @@ type PeerManager struct {
 	mu    sync.RWMutex
 	peers map[int]*peer
 
-	incoming chan<- IncomingFrame
+	incoming chan<- []byte
 }
 
 type peer struct {
@@ -52,8 +47,7 @@ func (pm *PeerManager) ConnectedPeerIDs() []int {
 	}
 	return out
 }
-
-func StartP2P(ctx context.Context, cfg common.Config) (pm *PeerManager, incoming chan IncomingFrame) {
+func StartP2P(ctx context.Context, cfg common.Config, port int) (pm *PeerManager, incoming chan []byte) {
 	selfID := cfg.SelfID
 	if selfID == 0 {
 		id, err := cfg.DetectSelfID()
@@ -63,11 +57,12 @@ func StartP2P(ctx context.Context, cfg common.Config) (pm *PeerManager, incoming
 		selfID = id
 	}
 
-	peers, _, err := cfg.PeerAddrs()
+	peers, _, err := cfg.PeerAddrsForPort(port)
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Printf("Self=%d peers=%v listen=%s", selfID, peers, cfg.ListenAddr())
+	listenAddr := cfg.ListenAddrForPort(port)
+	log.Printf("[p2p port=%d] Self=%d peers=%v listen=%s", port, selfID, peers, listenAddr)
 
 	quicConf := &quic.Config{
 		KeepAlivePeriod: 2 * time.Second,
@@ -75,10 +70,10 @@ func StartP2P(ctx context.Context, cfg common.Config) (pm *PeerManager, incoming
 
 	pm = newPeerManager(selfID, QUIC_FRAME_SIZE)
 
-	incomingFrames := make(chan IncomingFrame, 64)
+	incomingFrames := make(chan []byte, 64)
 	pm.incoming = incomingFrames
 
-	go runListener(ctx, cfg, quicConf, pm)
+	go runListener(ctx, listenAddr, quicConf, pm)
 
 	// Dial rule: only dial higher IDs
 	for peerID, peerAddr := range peers {
@@ -89,7 +84,6 @@ func StartP2P(ctx context.Context, cfg common.Config) (pm *PeerManager, incoming
 
 	return pm, incomingFrames
 }
-
 func newPeerManager(selfID int, frameSize int) *PeerManager {
 	if frameSize <= 0 {
 		frameSize = QUIC_FRAME_SIZE
@@ -182,7 +176,7 @@ func (pm *PeerManager) startReader(ctx context.Context, p *peer) {
 				}
 
 				select {
-				case ch <- IncomingFrame{FromID: peerID, Frame: frame}:
+				case ch <- frame:
 				default:
 					// channel full => drop
 					log.Printf("startReader: peer=%d incoming channel FULL (dropping frame #%d)", peerID, nFrames)
@@ -284,8 +278,8 @@ func dialLoop(ctx context.Context, pm *PeerManager, id int, addr string, conf *q
 }
 
 // Listener
-func runListener(ctx context.Context, cfg common.Config, quicConf *quic.Config, pm *PeerManager) {
-	err := ListenQUIC(ctx, cfg.ListenAddr(), quicConf, func(conn *quic.Conn) {
+func runListener(ctx context.Context, listenAddr string, quicConf *quic.Config, pm *PeerManager) {
+	err := ListenQUIC(ctx, listenAddr, quicConf, func(conn *quic.Conn) {
 		log.Printf("ACCEPT conn from %v", conn.RemoteAddr())
 		pm.handleIncomingConn(ctx, conn)
 	})
