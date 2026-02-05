@@ -20,14 +20,6 @@ const (
 	QUIC_FRAME_SIZE = 1024 // fixed-size frames (stream framing, not datagrams)
 )
 
-/*
-QUIC requires TLS 1.3. This file intentionally does the bare minimum crypto:
-- Server generates a self-signed cert at startup.
-- Client always uses InsecureSkipVerify=true (NO verification).
-This is insecure by design and meant only for lab / non-production use.
-*/
-
-// NewQUICServerTLSConfig generates a minimal self-signed TLS config for a QUIC server.
 func NewQUICServerTLSConfig() (*tls.Config, error) {
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
@@ -67,20 +59,13 @@ func NewQUICServerTLSConfig() (*tls.Config, error) {
 	}, nil
 }
 
-// NewQUICClientTLSConfig returns a minimal client TLS config that skips all verification.
 func NewQUICClientTLSConfig() *tls.Config {
 	return &tls.Config{
-		InsecureSkipVerify: true, // ALWAYS skip verification (insecure)
+		InsecureSkipVerify: true,
 		NextProtos:         []string{QUIC_ALPN},
 		MinVersion:         tls.VersionTLS13,
 	}
 }
-
-/*
-=========================
-QUIC SERVER
-=========================
-*/
 
 func ListenQUIC(
 	ctx context.Context,
@@ -111,13 +96,6 @@ func ListenQUIC(
 		go connHandler(conn)
 	}
 }
-
-/*
-=========================
-STREAM FIXED-SIZE FRAMES
-=========================
-QUIC streams are byte streams. We impose "exactly N bytes per frame".
-*/
 
 func ReadFixedFramesQUIC(
 	ctx context.Context,
@@ -192,13 +170,6 @@ func WriteFixedFrameQUIC(
 	}
 	return total, nil
 }
-
-/*
-=========================
-QUIC CLIENT ("SENDER")
-=========================
-One QUIC connection + one bidirectional stream (simple default).
-*/
 
 type QUICSender struct {
 	conn   *quic.Conn

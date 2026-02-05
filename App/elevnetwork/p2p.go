@@ -95,9 +95,6 @@ func newPeerManager(selfID int, frameSize int) *PeerManager {
 	}
 }
 
-// Deterministic policy (matches your comment):
-// - If selfID < peerID: keep outbound (dial) and reject inbound duplicates.
-// - Else: keep inbound (accept) and reject outbound duplicates.
 func (pm *PeerManager) shouldKeep(outbound bool, peerID int) bool {
 	if pm.selfID < peerID {
 		return outbound
@@ -188,15 +185,6 @@ func (pm *PeerManager) startReader(ctx context.Context, p *peer) {
 	})
 }
 
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
-// dialPeerOnce: connect + HELLO + register + start reader.
-// (outbound=true)
 func (pm *PeerManager) dialPeerOnce(ctx context.Context, peerAddr string, quicConf *quic.Config) (int, *QUICSender, error) {
 	attemptCtx, cancel := context.WithTimeout(ctx, 4*time.Second)
 	defer cancel()
