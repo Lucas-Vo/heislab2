@@ -82,8 +82,11 @@ func networkThread(
 		case <-contactTimer.C:
 			wv.ForceReady()
 
-		// Publish to Assigner and Elevator Control
 		case <-ticker.C:
+			// Periodically broadcast state
+			wv.Broadcast(elevnetwork.UpdateRequests)
+
+			// Publish to Assigner and Elevator Control
 			if wv.IsCoherent() {
 				wv.PublishWorld(netSnap1Ch)
 				wv.PublishWorld(netSnap2Ch)
