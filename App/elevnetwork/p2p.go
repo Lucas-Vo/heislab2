@@ -47,6 +47,21 @@ func (pm *PeerManager) ConnectedPeerIDs() []int {
 	}
 	return out
 }
+
+func (pm *PeerManager) hasLivePeer(id int) bool {
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+	p := pm.peers[id]
+	if p == nil || p.conn == nil {
+		return false
+	}
+	select {
+	case <-p.conn.Context().Done():
+		return false
+	default:
+		return true
+	}
+}
 func StartP2P(ctx context.Context, cfg common.Config, port int) (pm *PeerManager, incoming chan []byte) {
 	selfID := cfg.SelfID
 	if selfID == 0 {
@@ -261,6 +276,10 @@ func (pm *PeerManager) dialPeerOnce(ctx context.Context, peerAddr string, quicCo
 func dialLoop(ctx context.Context, pm *PeerManager, id int, addr string, conf *quic.Config) {
 	backoff := 200 * time.Millisecond
 	for ctx.Err() == nil {
+		if pm.hasLivePeer(id) {
+			time.Sleep(500 * time.Millisecond)
+			continue
+		}
 		log.Printf("dialLoop: attempting elev-%d at %s", id, addr)
 
 		peerID, sender, err := pm.dialPeerOnce(ctx, addr, conf)
