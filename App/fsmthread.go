@@ -372,6 +372,9 @@ func fsmThread(
 	initFloor := input.FloorSensor()
 	if initFloor == -1 {
 		elevfsm.Fsm_onInitBetweenFloors()
+	} else {
+		// Initialize FSM floor state immediately to avoid floor=-1 in request handling.
+		elevfsm.Fsm_onFloorArrival(initFloor)
 	}
 
 	sync := newFsmSync(cfg)
