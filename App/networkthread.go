@@ -4,6 +4,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"time"
 
 	"elevator/common"
@@ -40,18 +41,16 @@ func networkThread(
 			return
 
 		case ns := <-elevRequestCh:
-			if !wv.IsReady() {
-				continue
-			}
 			wv.ApplyUpdate(selfKey, ns, elevnetwork.UpdateRequests)
-			wv.Broadcast(elevnetwork.UpdateRequests)
+			if wv.IsReady() {
+				wv.Broadcast(elevnetwork.UpdateRequests)
+			}
 
 		case ns := <-elevServicedCh:
-			if !wv.IsReady() {
-				continue
-			}
 			wv.ApplyUpdate(selfKey, ns, elevnetwork.UpdateServiced)
-			wv.Broadcast(elevnetwork.UpdateServiced)
+			if wv.IsReady() {
+				wv.Broadcast(elevnetwork.UpdateServiced)
+			}
 
 		case in := <-incomingReq:
 			var msg elevnetwork.NetMsg
@@ -88,6 +87,11 @@ func networkThread(
 
 			// Publish to Assigner and Elevator Control
 			if wv.IsCoherent() {
+				snap := wv.SnapshotCopy()
+				if len(snap.States) == 0 {
+					log.Printf("networkThread: coherent snapshot has no states; withholding publish")
+					break
+				}
 				wv.PublishWorld(netSnap1Ch)
 				wv.PublishWorld(netSnap2Ch)
 			}

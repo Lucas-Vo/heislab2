@@ -119,6 +119,10 @@ func (wv *WorldView) extractSnapshot() common.Snapshot {
 	return common.DeepCopySnapshot(wv.snapshot)
 }
 
+func (wv *WorldView) SnapshotCopy() common.Snapshot {
+	return wv.extractSnapshot()
+}
+
 func (wv *WorldView) ShouldAcceptMsg(msg NetMsg) bool {
 	wv.mu.Lock()
 	defer wv.mu.Unlock()
