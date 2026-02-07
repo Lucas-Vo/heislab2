@@ -3,7 +3,7 @@ package elevfsm
 import (
 	"Driver-go/elevio"
 	"elevator/common"
-	"fmt"
+	"log"
 )
 
 var elevator Elevator
@@ -107,8 +107,14 @@ func Fsm_onInitBetweenFloors() {
 }
 
 func Fsm_onRequestButtonPress(btn_floor int, btn_type elevio.ButtonType) {
-	fmt.Printf("\n\n%s(%d, %s)\n", "Fsm_onRequestButtonPress", btn_floor, common.ElevioButtonToString(btn_type))
-	elevator_print(elevator)
+	log.Printf("FSM: request press floor=%d btn=%s (before floor=%d dir=%s behav=%s reqs=%d)",
+		btn_floor,
+		common.ElevioButtonToString(btn_type),
+		elevator.floor,
+		common.ElevioDirnToString(elevator.dirn),
+		ebToString(elevator.behaviour),
+		countRequests(elevator),
+	)
 
 	switch elevator.behaviour {
 	case EB_DoorOpen:
@@ -143,14 +149,22 @@ func Fsm_onRequestButtonPress(btn_floor int, btn_type elevio.ButtonType) {
 
 	// Lamps are driven by network/glue state; keep applying current lamp buffers.
 	SetAllLights(elevator)
-
-	fmt.Printf("\nNew state:\n")
-	elevator_print(elevator)
+	log.Printf("FSM: request handled (after floor=%d dir=%s behav=%s reqs=%d)",
+		elevator.floor,
+		common.ElevioDirnToString(elevator.dirn),
+		ebToString(elevator.behaviour),
+		countRequests(elevator),
+	)
 }
 
 func Fsm_onFloorArrival(newFloor int) {
-	fmt.Printf("\n\n%s(%d)\n", "Fsm_onFloorArrival", newFloor)
-	elevator_print(elevator)
+	log.Printf("FSM: floor arrival %d (before floor=%d dir=%s behav=%s reqs=%d)",
+		newFloor,
+		elevator.floor,
+		common.ElevioDirnToString(elevator.dirn),
+		ebToString(elevator.behaviour),
+		countRequests(elevator),
+	)
 
 	elevator.floor = newFloor
 	outputDevice.FloorIndicator(elevator.floor)
@@ -168,14 +182,21 @@ func Fsm_onFloorArrival(newFloor int) {
 	default:
 		// do nothing
 	}
-
-	fmt.Printf("\nNew state:\n")
-	elevator_print(elevator)
+	log.Printf("FSM: floor arrival handled (after floor=%d dir=%s behav=%s reqs=%d)",
+		elevator.floor,
+		common.ElevioDirnToString(elevator.dirn),
+		ebToString(elevator.behaviour),
+		countRequests(elevator),
+	)
 }
 
 func Fsm_onDoorTimeout() {
-	fmt.Printf("\n\n%s()\n", "Fsm_onDoorTimeout")
-	elevator_print(elevator)
+	log.Printf("FSM: door timeout (before floor=%d dir=%s behav=%s reqs=%d)",
+		elevator.floor,
+		common.ElevioDirnToString(elevator.dirn),
+		ebToString(elevator.behaviour),
+		countRequests(elevator),
+	)
 
 	switch elevator.behaviour {
 	case EB_DoorOpen:
@@ -196,7 +217,22 @@ func Fsm_onDoorTimeout() {
 	default:
 		// do nothing
 	}
+	log.Printf("FSM: door timeout handled (after floor=%d dir=%s behav=%s reqs=%d)",
+		elevator.floor,
+		common.ElevioDirnToString(elevator.dirn),
+		ebToString(elevator.behaviour),
+		countRequests(elevator),
+	)
+}
 
-	fmt.Printf("\nNew state:\n")
-	elevator_print(elevator)
+func countRequests(e Elevator) int {
+	n := 0
+	for f := 0; f < common.N_FLOORS; f++ {
+		for b := 0; b < common.N_BUTTONS; b++ {
+			if e.requests[f][b] {
+				n++
+			}
+		}
+	}
+	return n
 }

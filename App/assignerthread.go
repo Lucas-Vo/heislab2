@@ -56,7 +56,7 @@ func assignerThread(
 			// Run external hall request assigner executable
 			ret, err := exec.Command("./elevassigner/"+HRA_EXECUTABLE, "-i", string(jsonBytes)).CombinedOutput()
 			if err != nil {
-				fmt.Println("exec.Command error:", err)
+				fmt.Printf("exec.Command error: %v (states=%d, hall=%d)\n", err, len(networkSnapshot.States), len(networkSnapshot.HallRequests))
 				fmt.Println(string(ret))
 				break
 			}

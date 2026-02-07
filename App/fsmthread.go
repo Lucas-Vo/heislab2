@@ -295,6 +295,13 @@ func fsmThread(
 					}
 
 					btn := elevio.ButtonType(b)
+					if (btn == elevio.BT_HallUp || btn == elevio.BT_HallDown) && !assignerSeen {
+						// Don't fallback for hall requests before we have any assigner decision.
+						// Reset timer to avoid log spam and keep waiting for assignment.
+						log.Printf("fsmThread: timeout reached but no assigner yet for hall request f=%d b=%s", f, common.ElevioButtonToString(btn))
+						pendingAt[f][b] = now
+						continue
+					}
 					// If assigned elsewhere (and we have coherent assignment), do not fallback.
 					if (btn == elevio.BT_HallUp || btn == elevio.BT_HallDown) && assignerSeen && hasNetSnap {
 						isUp := btn == elevio.BT_HallUp
