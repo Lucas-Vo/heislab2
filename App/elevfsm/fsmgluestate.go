@@ -247,6 +247,31 @@ func (s *FsmGlueState) SetFloor(f int) {
 	s.states[s.selfKey] = st
 }
 
+func (s *FsmGlueState) SetMotion(behavior string, direction string) bool {
+	st, ok := s.states[s.selfKey]
+	if !ok {
+		st = common.ElevState{
+			Behavior:    "idle",
+			Floor:       0,
+			Direction:   "stop",
+			CabRequests: make([]bool, common.N_FLOORS),
+		}
+	}
+
+	changed := false
+	if behavior != "" && st.Behavior != behavior {
+		st.Behavior = behavior
+		changed = true
+	}
+	if direction != "" && st.Direction != direction {
+		st.Direction = direction
+		changed = true
+	}
+
+	s.states[s.selfKey] = st
+	return changed
+}
+
 func (s *FsmGlueState) ClearAtCurrentFloorIfAny() bool {
 	st, ok := s.states[s.selfKey]
 	if !ok {

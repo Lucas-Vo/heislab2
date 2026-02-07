@@ -222,7 +222,7 @@ func (wv *WorldView) IsCoherent() bool {
 		return true
 	}
 
-	refID := alive[0]
+	refID := wv.selfKey
 	refSnap, ok := wv.lastSnapshot[refID]
 	if !ok {
 		return false
