@@ -10,14 +10,353 @@ import (
 	"elevator/elevfsm"
 )
 
+const netOfflineTimeout = 3 * time.Second
+
+type fsmSync struct {
+	cfg     common.Config
+	selfKey string
+
+	netHall     [][2]bool
+	netCab      []bool
+	hasNet      bool
+	lastNetSeen time.Time
+
+	assignedHall [][2]bool
+	hasAssigner  bool
+
+	localHall [][2]bool
+	localCab  []bool
+
+	pendingAt [common.N_FLOORS][common.N_BUTTONS]time.Time
+	injected  [common.N_FLOORS][common.N_BUTTONS]bool
+	confirmed [common.N_FLOORS][common.N_BUTTONS]bool
+
+	reportedFloor     int
+	reportedBehavior  string
+	reportedDirection string
+}
+
+type servicedAt struct {
+	hallUp   bool
+	hallDown bool
+	cab      bool
+}
+
+func newFsmSync(cfg common.Config) *fsmSync {
+	s := &fsmSync{
+		cfg:           cfg,
+		selfKey:       cfg.SelfKey,
+		netHall:       make([][2]bool, common.N_FLOORS),
+		netCab:        make([]bool, common.N_FLOORS),
+		localHall:     make([][2]bool, common.N_FLOORS),
+		localCab:      make([]bool, common.N_FLOORS),
+		assignedHall:  make([][2]bool, common.N_FLOORS),
+		reportedFloor: -1,
+	}
+
+	// Start a short grace period before declaring offline.
+	s.lastNetSeen = time.Now()
+	return s
+}
+
+func (s *fsmSync) offline(now time.Time) bool {
+	return now.Sub(s.lastNetSeen) > netOfflineTimeout
+}
+
+func (s *fsmSync) applyAssigner(task common.ElevInput) {
+	if s.assignedHall == nil || len(s.assignedHall) != common.N_FLOORS {
+		s.assignedHall = make([][2]bool, common.N_FLOORS)
+	}
+	copyHall(s.assignedHall, task.HallTask)
+	s.hasAssigner = true
+}
+
+func (s *fsmSync) applyNetworkSnapshot(snap common.Snapshot, now time.Time) {
+	s.hasNet = true
+	s.lastNetSeen = now
+
+	copyHall(s.netHall, snap.HallRequests)
+	s.copyCabFromSnapshot(snap)
+
+	for f := 0; f < common.N_FLOORS; f++ {
+		// Hall up
+		wasConfirmed := s.confirmed[f][elevio.BT_HallUp]
+		if s.netHall[f][0] {
+			s.pendingAt[f][elevio.BT_HallUp] = time.Time{}
+			s.confirmed[f][elevio.BT_HallUp] = true
+		} else {
+			s.confirmed[f][elevio.BT_HallUp] = false
+			if wasConfirmed {
+				s.localHall[f][0] = false
+				s.injected[f][elevio.BT_HallUp] = false
+			}
+		}
+
+		// Hall down
+		wasConfirmed = s.confirmed[f][elevio.BT_HallDown]
+		if s.netHall[f][1] {
+			s.pendingAt[f][elevio.BT_HallDown] = time.Time{}
+			s.confirmed[f][elevio.BT_HallDown] = true
+		} else {
+			s.confirmed[f][elevio.BT_HallDown] = false
+			if wasConfirmed {
+				s.localHall[f][1] = false
+				s.injected[f][elevio.BT_HallDown] = false
+			}
+		}
+
+		// Cab
+		wasConfirmed = s.confirmed[f][elevio.BT_Cab]
+		if s.netCab[f] {
+			s.pendingAt[f][elevio.BT_Cab] = time.Time{}
+			s.confirmed[f][elevio.BT_Cab] = true
+			s.localCab[f] = true
+		} else {
+			s.confirmed[f][elevio.BT_Cab] = false
+			if wasConfirmed {
+				s.localCab[f] = false
+				s.injected[f][elevio.BT_Cab] = false
+			}
+		}
+	}
+}
+
+func (s *fsmSync) copyCabFromSnapshot(snap common.Snapshot) {
+	for i := 0; i < common.N_FLOORS; i++ {
+		s.netCab[i] = false
+	}
+	if snap.States == nil {
+		return
+	}
+	st, ok := snap.States[s.selfKey]
+	if !ok || st.CabRequests == nil {
+		return
+	}
+	for i := 0; i < common.N_FLOORS && i < len(st.CabRequests); i++ {
+		s.netCab[i] = st.CabRequests[i]
+	}
+}
+
+func (s *fsmSync) onLocalPress(f int, btn elevio.ButtonType, now time.Time) {
+	s.markPending(f, btn, now)
+
+	switch btn {
+	case elevio.BT_HallUp:
+		s.localHall[f][0] = true
+	case elevio.BT_HallDown:
+		s.localHall[f][1] = true
+	case elevio.BT_Cab:
+		s.localCab[f] = true
+	}
+}
+
+func (s *fsmSync) markPending(f int, btn elevio.ButtonType, now time.Time) {
+	if s.pendingAt[f][btn].IsZero() {
+		s.pendingAt[f][btn] = now
+		log.Printf("fsmThread: pending request f=%d b=%s (local press)", f, common.ElevioButtonToString(btn))
+	}
+}
+
+func (s *fsmSync) inject(f int, btn elevio.ButtonType, reason string) {
+	if s.injected[f][btn] {
+		return
+	}
+	log.Printf("fsmThread: inject request f=%d b=%s (%s)", f, common.ElevioButtonToString(btn), reason)
+	elevfsm.Fsm_onRequestButtonPress(f, btn)
+	s.injected[f][btn] = true
+	s.pendingAt[f][btn] = time.Time{}
+
+	switch btn {
+	case elevio.BT_HallUp:
+		s.localHall[f][0] = true
+	case elevio.BT_HallDown:
+		s.localHall[f][1] = true
+	case elevio.BT_Cab:
+		s.localCab[f] = true
+	}
+}
+
+func (s *fsmSync) tryInjectOnline() {
+	if !s.hasNet {
+		return
+	}
+	for f := 0; f < common.N_FLOORS; f++ {
+		if s.netCab[f] {
+			s.inject(f, elevio.BT_Cab, "net-confirmed")
+		}
+
+		if s.hasAssigner {
+			if s.netHall[f][0] && s.assignedHall[f][0] {
+				s.inject(f, elevio.BT_HallUp, "net-confirmed")
+			}
+			if s.netHall[f][1] && s.assignedHall[f][1] {
+				s.inject(f, elevio.BT_HallDown, "net-confirmed")
+			}
+
+			if s.netHall[f][0] && !s.assignedHall[f][0] && !s.pendingAt[f][elevio.BT_HallUp].IsZero() {
+				log.Printf("fsmThread: hall up f=%d assigned elsewhere", f)
+				s.pendingAt[f][elevio.BT_HallUp] = time.Time{}
+			}
+			if s.netHall[f][1] && !s.assignedHall[f][1] && !s.pendingAt[f][elevio.BT_HallDown].IsZero() {
+				log.Printf("fsmThread: hall down f=%d assigned elsewhere", f)
+				s.pendingAt[f][elevio.BT_HallDown] = time.Time{}
+			}
+		}
+	}
+}
+
+func (s *fsmSync) tryInjectOffline(now time.Time, confirmTimeout time.Duration) {
+	for f := 0; f < common.N_FLOORS; f++ {
+		if s.localHall[f][0] {
+			if s.readyToInject(f, elevio.BT_HallUp, now, confirmTimeout) {
+				s.inject(f, elevio.BT_HallUp, "offline")
+			}
+		}
+		if s.localHall[f][1] {
+			if s.readyToInject(f, elevio.BT_HallDown, now, confirmTimeout) {
+				s.inject(f, elevio.BT_HallDown, "offline")
+			}
+		}
+		if s.localCab[f] {
+			if s.readyToInject(f, elevio.BT_Cab, now, confirmTimeout) {
+				s.inject(f, elevio.BT_Cab, "offline")
+			}
+		}
+	}
+}
+
+func (s *fsmSync) readyToInject(f int, btn elevio.ButtonType, now time.Time, confirmTimeout time.Duration) bool {
+	if s.injected[f][btn] {
+		return false
+	}
+	if s.pendingAt[f][btn].IsZero() {
+		return true
+	}
+	return now.Sub(s.pendingAt[f][btn]) >= confirmTimeout
+}
+
+func (s *fsmSync) clearAtFloor(f int) servicedAt {
+	if f < 0 || f >= common.N_FLOORS {
+		return servicedAt{}
+	}
+
+	var cleared servicedAt
+
+	if s.injected[f][elevio.BT_Cab] {
+		s.localCab[f] = false
+		s.injected[f][elevio.BT_Cab] = false
+		cleared.cab = true
+	}
+	if s.injected[f][elevio.BT_HallUp] {
+		s.localHall[f][0] = false
+		s.injected[f][elevio.BT_HallUp] = false
+		cleared.hallUp = true
+	}
+	if s.injected[f][elevio.BT_HallDown] {
+		s.localHall[f][1] = false
+		s.injected[f][elevio.BT_HallDown] = false
+		cleared.hallDown = true
+	}
+
+	return cleared
+}
+
+func (s *fsmSync) buildUpdateSnapshot(floor int, behavior string, direction string) common.Snapshot {
+	return common.Snapshot{
+		HallRequests: cloneHallSlice(s.localHall),
+		States: map[string]common.ElevState{
+			s.selfKey: {
+				Behavior:    behavior,
+				Floor:       floor,
+				Direction:   direction,
+				CabRequests: cloneBoolSlice(s.localCab),
+			},
+		},
+	}
+}
+
+func (s *fsmSync) buildServicedSnapshot(floor int, behavior string, direction string, cleared servicedAt, online bool) common.Snapshot {
+	baseHall := s.localHall
+	if online && s.hasNet {
+		baseHall = s.netHall
+	}
+
+	outHall := cloneHallSlice(baseHall)
+	if floor >= 0 && floor < len(outHall) {
+		if cleared.hallUp {
+			outHall[floor][0] = false
+		}
+		if cleared.hallDown {
+			outHall[floor][1] = false
+		}
+	}
+
+	return common.Snapshot{
+		HallRequests: outHall,
+		States: map[string]common.ElevState{
+			s.selfKey: {
+				Behavior:    behavior,
+				Floor:       floor,
+				Direction:   direction,
+				CabRequests: cloneBoolSlice(s.localCab),
+			},
+		},
+	}
+}
+
+func (s *fsmSync) applyLights(online bool) {
+	if online && s.hasNet {
+		snap := common.Snapshot{
+			HallRequests: cloneHallSlice(s.netHall),
+			States: map[string]common.ElevState{
+				s.selfKey: {CabRequests: cloneBoolSlice(s.netCab)},
+			},
+		}
+		elevfsm.SetAllRequestLightsFromSnapshot(snap, s.selfKey)
+		return
+	}
+
+	if !online {
+		snap := common.Snapshot{
+			HallRequests: cloneHallSlice(s.localHall),
+			States: map[string]common.ElevState{
+				s.selfKey: {CabRequests: cloneBoolSlice(s.localCab)},
+			},
+		}
+		elevfsm.SetAllRequestLightsFromSnapshot(snap, s.selfKey)
+		return
+	}
+
+	// Startup grace: keep lights off until we have a snapshot or go offline.
+	emptyHall := make([][2]bool, common.N_FLOORS)
+	emptyCab := make([]bool, common.N_FLOORS)
+	snap := common.Snapshot{
+		HallRequests: emptyHall,
+		States: map[string]common.ElevState{
+			s.selfKey: {CabRequests: emptyCab},
+		},
+	}
+	elevfsm.SetAllRequestLightsFromSnapshot(snap, s.selfKey)
+}
+
+func (s *fsmSync) motionChanged(floor int, behavior string, direction string) bool {
+	if s.reportedFloor != floor || s.reportedBehavior != behavior || s.reportedDirection != direction {
+		s.reportedFloor = floor
+		s.reportedBehavior = behavior
+		s.reportedDirection = direction
+		return true
+	}
+	return false
+}
+
 func fsmThread(
 	ctx context.Context,
 	cfg common.Config,
 	input common.ElevInputDevice,
 	assignerOutputCh <-chan common.ElevInput,
-	fsmServicedCh chan<- common.Snapshot,
-	fsmUpdateCh chan<- common.Snapshot,
-	networkSnapshot2Ch <-chan common.Snapshot, // network -> fsm
+	elevServicedCh chan<- common.Snapshot,
+	elevUpdateCh chan<- common.Snapshot,
+	netWorldView2Ch <-chan common.Snapshot, // network -> fsm
 ) {
 	log.Printf("fsmThread started (self=%s)", cfg.SelfKey)
 
@@ -30,94 +369,70 @@ func fsmThread(
 		elevfsm.ConVal("requestConfirmTimeout_ms", &confirmTimeoutMs, "%d"),
 	)
 
-	if input.FloorSensor() == -1 {
+	initFloor := input.FloorSensor()
+	if initFloor == -1 {
 		elevfsm.Fsm_onInitBetweenFloors()
 	}
 
-	glue := elevfsm.NewFsmGlueState(cfg)
-
-	// Use a local channel var so we can nil it if it closes.
-	netSnapCh := networkSnapshot2Ch
-
-	// Try to load a startup snapshot (and sync lights from it if we got one).
-	if snap, ok := glue.TryLoadSnapshot(ctx, netSnapCh, 2*time.Second); ok {
-		elevfsm.SetAllRequestLightsFromSnapshot(snap, cfg.SelfKey)
-	} else {
-		// Ensure lights reflect whatever we have locally at startup (typically all off).
-		elevfsm.SetAllRequestLightsFromSnapshot(glue.Snapshot(), cfg.SelfKey)
-	}
-
+	sync := newFsmSync(cfg)
 	var prevReq [common.N_FLOORS][common.N_BUTTONS]int
-	prevFloor := -1
-	tracker := newFsmPendingTracker(cfg, glue)
+	prevFloor := initFloor
 	lastFloorSeen := time.Now()
 	stuckWarned := false
 
 	ticker := time.NewTicker(time.Duration(inputPollRateMs) * time.Millisecond)
 	defer ticker.Stop()
 
+	netSnapCh := netWorldView2Ch
+
+	// Send an initial state update to speed up peer discovery.
+	behavior, direction := elevfsm.CurrentMotionStrings()
+	initialSnap := sync.buildUpdateSnapshot(prevFloor, behavior, direction)
+	select {
+	case elevUpdateCh <- initialSnap:
+	default:
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
 			return
 
-		// NEW: whenever we receive a network snapshot, update glue + lights.
 		case snap, ok := <-netSnapCh:
 			if !ok {
 				netSnapCh = nil
 				continue
 			}
+			now := time.Now()
+			sync.applyNetworkSnapshot(snap, now)
 
-			tracker.UpdateNetSnap(snap)
-			log.Printf("fsmThread: network snapshot received (hall=%d, cab_self=%d)", tracker.CountHall(snap), tracker.CountCabSelf(snap))
-
-			// Merge snapshot into local view (includes self cab requests for lamp sync).
-			glue.MergeNetworkSnapshot(snap)
-
-			// Turn on/off lights based on the snapshot we just received:
-			// - Hall lamps from snap.HallRequests
-			// - Cab lamps from snap.States[self].CabRequests
-			elevfsm.SetAllRequestLightsFromSnapshot(glue.Snapshot(), cfg.SelfKey)
-
-			tracker.ClearInjectedIfSnapshotCleared(snap)
-			tracker.TryConfirmAndInject("network-confirmed")
+			online := !sync.offline(now)
+			if online {
+				sync.tryInjectOnline()
+			}
+			sync.applyLights(online)
 
 		case task := <-assignerOutputCh:
-			glue.ApplyAssignerTask(task)
-			tracker.SetAssignerSeen()
-			log.Printf("fsmThread: assigner task updated (assigned_hall=%d)", glue.CountAssignedHall())
-
-			tracker.TryConfirmAndInject("assigner-confirmed")
-
-			// optional: publish update so network/assigner sees we’re alive
-			select {
-			case fsmUpdateCh <- glue.Snapshot():
-			default:
+			sync.applyAssigner(task)
+			now := time.Now()
+			if !sync.offline(now) {
+				sync.tryInjectOnline()
 			}
 
 		case <-ticker.C:
+			now := time.Now()
+			online := !sync.offline(now)
 			changedNew := false
 			changedServiced := false
+			var cleared servicedAt
 
 			// Request buttons (edge-detected)
 			for f := 0; f < common.N_FLOORS; f++ {
 				for b := 0; b < common.N_BUTTONS; b++ {
 					v := input.RequestButton(f, elevio.ButtonType(b))
 					if v != 0 && v != prevReq[f][b] {
-						switch elevio.ButtonType(b) {
-						case elevio.BT_HallUp:
-							glue.SetHallButton(f, true, true)
-							changedNew = true
-							tracker.MarkPendingIfNeeded(f, elevio.ButtonType(b), "local hall press (awaiting network)")
-						case elevio.BT_HallDown:
-							glue.SetHallButton(f, false, true)
-							changedNew = true
-							tracker.MarkPendingIfNeeded(f, elevio.ButtonType(b), "local hall press (awaiting network)")
-						case elevio.BT_Cab:
-							glue.SetCabRequest(f, true)
-							changedNew = true
-							tracker.MarkPendingIfNeeded(f, elevio.ButtonType(b), "local cab press (awaiting network)")
-						}
+						sync.onLocalPress(f, elevio.ButtonType(b), now)
+						changedNew = true
 					}
 					prevReq[f][b] = v
 				}
@@ -127,60 +442,88 @@ func fsmThread(
 			f := input.FloorSensor()
 			if f != -1 && f != prevFloor {
 				elevfsm.Fsm_onFloorArrival(f)
-				glue.SetFloor(f)
-				changedNew = true
-				lastFloorSeen = time.Now()
+				prevFloor = f
+				lastFloorSeen = now
 				stuckWarned = false
+				changedNew = true
 			}
-			if f == -1 && time.Since(lastFloorSeen) > 5*time.Second && !stuckWarned {
+			if f == -1 && now.Sub(lastFloorSeen) > 5*time.Second && !stuckWarned {
 				log.Printf("fsmThread: warning: floor sensor reports -1 for >5s (possible hardware/sensor issue)")
 				stuckWarned = true
 			}
-			prevFloor = f
 
 			// Timer
 			if elevfsm.Timer_timedOut() != 0 {
 				elevfsm.Timer_stop()
 				elevfsm.Fsm_onDoorTimeout()
 
-				if glue.ClearAtCurrentFloorIfAny() {
+				cleared = sync.clearAtFloor(prevFloor)
+				if cleared.hallUp || cleared.hallDown || cleared.cab {
 					changedServiced = true
 					log.Printf("fsmThread: serviced requests at floor %d", prevFloor)
 				}
 			}
 
-			// Confirmed requests: inject when coherent snapshot agrees
-			tracker.TryConfirmAndInject("network-confirmed")
+			// Inject confirmed requests
+			if online {
+				sync.tryInjectOnline()
+			} else {
+				confirmTimeout := time.Duration(confirmTimeoutMs) * time.Millisecond
+				sync.tryInjectOffline(now, confirmTimeout)
+			}
 
-			// Timeout fallback: if no confirmation in time, serve locally
-			timeout := time.Duration(confirmTimeoutMs) * time.Millisecond
-			tracker.TimeoutFallback(timeout)
+			sync.applyLights(online)
 
-			behavior, direction := elevfsm.CurrentMotionStrings()
-			if glue.SetMotion(behavior, direction) {
+			behavior, direction = elevfsm.CurrentMotionStrings()
+			if sync.motionChanged(prevFloor, behavior, direction) {
 				changedNew = true
 			}
 
-			// If anything changed, sync lamps from our current glue snapshot
-			// (so the FSM won't overwrite network-based lamps).
-			if changedNew || changedServiced {
-				snap := glue.Snapshot()
-				elevfsm.SetAllRequestLightsFromSnapshot(snap, cfg.SelfKey)
-
-				// Publish FULL state to network thread
-				if changedServiced {
-					select {
-					case fsmServicedCh <- snap:
-					default:
-					}
+			if changedServiced {
+				snap := sync.buildServicedSnapshot(prevFloor, behavior, direction, cleared, online)
+				select {
+				case elevServicedCh <- snap:
+				default:
 				}
-				if changedNew {
-					select {
-					case fsmUpdateCh <- snap:
-					default:
-					}
+			}
+			if changedNew {
+				snap := sync.buildUpdateSnapshot(prevFloor, behavior, direction)
+				select {
+				case elevUpdateCh <- snap:
+				default:
 				}
 			}
 		}
 	}
+}
+
+func copyHall(dst [][2]bool, src [][2]bool) {
+	if dst == nil {
+		return
+	}
+	for i := 0; i < len(dst); i++ {
+		if src != nil && i < len(src) {
+			dst[i] = src[i]
+		} else {
+			dst[i] = [2]bool{false, false}
+		}
+	}
+}
+
+func cloneHallSlice(in [][2]bool) [][2]bool {
+	out := make([][2]bool, common.N_FLOORS)
+	copyHall(out, in)
+	return out
+}
+
+func cloneBoolSlice(in []bool) []bool {
+	out := make([]bool, common.N_FLOORS)
+	for i := 0; i < common.N_FLOORS; i++ {
+		if in != nil && i < len(in) {
+			out[i] = in[i]
+		} else {
+			out[i] = false
+		}
+	}
+	return out
 }
