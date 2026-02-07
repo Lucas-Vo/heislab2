@@ -98,6 +98,16 @@ func (s *FsmGlueState) ApplyAssignerTask(task common.ElevInput) {
 	}
 }
 
+func (s *FsmGlueState) IsAssignedHall(f int, isUp bool) bool {
+	if s.assignedHall == nil || f < 0 || f >= len(s.assignedHall) {
+		return false
+	}
+	if isUp {
+		return s.assignedHall[f][0]
+	}
+	return s.assignedHall[f][1]
+}
+
 // NEW: merges snapshot and ALSO merges self cab requests (so cab lamps can be driven by snapshots).
 func (s *FsmGlueState) MergeNetworkSnapshot(snap common.Snapshot) {
 	// First do the old merge (hall requests, alive, other elevators, self non-cab fields)
