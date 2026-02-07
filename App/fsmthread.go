@@ -54,6 +54,8 @@ func fsmThread(
 	assignerSeen := false
 	var lastNetSnap common.Snapshot
 	var hasNetSnap bool
+	lastFloorSeen := time.Now()
+	stuckWarned := false
 
 	ticker := time.NewTicker(time.Duration(inputPollRateMs) * time.Millisecond)
 	defer ticker.Stop()
@@ -212,7 +214,7 @@ func fsmThread(
 		case task := <-assignerOutputCh:
 			glue.ApplyAssignerTask(task)
 			assignerSeen = true
-			log.Printf("fsmThread: assigner task updated")
+			log.Printf("fsmThread: assigner task updated (assigned_hall=%d)", glue.CountAssignedHall())
 
 			tryConfirmAndInject("assigner-confirmed")
 
@@ -265,6 +267,12 @@ func fsmThread(
 				elevfsm.Fsm_onFloorArrival(f)
 				glue.SetFloor(f)
 				changedNew = true
+				lastFloorSeen = time.Now()
+				stuckWarned = false
+			}
+			if f == -1 && time.Since(lastFloorSeen) > 5*time.Second && !stuckWarned {
+				log.Printf("fsmThread: warning: floor sensor reports -1 for >5s (possible hardware/sensor issue)")
+				stuckWarned = true
 			}
 			prevFloor = f
 
@@ -299,6 +307,12 @@ func fsmThread(
 						// Don't fallback for hall requests before we have any assigner decision.
 						// Reset timer to avoid log spam and keep waiting for assignment.
 						log.Printf("fsmThread: timeout reached but no assigner yet for hall request f=%d b=%s", f, common.ElevioButtonToString(btn))
+						pendingAt[f][b] = now
+						continue
+					}
+					if (btn == elevio.BT_HallUp || btn == elevio.BT_HallDown) && !isHallReqNet(f, btn == elevio.BT_HallUp) {
+						// Require network confirmation for hall requests even on timeout fallback.
+						log.Printf("fsmThread: timeout reached but hall request not confirmed by network f=%d b=%s", f, common.ElevioButtonToString(btn))
 						pendingAt[f][b] = now
 						continue
 					}

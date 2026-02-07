@@ -108,6 +108,22 @@ func (s *FsmGlueState) IsAssignedHall(f int, isUp bool) bool {
 	return s.assignedHall[f][1]
 }
 
+func (s *FsmGlueState) CountAssignedHall() int {
+	if s.assignedHall == nil {
+		return 0
+	}
+	n := 0
+	for f := 0; f < len(s.assignedHall); f++ {
+		if s.assignedHall[f][0] {
+			n++
+		}
+		if s.assignedHall[f][1] {
+			n++
+		}
+	}
+	return n
+}
+
 // NEW: merges snapshot and ALSO merges self cab requests (so cab lamps can be driven by snapshots).
 func (s *FsmGlueState) MergeNetworkSnapshot(snap common.Snapshot) {
 	// First do the old merge (hall requests, alive, other elevators, self non-cab fields)
