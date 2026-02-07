@@ -105,6 +105,15 @@ func (pm *PeerManager) addOrReject(p *peer) {
 	defer pm.mu.Unlock()
 
 	existing := pm.peers[p.id]
+	if existing != nil && existing.conn != nil {
+		select {
+		case <-existing.conn.Context().Done():
+			delete(pm.peers, p.id)
+			existing = nil
+			log.Printf("peer %d removed stale connection before add", p.id)
+		default:
+		}
+	}
 	if existing == nil {
 		pm.peers[p.id] = p
 		log.Printf("peer %d registered (outbound=%v remote=%v). connected=%v", p.id, p.outbound, safeRemote(p.conn), pm.connectedIDsLocked())
@@ -131,6 +140,21 @@ func (pm *PeerManager) addOrReject(p *peer) {
 			_ = p.conn.CloseWithError(0, "rejected")
 		}
 		log.Printf("peer %d rejected duplicate (new outbound=%v). keeping outbound=%v", p.id, p.outbound, existing.outbound)
+	}
+}
+
+func (pm *PeerManager) removePeerByConn(conn *quic.Conn, reason string) {
+	if conn == nil {
+		return
+	}
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+	for id, p := range pm.peers {
+		if p != nil && p.conn == conn {
+			delete(pm.peers, id)
+			log.Printf("peer %d removed (%s). connected=%v", id, reason, pm.connectedIDsLocked())
+			return
+		}
 	}
 }
 
@@ -179,6 +203,7 @@ func (pm *PeerManager) startReader(ctx context.Context, p *peer) {
 			})
 
 			log.Printf("startReader: peer=%d exited after %d frames, err=%v", peerID, nFrames, err)
+			pm.removePeerByConn(p.conn, "reader exited")
 		}(p.id, p.stream)
 	})
 }
@@ -254,9 +279,11 @@ func dialLoop(ctx context.Context, pm *PeerManager, id int, addr string, conf *q
 		select {
 		case <-ctx.Done():
 			_ = sender.Close()
+			pm.removePeerByConn(sender.Conn(), "dial ctx done")
 			return
 		case <-sender.Conn().Context().Done():
 			_ = sender.Close()
+			pm.removePeerByConn(sender.Conn(), "dial conn done")
 			log.Printf("dialLoop: connection to elev-%d ended, reconnecting", id)
 			time.Sleep(300 * time.Millisecond)
 		}
@@ -315,6 +342,12 @@ func (pm *PeerManager) handleIncomingConn(ctx context.Context, conn *quic.Conn) 
 	if stored == p {
 		pm.startReader(ctx, p)
 	}
+
+	// Cleanup when inbound connection closes.
+	go func(c *quic.Conn) {
+		<-c.Context().Done()
+		pm.removePeerByConn(c, "accept conn done")
+	}(conn)
 }
 
 func encodeHelloFrame(selfID int) []byte {
