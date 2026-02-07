@@ -244,22 +244,22 @@ func (s *fsmSync) clearAtFloor(f int, online bool) servicedAt {
 
 	if s.injected[f][elevio.BT_Cab] {
 		cleared.cab = true
+		s.localCab[f] = false
 		if !online {
-			s.localCab[f] = false
 			s.injected[f][elevio.BT_Cab] = false
 		}
 	}
 	if s.injected[f][elevio.BT_HallUp] {
 		cleared.hallUp = true
+		s.localHall[f][0] = false
 		if !online {
-			s.localHall[f][0] = false
 			s.injected[f][elevio.BT_HallUp] = false
 		}
 	}
 	if s.injected[f][elevio.BT_HallDown] {
 		cleared.hallDown = true
+		s.localHall[f][1] = false
 		if !online {
-			s.localHall[f][1] = false
 			s.injected[f][elevio.BT_HallDown] = false
 		}
 	}
