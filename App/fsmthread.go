@@ -67,8 +67,42 @@ func (s *fsmSync) applyAssigner(task common.ElevInput) {
 	if s.assignedHall == nil || len(s.assignedHall) != common.N_FLOORS {
 		s.assignedHall = make([][2]bool, common.N_FLOORS)
 	}
+	prev := cloneHallSlice(s.assignedHall)
 	copyHall(s.assignedHall, task.HallTask)
 	s.hasAssigner = true
+	s.cancelUnassigned(prev)
+}
+
+func (s *fsmSync) cancelUnassigned(prev [][2]bool) {
+	for f := 0; f < common.N_FLOORS; f++ {
+		if prev[f][0] && !s.assignedHall[f][0] {
+			s.cancelHall(f, elevio.BT_HallUp, "unassigned")
+		}
+		if prev[f][1] && !s.assignedHall[f][1] {
+			s.cancelHall(f, elevio.BT_HallDown, "unassigned")
+		}
+	}
+}
+
+func (s *fsmSync) cancelHall(f int, btn elevio.ButtonType, reason string) {
+	if btn != elevio.BT_HallUp && btn != elevio.BT_HallDown {
+		return
+	}
+	if f < 0 || f >= common.N_FLOORS {
+		return
+	}
+	if s.injected[f][btn] || !s.pendingAt[f][btn].IsZero() || s.localHall[f][btn] {
+		log.Printf("fsmThread: cancel hall f=%d b=%s (%s)", f, common.ElevioButtonToString(btn), reason)
+	}
+	s.pendingAt[f][btn] = time.Time{}
+	s.injected[f][btn] = false
+	s.confirmed[f][btn] = false
+	if btn == elevio.BT_HallUp {
+		s.localHall[f][0] = false
+	} else {
+		s.localHall[f][1] = false
+	}
+	elevfsm.Fsm_clearRequest(f, btn)
 }
 
 func (s *fsmSync) applyNetworkSnapshot(snap common.Snapshot, now time.Time) {
