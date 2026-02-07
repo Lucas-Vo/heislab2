@@ -42,15 +42,11 @@ func networkThread(
 
 		case ns := <-elevRequestCh:
 			wv.ApplyUpdate(selfKey, ns, elevnetwork.UpdateRequests)
-			if wv.IsReady() {
-				wv.Broadcast(elevnetwork.UpdateRequests)
-			}
+			wv.Broadcast(elevnetwork.UpdateRequests)
 
 		case ns := <-elevServicedCh:
 			wv.ApplyUpdate(selfKey, ns, elevnetwork.UpdateServiced)
-			if wv.IsReady() {
-				wv.Broadcast(elevnetwork.UpdateServiced)
-			}
+			wv.Broadcast(elevnetwork.UpdateServiced)
 
 		case in := <-incomingReq:
 			var msg elevnetwork.NetMsg
@@ -79,6 +75,7 @@ func networkThread(
 			wv.Relay(elevnetwork.UpdateServiced, msg)
 
 		case <-contactTimer.C:
+			log.Printf("networkThread: initial contact timeout; forcing ready")
 			wv.ForceReady()
 
 		case <-ticker.C:

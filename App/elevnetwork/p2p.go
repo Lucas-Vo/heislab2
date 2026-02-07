@@ -75,11 +75,9 @@ func StartP2P(ctx context.Context, cfg common.Config, port int) (pm *PeerManager
 
 	go runListener(ctx, listenAddr, quicConf, pm)
 
-	// Dial rule: only dial higher IDs
+	// Dial all peers to speed initial connectivity; duplicates are resolved in addOrReject.
 	for peerID, peerAddr := range peers {
-		if selfID < peerID {
-			go dialLoop(ctx, pm, peerID, peerAddr, quicConf)
-		}
+		go dialLoop(ctx, pm, peerID, peerAddr, quicConf)
 	}
 
 	return pm, incomingFrames

@@ -235,7 +235,7 @@ func (s *fsmSync) readyToInject(f int, btn elevio.ButtonType, now time.Time, con
 	return now.Sub(s.pendingAt[f][btn]) >= confirmTimeout
 }
 
-func (s *fsmSync) clearAtFloor(f int) servicedAt {
+func (s *fsmSync) clearAtFloor(f int, online bool) servicedAt {
 	if f < 0 || f >= common.N_FLOORS {
 		return servicedAt{}
 	}
@@ -243,19 +243,25 @@ func (s *fsmSync) clearAtFloor(f int) servicedAt {
 	var cleared servicedAt
 
 	if s.injected[f][elevio.BT_Cab] {
-		s.localCab[f] = false
-		s.injected[f][elevio.BT_Cab] = false
 		cleared.cab = true
+		if !online {
+			s.localCab[f] = false
+			s.injected[f][elevio.BT_Cab] = false
+		}
 	}
 	if s.injected[f][elevio.BT_HallUp] {
-		s.localHall[f][0] = false
-		s.injected[f][elevio.BT_HallUp] = false
 		cleared.hallUp = true
+		if !online {
+			s.localHall[f][0] = false
+			s.injected[f][elevio.BT_HallUp] = false
+		}
 	}
 	if s.injected[f][elevio.BT_HallDown] {
-		s.localHall[f][1] = false
-		s.injected[f][elevio.BT_HallDown] = false
 		cleared.hallDown = true
+		if !online {
+			s.localHall[f][1] = false
+			s.injected[f][elevio.BT_HallDown] = false
+		}
 	}
 
 	return cleared
@@ -382,6 +388,8 @@ func fsmThread(
 	prevFloor := initFloor
 	lastFloorSeen := time.Now()
 	stuckWarned := false
+	onlineKnown := false
+	prevOnline := false
 
 	ticker := time.NewTicker(time.Duration(inputPollRateMs) * time.Millisecond)
 	defer ticker.Stop()
@@ -408,6 +416,7 @@ func fsmThread(
 			}
 			now := time.Now()
 			sync.applyNetworkSnapshot(snap, now)
+			log.Printf("fsmThread: net snapshot hall=%d cab_self=%d", countHall(snap.HallRequests), countCabFromSnapshot(snap, cfg.SelfKey))
 
 			online := !sync.offline(now)
 			if online {
@@ -417,6 +426,7 @@ func fsmThread(
 
 		case task := <-assignerOutputCh:
 			sync.applyAssigner(task)
+			log.Printf("fsmThread: assigner update assigned_hall=%d", countHall(sync.assignedHall))
 			now := time.Now()
 			if !sync.offline(now) {
 				sync.tryInjectOnline()
@@ -425,6 +435,15 @@ func fsmThread(
 		case <-ticker.C:
 			now := time.Now()
 			online := !sync.offline(now)
+			if !onlineKnown || online != prevOnline {
+				state := "offline"
+				if online {
+					state = "online"
+				}
+				log.Printf("fsmThread: network %s (lastNetSeen=%s)", state, sync.lastNetSeen.Format(time.RFC3339Nano))
+				prevOnline = online
+				onlineKnown = true
+			}
 			changedNew := false
 			changedServiced := false
 			var cleared servicedAt
@@ -460,7 +479,7 @@ func fsmThread(
 				elevfsm.Timer_stop()
 				elevfsm.Fsm_onDoorTimeout()
 
-				cleared = sync.clearAtFloor(prevFloor)
+				cleared = sync.clearAtFloor(prevFloor, online)
 				if cleared.hallUp || cleared.hallDown || cleared.cab {
 					changedServiced = true
 					log.Printf("fsmThread: serviced requests at floor %d", prevFloor)
@@ -529,4 +548,37 @@ func cloneBoolSlice(in []bool) []bool {
 		}
 	}
 	return out
+}
+
+func countHall(hall [][2]bool) int {
+	if hall == nil {
+		return 0
+	}
+	n := 0
+	for i := 0; i < len(hall) && i < common.N_FLOORS; i++ {
+		if hall[i][0] {
+			n++
+		}
+		if hall[i][1] {
+			n++
+		}
+	}
+	return n
+}
+
+func countCabFromSnapshot(snap common.Snapshot, selfKey string) int {
+	if snap.States == nil {
+		return 0
+	}
+	st, ok := snap.States[selfKey]
+	if !ok || st.CabRequests == nil {
+		return 0
+	}
+	n := 0
+	for i := 0; i < len(st.CabRequests) && i < common.N_FLOORS; i++ {
+		if st.CabRequests[i] {
+			n++
+		}
+	}
+	return n
 }
