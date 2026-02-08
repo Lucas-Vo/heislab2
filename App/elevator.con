@@ -6,4 +6,3 @@ elevator.con
 --doorOpenDuration_s        3.0
 
 --inputPollRate_ms          25
---requestConfirmTimeout_ms  1500

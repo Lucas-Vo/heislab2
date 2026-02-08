@@ -9,14 +9,7 @@ import (
 var elevator Elevator
 var outputDevice common.ElevOutputDevice
 
-// NEW: these are the lamp states we want to show.
-// They are driven by:
-// - HallRequests from network snapshots
-// - CabRequests (for self) from network snapshots (and/or local updates via glue snapshots)
-var hallLamp [][2]bool
-var cabLamp []bool
-
-func Fsm_init() {
+func init() {
 	elevator = elevator_uninitialized()
 
 	ConLoad("elevator.con",
@@ -28,75 +21,13 @@ func Fsm_init() {
 	)
 
 	outputDevice = common.ElevioGetOutputDevice()
-
-	// Init lamp buffers
-	hallLamp = make([][2]bool, common.N_FLOORS)
-	cabLamp = make([]bool, common.N_FLOORS)
-
-	// Clear lamps at init
-	SetAllLights(elevator)
 }
 
-// NEW: Call this whenever you want lamps to reflect a Snapshot.
-// - hall lamps: ns.HallRequests
-// - cab lamps:  ns.States[selfKey].CabRequests
-func SetAllRequestLightsFromSnapshot(ns common.Snapshot, selfKey string) {
-	// Update hall lamp buffer if present
-	if ns.HallRequests != nil {
-		if hallLamp == nil || len(hallLamp) != common.N_FLOORS {
-			hallLamp = make([][2]bool, common.N_FLOORS)
+func setAllLights(es Elevator) {
+	for floor := 0; floor < common.N_FLOORS; floor++ {
+		for btn := 0; btn < common.N_BUTTONS; btn++ {
+			outputDevice.RequestButtonLight(floor, elevio.ButtonType(btn), es.requests[floor][btn])
 		}
-
-		n := len(ns.HallRequests)
-		if n > common.N_FLOORS {
-			n = common.N_FLOORS
-		}
-		for f := 0; f < n; f++ {
-			hallLamp[f] = ns.HallRequests[f]
-		}
-		for f := n; f < common.N_FLOORS; f++ {
-			hallLamp[f] = [2]bool{false, false}
-		}
-	}
-
-	// Update cab lamp buffer for self if present
-	if ns.States != nil {
-		if st, ok := ns.States[selfKey]; ok && st.CabRequests != nil {
-			if cabLamp == nil || len(cabLamp) != common.N_FLOORS {
-				cabLamp = make([]bool, common.N_FLOORS)
-			}
-
-			n := len(st.CabRequests)
-			if n > common.N_FLOORS {
-				n = common.N_FLOORS
-			}
-			for f := 0; f < n; f++ {
-				cabLamp[f] = st.CabRequests[f]
-			}
-			for f := n; f < common.N_FLOORS; f++ {
-				cabLamp[f] = false
-			}
-		}
-	}
-
-	// Apply to hardware
-	SetAllLights(elevator)
-}
-
-// UPDATED: SetAllLights no longer uses the FSM's internal request matrix for lamps.
-// It uses hallLamp/cabLamp (network/glue driven) so hall lamps reflect building-wide HallRequests.
-func SetAllLights(_ Elevator) {
-	if hallLamp == nil || len(hallLamp) != common.N_FLOORS {
-		hallLamp = make([][2]bool, common.N_FLOORS)
-	}
-	if cabLamp == nil || len(cabLamp) != common.N_FLOORS {
-		cabLamp = make([]bool, common.N_FLOORS)
-	}
-
-	for floor := range common.N_FLOORS {
-		outputDevice.RequestButtonLight(floor, elevio.BT_HallUp, hallLamp[floor][0])
-		outputDevice.RequestButtonLight(floor, elevio.BT_HallDown, hallLamp[floor][1])
-		outputDevice.RequestButtonLight(floor, elevio.BT_Cab, cabLamp[floor])
 	}
 }
 
@@ -147,8 +78,7 @@ func Fsm_onRequestButtonPress(btn_floor int, btn_type elevio.ButtonType) {
 		}
 	}
 
-	// Lamps are driven by network/glue state; keep applying current lamp buffers.
-	SetAllLights(elevator)
+	setAllLights(elevator)
 	log.Printf("FSM: request handled (after floor=%d dir=%s behav=%s reqs=%d)",
 		elevator.floor,
 		common.ElevioDirnToString(elevator.dirn),
@@ -176,7 +106,7 @@ func Fsm_onFloorArrival(newFloor int) {
 			outputDevice.DoorLight(true)
 			elevator = requests_clearAtCurrentFloor(elevator)
 			Timer_start(elevator.config.doorOpenDuration_s)
-			SetAllLights(elevator)
+			setAllLights(elevator)
 			elevator.behaviour = EB_DoorOpen
 		}
 	default:
@@ -208,7 +138,7 @@ func Fsm_onDoorTimeout() {
 		case EB_DoorOpen:
 			Timer_start(elevator.config.doorOpenDuration_s)
 			elevator = requests_clearAtCurrentFloor(elevator)
-			SetAllLights(elevator)
+			setAllLights(elevator)
 
 		case EB_Moving, EB_Idle:
 			outputDevice.DoorLight(false)
@@ -223,6 +153,16 @@ func Fsm_onDoorTimeout() {
 		ebToString(elevator.behaviour),
 		countRequests(elevator),
 	)
+}
+
+func clearRequest(floor int, btn elevio.ButtonType) {
+	if floor < 0 || floor >= common.N_FLOORS {
+		return
+	}
+	if btn < 0 || btn >= common.N_BUTTONS {
+		return
+	}
+	elevator.requests[floor][btn] = false
 }
 
 func countRequests(e Elevator) int {

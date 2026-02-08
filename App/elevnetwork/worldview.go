@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-const WV_TIMEOUT_DURATION = 10
+const WV_TIMEOUT_DURATION = 3
 
 type UpdateKind int
 
