@@ -428,26 +428,12 @@ func fsmThread(
 	ticker := time.NewTicker(time.Duration(inputPollRateMs) * time.Millisecond)
 	defer ticker.Stop()
 
-	netSnapCh := netWorldView2Ch
-
-	// Send an initial state update to speed up peer discovery.
-	behavior, direction := elevfsm.CurrentMotionStrings()
-	initialSnap := sync.buildUpdateSnapshot(prevFloor, behavior, direction)
-	select {
-	case elevUpdateCh <- initialSnap:
-	default:
-	}
-
 	for {
 		select {
 		case <-ctx.Done():
 			return
 
-		case snap, ok := <-netSnapCh:
-			if !ok {
-				netSnapCh = nil
-				continue
-			}
+		case snap := <-netWorldView2Ch:
 			now := time.Now()
 			sync.applyNetworkSnapshot(snap, now)
 			log.Printf("fsmThread: net snapshot hall=%d cab_self=%d", countHall(snap.HallRequests), countCabFromSnapshot(snap, cfg.SelfKey))
