@@ -4,6 +4,7 @@ package elevnetwork
 import (
 	"elevator/common"
 	"encoding/json"
+	"log"
 	"reflect"
 	"sync"
 	"time"
@@ -196,6 +197,7 @@ func (wv *WorldView) PublishWorld(ch chan<- common.Snapshot) {
 		alive[id] = ok && now.Sub(t) <= wv.peerTimeout
 	}
 	cp.Alive = alive
+	log.Printf("%v", cp.Alive)
 	wv.mu.Unlock()
 
 	select {

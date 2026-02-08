@@ -437,7 +437,7 @@ func fsmThread(
 		case snap := <-netWorldView2Ch:
 			now := time.Now()
 			sync.applyNetworkSnapshot(snap, now)
-			log.Printf("fsmThread: net snapshot hall=%d cab_self=%d", countHall(snap.HallRequests), countCabFromSnapshot(snap, cfg.SelfKey))
+			//log.Printf("fsmThread: net snapshot hall=%d cab_self=%d", countHall(snap.HallRequests), countCabFromSnapshot(snap, cfg.SelfKey))
 
 			online := !sync.offline(now)
 			if online {
@@ -447,7 +447,7 @@ func fsmThread(
 
 		case task := <-assignerOutputCh:
 			sync.applyAssigner(task)
-			log.Printf("fsmThread: assigner update assigned_hall=%d", countHall(sync.assignedHall))
+			//log.Printf("fsmThread: assigner update assigned_hall=%d", countHall(sync.assignedHall))
 			now := time.Now()
 			if !sync.offline(now) {
 				sync.tryInjectOnline()
