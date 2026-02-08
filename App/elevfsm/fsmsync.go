@@ -110,6 +110,16 @@ func (s *FsmSync) cancelHall(f int, btn elevio.ButtonType, reason string) {
 	clearRequest(f, btn)
 }
 
+func clearRequest(floor int, btn elevio.ButtonType) {
+	if floor < 0 || floor >= common.N_FLOORS {
+		return
+	}
+	if btn < 0 || btn >= common.N_BUTTONS {
+		return
+	}
+	elevator.requests[floor][btn] = false
+}
+
 func (s *FsmSync) ApplyNetworkSnapshot(snap common.Snapshot, now time.Time) {
 	s.hasNet = true
 	s.lastNetSeen = now
