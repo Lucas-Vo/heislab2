@@ -31,12 +31,9 @@ func fsmThread(
 	confirmTimeout := 200 * time.Millisecond
 	doorOpenDuration := elevfsm.DoorOpenDuration()
 
-	initFloor := input.FloorSensor()
-	if initFloor == -1 {
-		elevfsm.Fsm_onInitBetweenFloors()
-	} else {
-		// Initialize FSM floor state immediately to avoid floor=-1 in request handling.
-		elevfsm.Fsm_onFloorArrival(initFloor)
+	initFloor, ok := initAtKnownFloor(ctx, input, time.Duration(inputPollRateMs)*time.Millisecond)
+	if !ok {
+		return
 	}
 
 	sync := elevfsm.NewFsmSync(cfg)
@@ -212,4 +209,32 @@ func countCabFromSnapshot(snap common.Snapshot, selfKey string) int {
 		}
 	}
 	return n
+}
+
+func initAtKnownFloor(ctx context.Context, input common.ElevInputDevice, poll time.Duration) (int, bool) {
+	f := input.FloorSensor()
+	if f != -1 {
+		// Initialize FSM floor state immediately to avoid floor=-1 in request handling.
+		elevfsm.Fsm_onFloorArrival(f)
+		return f, true
+	}
+
+	// Between floors: drive down until a floor is detected.
+	elevfsm.Fsm_onInitBetweenFloors()
+
+	ticker := time.NewTicker(poll)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return -1, false
+		case <-ticker.C:
+			f = input.FloorSensor()
+			if f != -1 {
+				elevfsm.Fsm_onFloorArrival(f)
+				return f, true
+			}
+		}
+	}
 }
