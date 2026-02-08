@@ -428,6 +428,7 @@ func fsmThread(
 	ticker := time.NewTicker(time.Duration(inputPollRateMs) * time.Millisecond)
 	defer ticker.Stop()
 
+	behavior, direction := elevfsm.CurrentMotionStrings()
 	for {
 		select {
 		case <-ctx.Done():
