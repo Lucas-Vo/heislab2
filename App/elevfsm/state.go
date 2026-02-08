@@ -29,3 +29,11 @@ func CurrentMotionStrings() (behavior string, direction string) {
 
 	return behavior, direction
 }
+
+func CurrentBehaviour() ElevatorBehaviour {
+	return elevator.behaviour
+}
+
+func DoorOpenDuration() float64 {
+	return elevator.config.doorOpenDuration_s
+}

@@ -54,6 +54,20 @@ func ElevioGetInputDevice() ElevInputDevice {
 	}
 }
 
+func (d ElevInputDevice) StopButton() int {
+	if d.stopButton == nil {
+		return 0
+	}
+	return d.stopButton()
+}
+
+func (d ElevInputDevice) Obstruction() int {
+	if d.obstruction == nil {
+		return 0
+	}
+	return d.obstruction()
+}
+
 func ElevioGetOutputDevice() ElevOutputDevice {
 	return ElevOutputDevice{
 		FloorIndicator: func(floor int) {

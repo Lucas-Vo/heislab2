@@ -66,6 +66,7 @@ type WorldView struct {
 	lastHeard    map[string]time.Time
 	lastSnapshot map[string]common.Snapshot
 	peerTimeout  time.Duration
+	startTime    time.Time
 
 	// set true when received a snapshot or timeout
 	ready bool
@@ -90,6 +91,7 @@ func NewWorldView(tx Transport, cfg common.Config) *WorldView {
 		lastHeard:    make(map[string]time.Time),
 		lastSnapshot: make(map[string]common.Snapshot),
 		peerTimeout:  WV_TIMEOUT_DURATION * time.Second,
+		startTime:    time.Now(),
 
 		ready:   false,
 		selfKey: cfg.SelfKey,
@@ -128,8 +130,17 @@ func (wv *WorldView) ShouldAcceptMsg(msg NetMsg) bool {
 	wv.mu.Lock()
 	defer wv.mu.Unlock()
 
+	now := time.Now()
+	prevHeard, hadPrev := wv.lastHeard[msg.Origin]
+	wv.lastHeard[msg.Origin] = now
+
 	maxcounter := wv.latestCount[msg.Origin]
 	if msg.Counter <= maxcounter {
+		if !hadPrev || now.Sub(prevHeard) > wv.peerTimeout {
+			// Accept counter resets after silence.
+			wv.latestCount[msg.Origin] = msg.Counter
+			return true
+		}
 		return false
 	}
 	wv.latestCount[msg.Origin] = msg.Counter
@@ -192,9 +203,14 @@ func (wv *WorldView) PublishWorld(ch chan<- common.Snapshot) {
 
 	now := time.Now()
 	alive := make(map[string]bool, len(wv.peers))
+	startupGrace := now.Sub(wv.startTime) <= wv.peerTimeout
 	for _, id := range wv.peers {
 		t, ok := wv.lastHeard[id]
-		alive[id] = ok && now.Sub(t) <= wv.peerTimeout
+		if ok {
+			alive[id] = now.Sub(t) <= wv.peerTimeout
+			continue
+		}
+		alive[id] = startupGrace
 	}
 	cp.Alive = alive
 	log.Printf("%v", cp.Alive)
@@ -251,8 +267,11 @@ func (wv *WorldView) Broadcast(kind UpdateKind) {
 
 	wv.mu.Lock()
 	wv.counter++
+	now := time.Now()
 
 	snapshot := common.DeepCopySnapshot(wv.snapshot)
+	wv.lastHeard[wv.selfKey] = now
+	wv.lastSnapshot[wv.selfKey] = snapshot
 	msg := NetMsg{
 		Origin:   wv.selfKey,
 		Counter:  wv.counter,
