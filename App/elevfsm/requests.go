@@ -130,8 +130,10 @@ func requests_shouldClearImmediately(e Elevator, btn_floor int, btn_type elevio.
 	}
 }
 
-func requests_clearAtCurrentFloor(e Elevator, online bool) (Elevator, bool) {
+func requests_clearAtCurrentFloor(e Elevator, online bool) (Elevator, bool, [2]elevio.ButtonType) {
 	request_serviced := false
+	var servicedDirections [2]elevio.ButtonType
+
 	switch e.Config.ClearRequestVariant {
 	case CV_All:
 		for btn := elevio.ButtonType(0); btn < common.N_BUTTONS; btn++ {
@@ -153,24 +155,26 @@ func requests_clearAtCurrentFloor(e Elevator, online bool) (Elevator, bool) {
 				if !online {
 					e.Requests[e.Floor][elevio.BT_HallDown] = false
 				}
-				request_serviced = true
-
+				servicedDirections[0] = elevio.BT_HallDown
 			}
 			if !online {
 				e.Requests[e.Floor][elevio.BT_HallUp] = false
 			}
+			servicedDirections[1] = elevio.BT_HallUp
 			request_serviced = true
 
 		case elevio.MD_Down:
 			if requests_below(e) == 0 && !e.Requests[e.Floor][elevio.BT_HallDown] {
 				if !online {
 					e.Requests[e.Floor][elevio.BT_HallUp] = false
+					
 				}
-				request_serviced = true
+				servicedDirections[0] = elevio.BT_HallUp
 			}
 			if !online {
-				e.Requests[e.Floor][elevio.BT_HallUp] = false
+				e.Requests[e.Floor][elevio.BT_HallDown] = false
 			}
+			servicedDirections[1] = elevio.BT_HallDown
 			request_serviced = true
 
 		case elevio.MD_Stop:
@@ -186,5 +190,5 @@ func requests_clearAtCurrentFloor(e Elevator, online bool) (Elevator, bool) {
 		// do nothing
 	}
 
-	return e, request_serviced
+	return e, request_serviced,servicedDirections
 }

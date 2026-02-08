@@ -17,7 +17,7 @@ func FsmInit(e *Elevator, out *common.ElevOutputDevice) (Elevator, common.ElevOu
 		),
 	)
 
-	*out = common.ElevOutputDevice{}
+	*out = common.ElevioGetOutputDevice()
 	return *e, *out
 }
 
@@ -34,6 +34,29 @@ func FsmOnInitBetweenFloors(e *Elevator, out *common.ElevOutputDevice) {
 	out.MotorDirection(elevio.MD_Down)
 	e.Dirn = elevio.MD_Down
 	e.Behaviour = EB_Moving
+}
+
+func FSMOnNewAssignment(e *Elevator, out *common.ElevOutputDevice){
+	switch e.Behaviour {
+
+	case EB_Idle:
+
+		pair := requests_chooseDirection(*e)
+		e.Dirn = pair.dirn
+		e.Behaviour = pair.behaviour
+
+		switch pair.behaviour {
+
+		case EB_DoorOpen:
+			out.DoorLight(true)
+			Timer_start(e.Config.DoorOpenDuration_s)
+			*e, _, _ = requests_clearAtCurrentFloor(*e, true)
+
+		case EB_Moving:
+			out.MotorDirection(e.Dirn)
+		case EB_Idle:
+		}
+	}
 }
 
 func FsmOnRequestButtonPress(e *Elevator, out *common.ElevOutputDevice, btnFloor int, btnType elevio.ButtonType, online bool) bool {
@@ -74,7 +97,7 @@ func FsmOnRequestButtonPress(e *Elevator, out *common.ElevOutputDevice, btnFloor
 		case EB_DoorOpen:
 			out.DoorLight(true)
 			Timer_start(e.Config.DoorOpenDuration_s)
-			*e, _ = requests_clearAtCurrentFloor(*e, online)
+			*e, _, _ = requests_clearAtCurrentFloor(*e, online)
 
 		case EB_Moving:
 			out.MotorDirection(e.Dirn)
@@ -89,7 +112,7 @@ func FsmOnRequestButtonPress(e *Elevator, out *common.ElevOutputDevice, btnFloor
 	return request_acknowledged
 }
 
-func FsmOnFloorArrival(e *Elevator, out *common.ElevOutputDevice, newFloor int, online bool) bool {
+func FsmOnFloorArrival(e *Elevator, out *common.ElevOutputDevice, newFloor int, online bool) (bool, [2]elevio.ButtonType) {
 	request_serviced := false
 	log.Printf("\n\n%s(%d)\n", "FsmOnFloorArrival", newFloor)
 	elevator_print(*e)
@@ -97,13 +120,15 @@ func FsmOnFloorArrival(e *Elevator, out *common.ElevOutputDevice, newFloor int, 
 	e.Floor = newFloor
 	out.FloorIndicator(e.Floor)
 
+	var requestDirection [2]elevio.ButtonType
+
 	switch e.Behaviour {
 
 	case EB_Moving:
 		if requests_shouldStop(*e) != 0 {
 			out.MotorDirection(elevio.MD_Stop)
 			out.DoorLight(true)
-			*e, request_serviced = requests_clearAtCurrentFloor(*e, online)
+			*e, request_serviced,requestDirection = requests_clearAtCurrentFloor(*e, online)
 			Timer_start(e.Config.DoorOpenDuration_s)
 			e.Behaviour = EB_DoorOpen
 		}
@@ -111,7 +136,7 @@ func FsmOnFloorArrival(e *Elevator, out *common.ElevOutputDevice, newFloor int, 
 
 	log.Printf("\nNew state:\n")
 	elevator_print(*e)
-	return request_serviced
+	return request_serviced, requestDirection
 }
 
 func FsmOnDoorTimeout(e *Elevator, out *common.ElevOutputDevice) bool {
@@ -130,7 +155,7 @@ func FsmOnDoorTimeout(e *Elevator, out *common.ElevOutputDevice) bool {
 
 		case EB_DoorOpen:
 			Timer_start(e.Config.DoorOpenDuration_s)
-			*e, request_serviced = requests_clearAtCurrentFloor(*e, false)
+			*e, request_serviced, _ = requests_clearAtCurrentFloor(*e, false)
 
 		case EB_Moving, EB_Idle:
 			out.DoorLight(false)

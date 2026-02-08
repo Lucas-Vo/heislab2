@@ -35,18 +35,19 @@ func BuildUpdateSnapshot(elevator *Elevator, selfKey string, prevButtons *[commo
 	}
 }
 
-func BuildServicedSnapshot(elevator *Elevator, selfKey string, prevButtons *[common.N_FLOORS][common.N_BUTTONS]bool) common.Snapshot {
+func BuildServicedSnapshot(elevator *Elevator, selfKey string, floor int,servicedDirection [2]elevio.ButtonType ) common.Snapshot {
 
-	newHallRequests := make([][2]bool, common.N_FLOORS)
+	servicedHallRequests := make([][2]bool, common.N_FLOORS)
 	for f := 0; f < common.N_FLOORS; f++ {
-		for b := 0; b < 2; b++ {
-			if elevator.Requests[f][b] != prevButtons[f][b] {
-				newHallRequests[f][b] = prevButtons[f][b]
-			} else {
-				newHallRequests[f][b] = true
-			}
+		for b:=0; b<2; b++ {
+			servicedHallRequests[f][b] = true
 		}
 	}
+	for directions := range servicedDirection {
+		servicedHallRequests[floor][directions] = false	
+	}
+	
+	
 	cabRequests := make([]bool, common.N_FLOORS)
 	for f := 0; f < common.N_FLOORS; f++ {
 		cabRequests[f] = elevator.Requests[f][elevio.BT_Cab]
@@ -54,7 +55,7 @@ func BuildServicedSnapshot(elevator *Elevator, selfKey string, prevButtons *[com
 
 	behaviour, direction := CurrentMotionStrings(elevator)
 	return common.Snapshot{
-		HallRequests: newHallRequests,
+		HallRequests: servicedHallRequests,
 		States: map[string]common.ElevState{
 			selfKey: {
 				Behavior:    behaviour,

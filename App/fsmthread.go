@@ -55,12 +55,14 @@ func fsmThread(
 	initializedFromNetwork := false
 	stuckWarned := false
 	networkConnected := false
+	assignerConnected := true
 
 	ticker := time.NewTicker(time.Duration(inputPollRateMs) * time.Millisecond)
 	defer ticker.Stop()
 
 	prevButtons := [common.N_FLOORS][common.N_BUTTONS]bool{}
 	prevFloor := -1
+	var servicedDirection [2]elevio.ButtonType
 
 	for {
 		select {
@@ -87,11 +89,13 @@ func fsmThread(
 			log.Printf("fsmThread: assigner update")
 			now := time.Now()
 			lastAssignerPack = now
+			assignerConnected = true
+			elevfsm.FSMOnNewAssignment(&elevator,&output)
 
 		case <-ticker.C:
 			now := time.Now()
 			timeSinceLastNet := now.Sub(lastNetPack)
-			if timeSinceLastNet > netOfflineTimeout {
+			if timeSinceLastNet > netOfflineTimeout  {
 				if networkConnected {
 					log.Printf("fsmThread: network connection lost (last packet %.1fs ago); entering offline mode", timeSinceLastNet.Seconds())
 					networkConnected = false
@@ -99,8 +103,9 @@ func fsmThread(
 			}
 			timeSinceLastAssigner := now.Sub(lastAssignerPack)
 			if timeSinceLastAssigner > netOfflineTimeout {
-				if lastAssignerPack != (time.Time{}) {
+				if assignerConnected {
 					log.Printf("fsmThread: assigner connection lost (last packet %.1fs ago)", timeSinceLastAssigner.Seconds())
+					assignerConnected = false
 				}
 			}
 
@@ -122,8 +127,8 @@ func fsmThread(
 			// Floor sensor
 			f := input.FloorSensor()
 			if f != -1 && f != prevFloor {
-				changedServiced = elevfsm.FsmOnFloorArrival(&elevator, &output, f, networkConnected)
-				changedServiced = true
+				changedServiced,servicedDirection = elevfsm.FsmOnFloorArrival(&elevator, &output, f, networkConnected)
+				
 				log.Printf("fsmThread: serviced requests at floor %d", prevFloor)
 
 				prevFloor = f
@@ -144,7 +149,7 @@ func fsmThread(
 			// Inject confirmed requests
 
 			if changedServiced {
-				snap := elevfsm.BuildServicedSnapshot(&elevator, selfKey, &prevButtons)
+				snap := elevfsm.BuildServicedSnapshot(&elevator, selfKey, prevFloor,servicedDirection)
 				select {
 				case elevServicedCh <- snap:
 				default:
