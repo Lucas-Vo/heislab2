@@ -37,61 +37,12 @@ func Fsm_init() {
 	SetAllLights(elevator)
 }
 
-// NEW: Call this whenever you want lamps to reflect a Snapshot.
-// - hall lamps: ns.HallRequests
-// - cab lamps:  ns.States[selfKey].CabRequests
-func SetAllRequestLightsFromSnapshot(ns common.Snapshot, selfKey string) {
-	// Update hall lamp buffer if present
-	if ns.HallRequests != nil {
-		if hallLamp == nil || len(hallLamp) != common.N_FLOORS {
-			hallLamp = make([][2]bool, common.N_FLOORS)
-		}
-
-		n := len(ns.HallRequests)
-		if n > common.N_FLOORS {
-			n = common.N_FLOORS
-		}
-		for f := 0; f < n; f++ {
-			hallLamp[f] = ns.HallRequests[f]
-		}
-		for f := n; f < common.N_FLOORS; f++ {
-			hallLamp[f] = [2]bool{false, false}
-		}
-	}
-
-	// Update cab lamp buffer for self if present
-	if ns.States != nil {
-		if st, ok := ns.States[selfKey]; ok && st.CabRequests != nil {
-			if cabLamp == nil || len(cabLamp) != common.N_FLOORS {
-				cabLamp = make([]bool, common.N_FLOORS)
-			}
-
-			n := len(st.CabRequests)
-			if n > common.N_FLOORS {
-				n = common.N_FLOORS
-			}
-			for f := 0; f < n; f++ {
-				cabLamp[f] = st.CabRequests[f]
-			}
-			for f := n; f < common.N_FLOORS; f++ {
-				cabLamp[f] = false
-			}
-		}
-	}
-
-	// Apply to hardware
-	SetAllLights(elevator)
-}
-
 // UPDATED: SetAllLights no longer uses the FSM's internal request matrix for lamps.
 // It uses hallLamp/cabLamp (network/glue driven) so hall lamps reflect building-wide HallRequests.
-func SetAllLights(_ Elevator) {
-	if hallLamp == nil || len(hallLamp) != common.N_FLOORS {
-		hallLamp = make([][2]bool, common.N_FLOORS)
-	}
-	if cabLamp == nil || len(cabLamp) != common.N_FLOORS {
-		cabLamp = make([]bool, common.N_FLOORS)
-	}
+func SetAllLights(snap Snapshot,selfKey string) {
+	cabLamp = snap.States[selfKey].CabRequests
+	hallLamp = snap.HallRequests
+
 
 	for floor := range common.N_FLOORS {
 		outputDevice.RequestButtonLight(floor, elevio.BT_HallUp, hallLamp[floor][0])

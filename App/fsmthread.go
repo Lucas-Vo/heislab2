@@ -363,7 +363,7 @@ func (s *fsmSync) applyLights(online bool) {
 				s.selfKey: {CabRequests: cloneBoolSlice(s.localCab)},
 			},
 		}
-		elevfsm.SetAllRequestLightsFromSnapshot(snap, s.selfKey)
+		setAllLights(snap)
 		return
 	}
 
@@ -376,7 +376,7 @@ func (s *fsmSync) applyLights(online bool) {
 			s.selfKey: {CabRequests: emptyCab},
 		},
 	}
-	elevfsm.SetAllRequestLightsFromSnapshot(snap, s.selfKey)
+	SetAllLights(snap)
 }
 
 func (s *fsmSync) motionChanged(floor int, behavior string, direction string) bool {
@@ -427,6 +427,8 @@ func fsmThread(
 
 	ticker := time.NewTicker(time.Duration(inputPollRateMs) * time.Millisecond)
 	defer ticker.Stop()
+
+	behavior, direction := elevfsm.CurrentMotionStrings()
 
 	for {
 		select {
