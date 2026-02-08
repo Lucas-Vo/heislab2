@@ -406,6 +406,33 @@ func (s *FsmSync) ApplyLights(snap common.Snapshot) {
 	}
 }
 
+// RestoreLocalCab seeds local cab requests (e.g. from persistent storage).
+// Returns the number of restored cab requests.
+func (s *FsmSync) RestoreLocalCab(cab []bool) int {
+	if s.localCab == nil || len(s.localCab) != common.N_FLOORS {
+		s.localCab = make([]bool, common.N_FLOORS)
+	}
+	count := 0
+	for f := 0; f < common.N_FLOORS; f++ {
+		v := false
+		if cab != nil && f < len(cab) {
+			v = cab[f]
+		}
+		s.localCab[f] = v
+		s.pendingAt[f][elevio.BT_Cab] = time.Time{}
+		s.injected[f][elevio.BT_Cab] = false
+		s.confirmed[f][elevio.BT_Cab] = false
+		if v {
+			count++
+		}
+	}
+	return count
+}
+
+func (s *FsmSync) LocalCabSnapshot() []bool {
+	return cloneBoolSlice(s.localCab)
+}
+
 func (s *FsmSync) MotionChanged(floor int, behavior string, direction string) bool {
 	if s.reportedFloor != floor || s.reportedBehavior != behavior || s.reportedDirection != direction {
 		s.reportedFloor = floor

@@ -3,7 +3,9 @@ package main
 import (
 	elevio "Driver-go/elevio"
 	"context"
+	"encoding/json"
 	"log"
+	"os"
 	"time"
 
 	"elevator/common"
@@ -37,6 +39,14 @@ func fsmThread(
 	}
 
 	sync := elevfsm.NewFsmSync(cfg)
+	persistPath := cabPersistPath(cfg.SelfKey)
+	if cab, err := loadCabRequests(persistPath); err == nil {
+		if n := sync.RestoreLocalCab(cab); n > 0 {
+			log.Printf("fsmThread: restored %d cab request(s) from %s", n, persistPath)
+		}
+	} else if !os.IsNotExist(err) {
+		log.Printf("fsmThread: failed to load cab requests (%s): %v", persistPath, err)
+	}
 	var prevReq [common.N_FLOORS][common.N_BUTTONS]int
 	prevFloor := initFloor
 	lastFloorSeen := time.Now()
@@ -50,10 +60,15 @@ func fsmThread(
 	defer ticker.Stop()
 
 	behavior, direction := elevfsm.CurrentMotionStrings()
+	// Seed network with an initial snapshot (includes restored cab requests if any).
+	sendInitialSnapshot(ctx, elevUpdateCh, sync.BuildUpdateSnapshot(prevFloor, behavior, direction))
 
 	for {
 		select {
 		case <-ctx.Done():
+			if err := saveCabRequests(persistPath, sync.LocalCabSnapshot()); err != nil {
+				log.Printf("fsmThread: failed to save cab requests (%s): %v", persistPath, err)
+			}
 			return
 
 		case snap := <-netWorldView2Ch:
@@ -235,6 +250,68 @@ func initAtKnownFloor(ctx context.Context, input common.ElevInputDevice, poll ti
 				elevfsm.Fsm_onFloorArrival(f)
 				return f, true
 			}
+		}
+	}
+}
+
+type cabPersist struct {
+	Cab []bool `json:"cab"`
+}
+
+func cabPersistPath(selfKey string) string {
+	return ".cab_requests_" + selfKey + ".json"
+}
+
+func loadCabRequests(path string) ([]bool, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var p cabPersist
+	if err := json.Unmarshal(data, &p); err != nil {
+		return nil, err
+	}
+	if len(p.Cab) == 0 {
+		return nil, nil
+	}
+	out := make([]bool, common.N_FLOORS)
+	for i := 0; i < common.N_FLOORS && i < len(p.Cab); i++ {
+		out[i] = p.Cab[i]
+	}
+	return out, nil
+}
+
+func saveCabRequests(path string, cab []bool) error {
+	hasAny := false
+	for i := 0; i < common.N_FLOORS && i < len(cab); i++ {
+		if cab[i] {
+			hasAny = true
+			break
+		}
+	}
+	if !hasAny {
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		return nil
+	}
+
+	payload := cabPersist{Cab: cab}
+	b, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, b, 0o644)
+}
+
+func sendInitialSnapshot(ctx context.Context, ch chan<- common.Snapshot, snap common.Snapshot) {
+	for {
+		select {
+		case ch <- snap:
+			return
+		case <-ctx.Done():
+			return
+		case <-time.After(25 * time.Millisecond):
 		}
 	}
 }
