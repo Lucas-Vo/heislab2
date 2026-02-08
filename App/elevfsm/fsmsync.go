@@ -7,7 +7,8 @@ import (
 	"time"
 )
 
-const netOfflineTimeout = 1 * time.Second
+// Allow a few missed snapshots before declaring offline.
+const netOfflineTimeout = 3 * time.Second
 
 type ServicedAt struct {
 	HallUp   bool
