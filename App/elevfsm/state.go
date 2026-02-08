@@ -1,11 +1,15 @@
 package elevfsm
 
-import "Driver-go/elevio"
+import (
+	"Driver-go/elevio"
+)
 
 // CurrentMotionStrings returns the current FSM behaviour and motor direction
 // in the string format expected by the hall request assigner.
-func CurrentMotionStrings() (behavior string, direction string) {
-	switch elevator.behaviour {
+func CurrentMotionStrings(elevator *Elevator) (string, string) {
+	behavior := "idle"
+	direction := "stop"
+	switch elevator.Behaviour {
 	case EB_Idle:
 		behavior = "idle"
 	case EB_DoorOpen:
@@ -16,7 +20,7 @@ func CurrentMotionStrings() (behavior string, direction string) {
 		behavior = "idle"
 	}
 
-	switch elevator.dirn {
+	switch elevator.Dirn {
 	case elevio.MD_Up:
 		direction = "up"
 	case elevio.MD_Down:

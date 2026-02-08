@@ -25,13 +25,13 @@ const (
 
 // structs
 type Elevator struct {
-	floor     int
-	dirn      elevio.MotorDirection
-	behaviour ElevatorBehaviour
-	requests  [common.N_FLOORS][common.N_BUTTONS]bool
-	config    struct {
-		clearRequestVariant ClearRequestVariant
-		doorOpenDuration_s  float64
+	Floor     int
+	Dirn      elevio.MotorDirection
+	Behaviour ElevatorBehaviour
+	Requests  [common.N_FLOORS][common.N_BUTTONS]bool
+	Config    struct {
+		ClearRequestVariant ClearRequestVariant
+		DoorOpenDuration_s  float64
 	}
 }
 
@@ -57,9 +57,9 @@ func elevator_print(es Elevator) {
 		"  |floor = %-2d          |\n"+
 			"  |dirn  = %-12.12s|\n"+
 			"  |behav = %-12.12s|\n",
-		es.floor,
-		common.ElevioDirnToString(es.dirn),
-		ebToString(es.behaviour),
+		es.Floor,
+		common.ElevioDirnToString(es.Dirn),
+		ebToString(es.Behaviour),
 	)
 	fmt.Printf("  +--------------------+\n")
 	fmt.Printf("  |  | up  | dn  | cab |\n")
@@ -71,7 +71,7 @@ func elevator_print(es Elevator) {
 				(f == 0 && btn == elevio.BT_HallDown) {
 				fmt.Printf("|     ")
 			} else {
-				if es.requests[f][btn] {
+				if es.Requests[f][btn] {
 					fmt.Printf("|  #  ")
 				} else {
 					fmt.Printf("|  -  ")
@@ -85,10 +85,10 @@ func elevator_print(es Elevator) {
 
 func elevator_uninitialized() Elevator {
 	var elevator Elevator
-	elevator.floor = -1
-	elevator.dirn = elevio.MD_Stop
-	elevator.behaviour = EB_Idle
-	elevator.config.clearRequestVariant = CV_All
-	elevator.config.doorOpenDuration_s = 3.0
+	elevator.Floor = -1
+	elevator.Dirn = elevio.MD_Stop
+	elevator.Behaviour = EB_Idle
+	elevator.Config.ClearRequestVariant = CV_All
+	elevator.Config.DoorOpenDuration_s = 3.0
 	return elevator
 }

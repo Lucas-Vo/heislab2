@@ -3,8 +3,8 @@ module elevator
 go 1.24
 
 require (
-	github.com/quic-go/quic-go v0.59.0
 	Driver-go v0.0.0
+	github.com/quic-go/quic-go v0.59.0
 )
 
 require (

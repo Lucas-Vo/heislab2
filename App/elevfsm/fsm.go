@@ -6,184 +6,139 @@ import (
 	"log"
 )
 
-var elevator Elevator
-var outputDevice common.ElevOutputDevice
-
-// NEW: these are the lamp states we want to show.
-// They are driven by:
-// - HallRequests from network snapshots
-// - CabRequests (for self) from network snapshots (and/or local updates via glue snapshots)
-var hallLamp [][2]bool
-var cabLamp []bool
-
-func Fsm_init() {
-	elevator = elevator_uninitialized()
+func FsmInit(e *Elevator, out *common.ElevOutputDevice) (Elevator, common.ElevOutputDevice) {
+	*e = elevator_uninitialized()
 
 	ConLoad("elevator.con",
-		ConVal("doorOpenDuration_s", &elevator.config.doorOpenDuration_s, "%f"),
-		ConEnum("clearRequestVariant", &elevator.config.clearRequestVariant,
+		ConVal("doorOpenDuration_s", &e.Config.DoorOpenDuration_s, "%f"),
+		ConEnum("clearRequestVariant", &e.Config.ClearRequestVariant,
 			ConMatch("CV_All", CV_All),
 			ConMatch("CV_InDirn", CV_InDirn),
 		),
 	)
 
-	outputDevice = common.ElevioGetOutputDevice()
-
-	// Init lamp buffers
-	hallLamp = make([][2]bool, common.N_FLOORS)
-	cabLamp = make([]bool, common.N_FLOORS)
-
-	// Clear lamps at init
-	SetAllLights(elevator)
+	*out = common.ElevOutputDevice{}
+	return *e, *out
 }
 
-// UPDATED: SetAllLights no longer uses the FSM's internal request matrix for lamps.
-// It uses hallLamp/cabLamp (network/glue driven) so hall lamps reflect building-wide HallRequests.
-func SetAllLights(snap Snapshot,selfKey string) {
-	cabLamp = snap.States[selfKey].CabRequests
-	hallLamp = snap.HallRequests
-
-
-	for floor := range common.N_FLOORS {
-		outputDevice.RequestButtonLight(floor, elevio.BT_HallUp, hallLamp[floor][0])
-		outputDevice.RequestButtonLight(floor, elevio.BT_HallDown, hallLamp[floor][1])
-		outputDevice.RequestButtonLight(floor, elevio.BT_Cab, cabLamp[floor])
+func SetAllLights(snap common.Snapshot, selfKey string, out *common.ElevOutputDevice) {
+	for floor := 0; floor < common.N_FLOORS; floor++ {
+		for btn := 0; btn < 2; btn++ {
+			out.RequestButtonLight(floor, elevio.ButtonType(btn), snap.HallRequests[floor][btn])
+		}
+		out.RequestButtonLight(floor, elevio.ButtonType(elevio.BT_Cab), snap.States[selfKey].CabRequests[floor])
 	}
 }
 
-func Fsm_onInitBetweenFloors() {
-	outputDevice.MotorDirection(elevio.MD_Down)
-	elevator.dirn = elevio.MD_Down
-	elevator.behaviour = EB_Moving
+func FsmOnInitBetweenFloors(e *Elevator, out *common.ElevOutputDevice) {
+	out.MotorDirection(elevio.MD_Down)
+	e.Dirn = elevio.MD_Down
+	e.Behaviour = EB_Moving
 }
 
-func Fsm_onRequestButtonPress(btn_floor int, btn_type elevio.ButtonType) {
-	log.Printf("FSM: request press floor=%d btn=%s (before floor=%d dir=%s behav=%s reqs=%d)",
-		btn_floor,
-		common.ElevioButtonToString(btn_type),
-		elevator.floor,
-		common.ElevioDirnToString(elevator.dirn),
-		ebToString(elevator.behaviour),
-		countRequests(elevator),
-	)
+func FsmOnRequestButtonPress(e *Elevator, out *common.ElevOutputDevice, btnFloor int, btnType elevio.ButtonType, online bool) bool {
+	request_acknowledged := false
+	log.Printf("\n\n%s(%d, %s)\n", "FsmOnRequestButtonPress", btnFloor, common.ElevioButtonToString(btnType))
+	elevator_print(*e)
 
-	switch elevator.behaviour {
+	switch e.Behaviour {
+
 	case EB_DoorOpen:
-		if requests_shouldClearImmediately(elevator, btn_floor, btn_type) != 0 {
-			Timer_start(elevator.config.doorOpenDuration_s)
+		if requests_shouldClearImmediately(*e, btnFloor, btnType) != 0 {
+			Timer_start(e.Config.DoorOpenDuration_s)
 		} else {
-			elevator.requests[btn_floor][btn_type] = true
+			if !online || btnType == elevio.BT_Cab {
+				e.Requests[btnFloor][btnType] = true
+			}
+			request_acknowledged = true
 		}
 
 	case EB_Moving:
-		elevator.requests[btn_floor][btn_type] = true
+		if !online || btnType == elevio.BT_Cab {
+			e.Requests[btnFloor][btnType] = true
+		}
+		request_acknowledged = true
 
 	case EB_Idle:
-		elevator.requests[btn_floor][btn_type] = true
-		pair := requests_chooseDirection(elevator)
-		elevator.dirn = pair.dirn
-		elevator.behaviour = pair.behaviour
+		if !online || btnType == elevio.BT_Cab {
+			e.Requests[btnFloor][btnType] = true
+		}
+		request_acknowledged = true
+
+		pair := requests_chooseDirection(*e)
+		e.Dirn = pair.dirn
+		e.Behaviour = pair.behaviour
 
 		switch pair.behaviour {
+
 		case EB_DoorOpen:
-			outputDevice.DoorLight(true)
-			Timer_start(elevator.config.doorOpenDuration_s)
-			elevator = requests_clearAtCurrentFloor(elevator)
+			out.DoorLight(true)
+			Timer_start(e.Config.DoorOpenDuration_s)
+			*e, _ = requests_clearAtCurrentFloor(*e, online)
 
 		case EB_Moving:
-			outputDevice.MotorDirection(elevator.dirn)
+			out.MotorDirection(e.Dirn)
 
 		case EB_Idle:
-			// do nothing
 		}
 	}
 
-	// Lamps are driven by network/glue state; keep applying current lamp buffers.
-	SetAllLights(elevator)
-	log.Printf("FSM: request handled (after floor=%d dir=%s behav=%s reqs=%d)",
-		elevator.floor,
-		common.ElevioDirnToString(elevator.dirn),
-		ebToString(elevator.behaviour),
-		countRequests(elevator),
-	)
+	log.Printf("\nNew state:\n")
+	elevator_print(*e)
+
+	return request_acknowledged
 }
 
-func Fsm_onFloorArrival(newFloor int) {
-	log.Printf("FSM: floor arrival %d (before floor=%d dir=%s behav=%s reqs=%d)",
-		newFloor,
-		elevator.floor,
-		common.ElevioDirnToString(elevator.dirn),
-		ebToString(elevator.behaviour),
-		countRequests(elevator),
-	)
+func FsmOnFloorArrival(e *Elevator, out *common.ElevOutputDevice, newFloor int, online bool) bool {
+	request_serviced := false
+	log.Printf("\n\n%s(%d)\n", "FsmOnFloorArrival", newFloor)
+	elevator_print(*e)
 
-	elevator.floor = newFloor
-	outputDevice.FloorIndicator(elevator.floor)
+	e.Floor = newFloor
+	out.FloorIndicator(e.Floor)
 
-	switch elevator.behaviour {
+	switch e.Behaviour {
+
 	case EB_Moving:
-		if requests_shouldStop(elevator) != 0 {
-			outputDevice.MotorDirection(elevio.MD_Stop)
-			outputDevice.DoorLight(true)
-			elevator = requests_clearAtCurrentFloor(elevator)
-			Timer_start(elevator.config.doorOpenDuration_s)
-			SetAllLights(elevator)
-			elevator.behaviour = EB_DoorOpen
+		if requests_shouldStop(*e) != 0 {
+			out.MotorDirection(elevio.MD_Stop)
+			out.DoorLight(true)
+			*e, request_serviced = requests_clearAtCurrentFloor(*e, online)
+			Timer_start(e.Config.DoorOpenDuration_s)
+			e.Behaviour = EB_DoorOpen
 		}
-	default:
-		// do nothing
 	}
-	log.Printf("FSM: floor arrival handled (after floor=%d dir=%s behav=%s reqs=%d)",
-		elevator.floor,
-		common.ElevioDirnToString(elevator.dirn),
-		ebToString(elevator.behaviour),
-		countRequests(elevator),
-	)
+
+	log.Printf("\nNew state:\n")
+	elevator_print(*e)
+	return request_serviced
 }
 
-func Fsm_onDoorTimeout() {
-	log.Printf("FSM: door timeout (before floor=%d dir=%s behav=%s reqs=%d)",
-		elevator.floor,
-		common.ElevioDirnToString(elevator.dirn),
-		ebToString(elevator.behaviour),
-		countRequests(elevator),
-	)
+func FsmOnDoorTimeout(e *Elevator, out *common.ElevOutputDevice) bool {
+	request_serviced := false
+	log.Printf("\n\n%s()\n", "FsmOnDoorTimeout")
+	elevator_print(*e)
 
-	switch elevator.behaviour {
+	switch e.Behaviour {
+
 	case EB_DoorOpen:
-		pair := requests_chooseDirection(elevator)
-		elevator.dirn = pair.dirn
-		elevator.behaviour = pair.behaviour
+		pair := requests_chooseDirection(*e) //TODO add this into a thing so that it constantly updates direction and runs elevator even if something else changes elevator struct
+		e.Dirn = pair.dirn
+		e.Behaviour = pair.behaviour
 
-		switch elevator.behaviour {
+		switch e.Behaviour {
+
 		case EB_DoorOpen:
-			Timer_start(elevator.config.doorOpenDuration_s)
-			elevator = requests_clearAtCurrentFloor(elevator)
-			SetAllLights(elevator)
+			Timer_start(e.Config.DoorOpenDuration_s)
+			*e, request_serviced = requests_clearAtCurrentFloor(*e, false)
 
 		case EB_Moving, EB_Idle:
-			outputDevice.DoorLight(false)
-			outputDevice.MotorDirection(elevator.dirn)
+			out.DoorLight(false)
+			out.MotorDirection(e.Dirn)
 		}
-	default:
-		// do nothing
 	}
-	log.Printf("FSM: door timeout handled (after floor=%d dir=%s behav=%s reqs=%d)",
-		elevator.floor,
-		common.ElevioDirnToString(elevator.dirn),
-		ebToString(elevator.behaviour),
-		countRequests(elevator),
-	)
-}
 
-func countRequests(e Elevator) int {
-	n := 0
-	for f := 0; f < common.N_FLOORS; f++ {
-		for b := 0; b < common.N_BUTTONS; b++ {
-			if e.requests[f][b] {
-				n++
-			}
-		}
-	}
-	return n
+	log.Printf("\nNew state:\n")
+	elevator_print(*e)
+	return request_serviced
 }
