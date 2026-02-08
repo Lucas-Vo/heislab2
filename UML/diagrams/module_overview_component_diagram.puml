@@ -1,0 +1,21 @@
+@startuml 
+ skinparam componentStyle rectangle
+skinparam linetype ortho
+skinparam ArrowColor Black
+skinparam ArrowThickness 1.5
+skinparam DefaultFontSize 12
+
+component "Assigner" as Ass
+component "Elevator FSM" as FSM
+component "Network" as Net
+
+
+
+
+FSM --> Net : servicedOrdersCh
+FSM --> Net : currentStateCh
+Net --> Ass : worldviewCh1
+Net --> FSM : worldviewCh2
+Ass --> FSM : ElevatorAssignmentCh
+
+@enduml
