@@ -6,22 +6,17 @@ import (
 	"log"
 )
 
-var elevator Elevator
 var outputDevice common.ElevOutputDevice
-
-// NEW: these are the lamp states we want to show.
-// They are driven by:
-// - HallRequests from network snapshots
-// - CabRequests (for self) from network snapshots (and/or local updates via glue snapshots)
 var hallLamp [][2]bool
 var cabLamp []bool
 
-func Fsm_init() {
-	elevator = elevator_uninitialized()
+func Fsm_init() (elevator *Elevator) {
+	var e *Elevator
+	*e = elevator_uninitialized()
 
 	ConLoad("elevator.con",
-		ConVal("doorOpenDuration_s", &elevator.config.doorOpenDuration_s, "%f"),
-		ConEnum("clearRequestVariant", &elevator.config.clearRequestVariant,
+		ConVal("doorOpenDuration_s", &e.config.doorOpenDuration_s, "%f"),
+		ConEnum("clearRequestVariant", &e.config.clearRequestVariant,
 			ConMatch("CV_All", CV_All),
 			ConMatch("CV_InDirn", CV_InDirn),
 		),
@@ -34,13 +29,11 @@ func Fsm_init() {
 	cabLamp = make([]bool, common.N_FLOORS)
 
 	// Clear lamps at init
-	SetAllLights(elevator)
+	SetAllLights(*e)
+	return e
 }
 
-// NEW: Call this whenever you want lamps to reflect a Snapshot.
-// - hall lamps: ns.HallRequests
-// - cab lamps:  ns.States[selfKey].CabRequests
-func SetAllRequestLightsFromSnapshot(ns common.Snapshot, selfKey string) {
+func SetAllRequestLightsFromSnapshot(e *Elevator, ns common.Snapshot, selfKey string) {
 	// Update hall lamp buffer if present
 	if ns.HallRequests != nil {
 		if hallLamp == nil || len(hallLamp) != common.N_FLOORS {
@@ -80,7 +73,7 @@ func SetAllRequestLightsFromSnapshot(ns common.Snapshot, selfKey string) {
 	}
 
 	// Apply to hardware
-	SetAllLights(elevator)
+	SetAllLights(*e)
 }
 
 // UPDATED: SetAllLights no longer uses the FSM's internal request matrix for lamps.
@@ -100,47 +93,45 @@ func SetAllLights(_ Elevator) {
 	}
 }
 
-func Fsm_onInitBetweenFloors() {
+func Fsm_onInitBetweenFloors(e *Elevator) {
 	outputDevice.MotorDirection(elevio.MD_Down)
-	elevator.dirn = elevio.MD_Down
-	elevator.behaviour = EB_Moving
+	e.dirn = elevio.MD_Down
+	e.behaviour = EB_Moving
 }
 
-func Fsm_onRequestButtonPress(btn_floor int, btn_type elevio.ButtonType) {
-	log.Printf("FSM: request press floor=%d btn=%s (before floor=%d dir=%s behav=%s reqs=%d)",
+func Fsm_onRequestButtonPress(e *Elevator, btn_floor int, btn_type elevio.ButtonType) {
+	log.Printf("FSM: request press floor=%d btn=%s (before floor=%d dir=%s behav=%s)",
 		btn_floor,
 		common.ElevioButtonToString(btn_type),
-		elevator.floor,
-		common.ElevioDirnToString(elevator.dirn),
-		ebToString(elevator.behaviour),
-		countRequests(elevator),
+		e.floor,
+		common.ElevioDirnToString(e.dirn),
+		ebToString(e.behaviour),
 	)
-
-	switch elevator.behaviour {
+	switch e.behaviour {
 	case EB_DoorOpen:
-		if requests_shouldClearImmediately(elevator, btn_floor, btn_type) != 0 {
-			Timer_start(elevator.config.doorOpenDuration_s)
+		if requests_shouldClearImmediately(*e, btn_floor, btn_type) != 0 {
+			Timer_start(e.config.doorOpenDuration_s)
 		} else {
-			elevator.requests[btn_floor][btn_type] = true
+			e.requests[btn_floor][btn_type] = true
 		}
 
 	case EB_Moving:
-		elevator.requests[btn_floor][btn_type] = true
+		e.requests[btn_floor][btn_type] = true
 
 	case EB_Idle:
-		elevator.requests[btn_floor][btn_type] = true
-		pair := requests_chooseDirection(elevator)
-		elevator.dirn = pair.dirn
-		elevator.behaviour = pair.behaviour
+		e.requests[btn_floor][btn_type] = true
+		pair := requests_chooseDirection(*e)
+		e.dirn = pair.dirn
+		e.behaviour = pair.behaviour
 
 		switch pair.behaviour {
 		case EB_DoorOpen:
 			outputDevice.DoorLight(true)
-			Timer_start(elevator.config.doorOpenDuration_s)
-			elevator = requests_clearAtCurrentFloor(elevator)
+			Timer_start(e.config.doorOpenDuration_s)
+			*e = requests_clearAtCurrentFloor(*e)
 
 		case EB_Moving:
-			outputDevice.MotorDirection(elevator.dirn)
+			outputDevice.MotorDirection(e.dirn)
 
 		case EB_Idle:
 			// do nothing
@@ -148,91 +139,103 @@ func Fsm_onRequestButtonPress(btn_floor int, btn_type elevio.ButtonType) {
 	}
 
 	// Lamps are driven by network/glue state; keep applying current lamp buffers.
-	SetAllLights(elevator)
-	log.Printf("FSM: request handled (after floor=%d dir=%s behav=%s reqs=%d)",
-		elevator.floor,
-		common.ElevioDirnToString(elevator.dirn),
-		ebToString(elevator.behaviour),
-		countRequests(elevator),
-	)
+	SetAllLights(*e)
 }
 
-func Fsm_onFloorArrival(newFloor int) {
-	log.Printf("FSM: floor arrival %d (before floor=%d dir=%s behav=%s reqs=%d)",
+func Fsm_onFloorArrival(e *Elevator, newFloor int) {
+	log.Printf("FSM: floor arrival %d (before floor=%d dir=%s behav=%s)",
 		newFloor,
-		elevator.floor,
-		common.ElevioDirnToString(elevator.dirn),
-		ebToString(elevator.behaviour),
-		countRequests(elevator),
+		e.floor,
+		common.ElevioDirnToString(e.dirn),
+		ebToString(e.behaviour),
 	)
 
-	elevator.floor = newFloor
-	outputDevice.FloorIndicator(elevator.floor)
+	e.floor = newFloor
+	outputDevice.FloorIndicator(e.floor)
 
-	switch elevator.behaviour {
+	switch e.behaviour {
 	case EB_Moving:
-		if requests_shouldStop(elevator) != 0 {
+		if requests_shouldStop(*e) != 0 {
 			outputDevice.MotorDirection(elevio.MD_Stop)
 			outputDevice.DoorLight(true)
-			elevator = requests_clearAtCurrentFloor(elevator)
-			Timer_start(elevator.config.doorOpenDuration_s)
-			SetAllLights(elevator)
-			elevator.behaviour = EB_DoorOpen
+			*e = requests_clearAtCurrentFloor(*e)
+			Timer_start(e.config.doorOpenDuration_s)
+			SetAllLights(*e)
+			e.behaviour = EB_DoorOpen
 		}
 	default:
 		// do nothing
 	}
-	log.Printf("FSM: floor arrival handled (after floor=%d dir=%s behav=%s reqs=%d)",
-		elevator.floor,
-		common.ElevioDirnToString(elevator.dirn),
-		ebToString(elevator.behaviour),
-		countRequests(elevator),
+	log.Printf("FSM: floor arrival handled (after floor=%d dir=%s behav=%s)",
+		e.floor,
+		common.ElevioDirnToString(e.dirn),
+		ebToString(e.behaviour),
 	)
 }
 
-func Fsm_onDoorTimeout() {
-	log.Printf("FSM: door timeout (before floor=%d dir=%s behav=%s reqs=%d)",
-		elevator.floor,
-		common.ElevioDirnToString(elevator.dirn),
-		ebToString(elevator.behaviour),
-		countRequests(elevator),
+func Fsm_onDoorTimeout(e *Elevator) {
+	log.Printf("FSM: door timeout (before floor=%d dir=%s behav=%s)",
+		e.floor,
+		common.ElevioDirnToString(e.dirn),
+		ebToString(e.behaviour),
 	)
 
-	switch elevator.behaviour {
+	switch e.behaviour {
 	case EB_DoorOpen:
-		pair := requests_chooseDirection(elevator)
-		elevator.dirn = pair.dirn
-		elevator.behaviour = pair.behaviour
+		pair := requests_chooseDirection(*e)
+		e.dirn = pair.dirn
+		e.behaviour = pair.behaviour
 
-		switch elevator.behaviour {
+		switch e.behaviour {
 		case EB_DoorOpen:
-			Timer_start(elevator.config.doorOpenDuration_s)
-			elevator = requests_clearAtCurrentFloor(elevator)
-			SetAllLights(elevator)
+			Timer_start(e.config.doorOpenDuration_s)
+			*e = requests_clearAtCurrentFloor(*e)
+			SetAllLights(*e)
 
 		case EB_Moving, EB_Idle:
 			outputDevice.DoorLight(false)
-			outputDevice.MotorDirection(elevator.dirn)
+			outputDevice.MotorDirection(e.dirn)
 		}
 	default:
 		// do nothing
 	}
-	log.Printf("FSM: door timeout handled (after floor=%d dir=%s behav=%s reqs=%d)",
-		elevator.floor,
-		common.ElevioDirnToString(elevator.dirn),
-		ebToString(elevator.behaviour),
-		countRequests(elevator),
+	log.Printf("FSM: door timeout handled (after floor=%d dir=%s behav=%s)",
+		e.floor,
+		common.ElevioDirnToString(e.dirn),
+		ebToString(e.behaviour),
 	)
 }
 
-func countRequests(e Elevator) int {
-	n := 0
-	for f := 0; f < common.N_FLOORS; f++ {
-		for b := 0; b < common.N_BUTTONS; b++ {
-			if e.requests[f][b] {
-				n++
-			}
-		}
+func CurrentBehaviour(e *Elevator) ElevatorBehaviour {
+	return e.behaviour
+}
+
+func DoorOpenDuration(e *Elevator) float64 {
+	return e.config.doorOpenDuration_s
+}
+
+func CurrentMotionStrings(e *Elevator) (behavior string, direction string) {
+	switch e.behaviour {
+	case EB_Idle:
+		behavior = "idle"
+	case EB_DoorOpen:
+		behavior = "doorOpen"
+	case EB_Moving:
+		behavior = "moving"
+	default:
+		behavior = "idle"
 	}
-	return n
+
+	switch e.dirn {
+	case elevio.MD_Up:
+		direction = "up"
+	case elevio.MD_Down:
+		direction = "down"
+	case elevio.MD_Stop:
+		direction = "stop"
+	default:
+		direction = "stop"
+	}
+
+	return behavior, direction
 }

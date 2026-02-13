@@ -38,6 +38,8 @@ type FsmSync struct {
 	reportedFloor     int
 	reportedBehavior  string
 	reportedDirection string
+
+	Elevator *Elevator
 }
 
 func NewFsmSync(cfg common.Config) *FsmSync {
@@ -63,10 +65,6 @@ func (s *FsmSync) Offline(now time.Time) bool {
 
 func (s *FsmSync) LastNetSeen() time.Time {
 	return s.lastNetSeen
-}
-
-func (s *FsmSync) AssignedHallCount() int {
-	return countHall(s.assignedHall)
 }
 
 func (s *FsmSync) ApplyAssigner(task common.ElevInput) {
@@ -108,17 +106,13 @@ func (s *FsmSync) cancelHall(f int, btn elevio.ButtonType, reason string) {
 	} else {
 		s.localHall[f][1] = false
 	}
-	clearRequest(f, btn)
-}
-
-func clearRequest(floor int, btn elevio.ButtonType) {
-	if floor < 0 || floor >= common.N_FLOORS {
+	if f < 0 || f >= common.N_FLOORS {
 		return
 	}
 	if btn < 0 || btn >= common.N_BUTTONS {
 		return
 	}
-	elevator.requests[floor][btn] = false
+	s.Elevator.requests[f][btn] = false
 }
 
 func (s *FsmSync) ApplyNetworkSnapshot(snap common.Snapshot, now time.Time) {
@@ -212,7 +206,7 @@ func (s *FsmSync) inject(f int, btn elevio.ButtonType, reason string) {
 		return
 	}
 	log.Printf("fsmThread: inject request f=%d b=%s (%s)", f, common.ElevioButtonToString(btn), reason)
-	Fsm_onRequestButtonPress(f, btn)
+	Fsm_onRequestButtonPress(s.Elevator, f, btn)
 	s.injected[f][btn] = true
 	s.pendingAt[f][btn] = time.Time{}
 
@@ -407,33 +401,6 @@ func (s *FsmSync) ApplyLights(snap common.Snapshot) {
 	}
 }
 
-// RestoreLocalCab seeds local cab requests (e.g. from persistent storage).
-// Returns the number of restored cab requests.
-func (s *FsmSync) RestoreLocalCab(cab []bool) int {
-	if s.localCab == nil || len(s.localCab) != common.N_FLOORS {
-		s.localCab = make([]bool, common.N_FLOORS)
-	}
-	count := 0
-	for f := 0; f < common.N_FLOORS; f++ {
-		v := false
-		if cab != nil && f < len(cab) {
-			v = cab[f]
-		}
-		s.localCab[f] = v
-		s.pendingAt[f][elevio.BT_Cab] = time.Time{}
-		s.injected[f][elevio.BT_Cab] = false
-		s.confirmed[f][elevio.BT_Cab] = false
-		if v {
-			count++
-		}
-	}
-	return count
-}
-
-func (s *FsmSync) LocalCabSnapshot() []bool {
-	return cloneBoolSlice(s.localCab)
-}
-
 func (s *FsmSync) MotionChanged(floor int, behavior string, direction string) bool {
 	if s.reportedFloor != floor || s.reportedBehavior != behavior || s.reportedDirection != direction {
 		s.reportedFloor = floor
@@ -473,20 +440,4 @@ func cloneBoolSlice(in []bool) []bool {
 		}
 	}
 	return out
-}
-
-func countHall(hall [][2]bool) int {
-	if hall == nil {
-		return 0
-	}
-	n := 0
-	for i := 0; i < len(hall) && i < common.N_FLOORS; i++ {
-		if hall[i][0] {
-			n++
-		}
-		if hall[i][1] {
-			n++
-		}
-	}
-	return n
 }

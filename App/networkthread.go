@@ -11,7 +11,7 @@ import (
 	"elevator/elevnetwork"
 )
 
-const INITIAL_CONTACT_TIMEOUT = 3 * time.Second
+const INITIAL_CONTACT_TIMEOUT = 8 * time.Second
 
 func networkThread(
 	ctx context.Context,
