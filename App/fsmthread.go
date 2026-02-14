@@ -37,6 +37,7 @@ func fsmThread(
 	doorOpenDuration := elevfsm.DoorOpenDuration(sync.Elevator)
 	onlineKnown := false
 	prevOnline := false
+	prevHasNetSelf := false
 	prevObstructed := false
 	timerPaused := false
 
@@ -55,14 +56,14 @@ func fsmThread(
 		}
 	}
 	behavior, direction := elevfsm.CurrentMotionStrings(sync.Elevator)
-	initialSnap := sync.BuildUpdateSnapshot(prevFloor, behavior, direction)
-	sent := false
-	select {
-	case elevUpdateCh <- initialSnap:
-		sent = true
-	default:
-	}
-	log.Printf("fsmThread init: snapshot sent=%v floor=%d behavior=%s direction=%s", sent, prevFloor, behavior, direction)
+	// initialSnap := sync.BuildUpdateSnapshot(prevFloor, behavior, direction)
+	// sent := false
+	// select {
+	// case elevUpdateCh <- initialSnap:
+	// 	sent = true
+	// default:
+	// }
+	// log.Printf("fsmThread init: snapshot sent=%v floor=%d behavior=%s direction=%s", sent, prevFloor, behavior, direction)
 
 	ticker := time.NewTicker(time.Duration(inputPollRateMs) * time.Millisecond)
 	defer ticker.Stop()
@@ -77,6 +78,11 @@ func fsmThread(
 			sync.ApplyNetworkSnapshot(snap, now)
 
 			online := !sync.Offline(now)
+			hasNetSelf := sync.HasNetSelf()
+			if hasNetSelf != prevHasNetSelf {
+				log.Printf("fsmThread: hasNetSelf changed=%v (netCab=%v localCab=%v)", hasNetSelf, sync.NetCabCopy(), sync.LocalCabCopy())
+				prevHasNetSelf = hasNetSelf
+			}
 			if online {
 				sync.TryInjectOnline()
 			}

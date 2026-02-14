@@ -156,6 +156,11 @@ func (wv *WorldView) ApplyUpdate(fromKey string, ns common.Snapshot, kind Update
 
 	// First contact: accept as "requests" snapshot and recover cab requests
 	if !wv.ready && fromKey != wv.selfKey && kind == UpdateRequests {
+		if st, ok := ns.States[wv.selfKey]; ok {
+			log.Printf("worldview: first contact from %s, peer self state behavior=%q floor=%d dir=%q cab=%v", fromKey, st.Behavior, st.Floor, st.Direction, st.CabRequests)
+		} else {
+			log.Printf("worldview: first contact from %s, peer has no self state", fromKey)
+		}
 		wv.recoverCabRequests(ns)
 		wv.ready = true
 		becameReady = true
@@ -171,6 +176,9 @@ func (wv *WorldView) mergeSnapshot(fromKey string, ns common.Snapshot, kind Upda
 	for k, st := range ns.States {
 		// never overwrite our local self state with a remote copy
 		if k == wv.selfKey && fromKey != wv.selfKey {
+			if len(st.CabRequests) > 0 {
+				log.Printf("worldview: mergeSnapshot skipping remote self state from %s (cab=%v behavior=%q floor=%d dir=%q)", fromKey, st.CabRequests, st.Behavior, st.Floor, st.Direction)
+			}
 			continue
 		}
 		wv.snapshot.States[k] = common.CopyElevState(st)
@@ -188,6 +196,7 @@ func (wv *WorldView) recoverCabRequests(ns common.Snapshot) {
 		// Seed from peer's last known self state so we never emit empty behaviour.
 		localSelf = common.CopyElevState(peerSelf)
 	}
+	log.Printf("worldview: recoverCabRequests before local cab=%v peer cab=%v", localSelf.CabRequests, peerSelf.CabRequests)
 
 	n := len(peerSelf.CabRequests)
 	if len(localSelf.CabRequests) < n {
@@ -199,6 +208,7 @@ func (wv *WorldView) recoverCabRequests(ns common.Snapshot) {
 		localSelf.CabRequests[i] = localSelf.CabRequests[i] || peerSelf.CabRequests[i]
 	}
 
+	log.Printf("worldview: recoverCabRequests after local cab=%v", localSelf.CabRequests)
 	wv.snapshot.States[wv.selfKey] = localSelf
 }
 

@@ -185,15 +185,18 @@ func (s *FsmSync) copyCabFromSnapshot(snap common.Snapshot) bool {
 		s.netCab[i] = false
 	}
 	if snap.States == nil {
+		log.Printf("fsmsync: copyCabFromSnapshot no States in snapshot")
 		return false
 	}
 	st, ok := snap.States[s.selfKey]
 	if !ok || st.CabRequests == nil {
+		log.Printf("fsmsync: copyCabFromSnapshot missing self state or cab (ok=%v cabNil=%v)", ok, st.CabRequests == nil)
 		return false
 	}
 	for i := 0; i < common.N_FLOORS && i < len(st.CabRequests); i++ {
 		s.netCab[i] = st.CabRequests[i]
 	}
+	log.Printf("fsmsync: copyCabFromSnapshot self cab=%v", s.netCab)
 	return true
 }
 
