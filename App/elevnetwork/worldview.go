@@ -184,6 +184,15 @@ func (wv *WorldView) recoverCabRequests(ns common.Snapshot) {
 	}
 
 	localSelf := wv.snapshot.States[wv.selfKey]
+	if localSelf.Behavior == "" {
+		localSelf.Behavior = peerSelf.Behavior
+		localSelf.Direction = peerSelf.Direction
+		localSelf.Floor = peerSelf.Floor
+		if localSelf.Behavior == "" {
+			localSelf.Behavior = "idle"
+			localSelf.Direction = "stop"
+		}
+	}
 
 	n := len(peerSelf.CabRequests)
 	if len(localSelf.CabRequests) < n {
