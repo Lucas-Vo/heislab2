@@ -10,13 +10,12 @@ var outputDevice common.ElevOutputDevice
 var hallLamp [][2]bool
 var cabLamp []bool
 
-func Fsm_init() (elevator *Elevator) {
-	var e *Elevator
-	*e = elevator_uninitialized()
+func Fsm_init(elevator *Elevator) {
+	*elevator = elevator_uninitialized()
 
 	ConLoad("elevator.con",
-		ConVal("doorOpenDuration_s", &e.config.doorOpenDuration_s, "%f"),
-		ConEnum("clearRequestVariant", &e.config.clearRequestVariant,
+		ConVal("doorOpenDuration_s", &elevator.config.doorOpenDuration_s, "%f"),
+		ConEnum("clearRequestVariant", &elevator.config.clearRequestVariant,
 			ConMatch("CV_All", CV_All),
 			ConMatch("CV_InDirn", CV_InDirn),
 		),
@@ -29,8 +28,7 @@ func Fsm_init() (elevator *Elevator) {
 	cabLamp = make([]bool, common.N_FLOORS)
 
 	// Clear lamps at init
-	SetAllLights(*e)
-	return e
+	SetAllLights(*elevator)
 }
 
 func SetAllRequestLightsFromSnapshot(e *Elevator, ns common.Snapshot, selfKey string) {

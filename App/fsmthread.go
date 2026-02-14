@@ -29,7 +29,7 @@ func fsmThread(
 	)
 
 	sync := elevfsm.NewFsmSync(cfg)
-	sync.Elevator = elevfsm.Fsm_init()
+	elevfsm.Fsm_init(sync.Elevator)
 
 	var prevReq [common.N_FLOORS][common.N_BUTTONS]int
 
