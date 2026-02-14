@@ -23,6 +23,7 @@ type FsmSync struct {
 	netHall     [][2]bool
 	netCab      []bool
 	hasNet      bool
+	hasNetSelf  bool
 	lastNetSeen time.Time
 
 	assignedHall [][2]bool
@@ -65,6 +66,18 @@ func (s *FsmSync) Offline(now time.Time) bool {
 
 func (s *FsmSync) LastNetSeen() time.Time {
 	return s.lastNetSeen
+}
+
+func (s *FsmSync) HasNetSelf() bool {
+	return s.hasNetSelf
+}
+
+func (s *FsmSync) NetCabCopy() []bool {
+	return cloneBoolSlice(s.netCab)
+}
+
+func (s *FsmSync) LocalCabCopy() []bool {
+	return cloneBoolSlice(s.localCab)
 }
 
 func (s *FsmSync) ApplyAssigner(task common.ElevInput) {
@@ -120,7 +133,9 @@ func (s *FsmSync) ApplyNetworkSnapshot(snap common.Snapshot, now time.Time) {
 	s.lastNetSeen = now
 
 	copyHall(s.netHall, snap.HallRequests)
-	s.copyCabFromSnapshot(snap)
+	if s.copyCabFromSnapshot(snap) {
+		s.hasNetSelf = true
+	}
 
 	for f := 0; f < common.N_FLOORS; f++ {
 		// Hall up
@@ -165,20 +180,21 @@ func (s *FsmSync) ApplyNetworkSnapshot(snap common.Snapshot, now time.Time) {
 	}
 }
 
-func (s *FsmSync) copyCabFromSnapshot(snap common.Snapshot) {
+func (s *FsmSync) copyCabFromSnapshot(snap common.Snapshot) bool {
 	for i := 0; i < common.N_FLOORS; i++ {
 		s.netCab[i] = false
 	}
 	if snap.States == nil {
-		return
+		return false
 	}
 	st, ok := snap.States[s.selfKey]
 	if !ok || st.CabRequests == nil {
-		return
+		return false
 	}
 	for i := 0; i < common.N_FLOORS && i < len(st.CabRequests); i++ {
 		s.netCab[i] = st.CabRequests[i]
 	}
+	return true
 }
 
 func (s *FsmSync) OnLocalPress(f int, btn elevio.ButtonType, now time.Time) {

@@ -73,6 +73,8 @@ func fsmThread(
 			}
 			sync.ApplyLights(sync.LightsSnapshot(online))
 
+			log.Printf("fsmThread: netCab=%v localCab=%v", sync.NetCabCopy(), sync.LocalCabCopy())
+
 		case task := <-assignerOutputCh:
 			sync.ApplyAssigner(task)
 			now := time.Now()
@@ -159,6 +161,9 @@ func fsmThread(
 				changedNew = true
 			}
 
+			if !sync.HasNetSelf() {
+				continue
+			}
 			if changedServiced {
 				snap := sync.BuildServicedSnapshot(prevFloor, behavior, direction, cleared, online)
 				select {
