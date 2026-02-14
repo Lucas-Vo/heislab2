@@ -47,6 +47,12 @@ func fsmThread(
 	if f := input.FloorSensor(); f != -1 {
 		elevfsm.Fsm_onFloorArrival(sync.Elevator, f)
 		prevFloor = f
+		behavior, direction := elevfsm.CurrentMotionStrings(sync.Elevator)
+		snap := sync.BuildUpdateSnapshot(prevFloor, behavior, direction)
+		select {
+		case elevUpdateCh <- snap:
+		default:
+		}
 	} else {
 		elevfsm.Fsm_onInitBetweenFloors(sync.Elevator)
 		if f, ok := initUntilFloor(ctx, input, sync, time.Duration(inputPollRateMs)*time.Millisecond); ok {
