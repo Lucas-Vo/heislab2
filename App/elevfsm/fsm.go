@@ -99,6 +99,17 @@ func Fsm_onInitBetweenFloors(e *Elevator) {
 	e.behaviour = EB_Moving
 }
 
+// Fsm_onInitFloorArrival forces a defined, idle state on the first detected floor.
+// Used during initialization when starting between floors.
+func Fsm_onInitFloorArrival(e *Elevator, floor int) {
+	e.floor = floor
+	outputDevice.FloorIndicator(e.floor)
+	outputDevice.MotorDirection(elevio.MD_Stop)
+	outputDevice.DoorLight(false)
+	e.dirn = elevio.MD_Stop
+	e.behaviour = EB_Idle
+}
+
 func Fsm_onRequestButtonPress(e *Elevator, btn_floor int, btn_type elevio.ButtonType) {
 	log.Printf("FSM: request press floor=%d btn=%s (before floor=%d dir=%s behav=%s)",
 		btn_floor,

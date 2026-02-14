@@ -40,13 +40,17 @@ func fsmThread(
 	prevObstructed := false
 	timerPaused := false
 
-	// Seed floor state if the sensor is already at a floor; otherwise start moving to find one.
+	// Seed floor state if the sensor is already at a floor; otherwise block until we reach one.
 	prevFloor := -1
 	if f := input.FloorSensor(); f != -1 {
 		elevfsm.Fsm_onFloorArrival(sync.Elevator, f)
 		prevFloor = f
 	} else {
-		elevfsm.Fsm_onInitBetweenFloors(sync.Elevator)
+		if f, ok := initUntilFloor(ctx, input, sync, time.Duration(inputPollRateMs)*time.Millisecond); ok {
+			prevFloor = f
+		} else {
+			return
+		}
 	}
 	behavior, direction := elevfsm.CurrentMotionStrings(sync.Elevator)
 	initialSnap := sync.BuildUpdateSnapshot(prevFloor, behavior, direction)
@@ -185,6 +189,28 @@ func fsmThread(
 				case elevUpdateCh <- snap:
 				default:
 				}
+			}
+		}
+	}
+}
+
+func initUntilFloor(
+	ctx context.Context,
+	input common.ElevInputDevice,
+	sync *elevfsm.FsmSync,
+	poll time.Duration,
+) (int, bool) {
+	elevfsm.Fsm_onInitBetweenFloors(sync.Elevator)
+	ticker := time.NewTicker(poll)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return -1, false
+		case <-ticker.C:
+			if f := input.FloorSensor(); f != -1 {
+				elevfsm.Fsm_onInitFloorArrival(sync.Elevator, f)
+				return f, true
 			}
 		}
 	}
