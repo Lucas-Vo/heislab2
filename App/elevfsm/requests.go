@@ -86,16 +86,14 @@ func requests_shouldStop(e Elevator) int {
 	switch e.dirn {
 	case elevio.MD_Down:
 		if e.requests[e.floor][elevio.BT_HallDown] ||
-			e.requests[e.floor][elevio.BT_Cab] ||
-			requests_below(e) == 0 {
+			e.requests[e.floor][elevio.BT_Cab] {
 			return 1
 		}
 		return 0
 
 	case elevio.MD_Up:
 		if e.requests[e.floor][elevio.BT_HallUp] ||
-			e.requests[e.floor][elevio.BT_Cab] ||
-			requests_above(e) == 0 {
+			e.requests[e.floor][elevio.BT_Cab] {
 			return 1
 		}
 		return 0
