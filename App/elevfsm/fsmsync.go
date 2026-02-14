@@ -295,7 +295,7 @@ func (s *FsmSync) readyToInject(f int, btn elevio.ButtonType, now time.Time, con
 	return now.Sub(s.pendingAt[f][btn]) >= confirmTimeout
 }
 
-func (s *FsmSync) ClearAtFloor(f int, online bool) ServicedAt {
+func (s *FsmSync) ClearAtFloor(f int, online bool, dirn elevio.MotorDirection) ServicedAt {
 	if f < 0 || f >= common.N_FLOORS {
 		return ServicedAt{}
 	}
@@ -309,18 +309,39 @@ func (s *FsmSync) ClearAtFloor(f int, online bool) ServicedAt {
 			s.injected[f][elevio.BT_Cab] = false
 		}
 	}
-	if s.injected[f][elevio.BT_HallUp] {
-		cleared.HallUp = true
-		s.localHall[f][0] = false
-		if !online {
-			s.injected[f][elevio.BT_HallUp] = false
+	switch dirn {
+	case elevio.MD_Up:
+		if s.injected[f][elevio.BT_HallUp] {
+			cleared.HallUp = true
+			s.localHall[f][0] = false
+			if !online {
+				s.injected[f][elevio.BT_HallUp] = false
+			}
 		}
-	}
-	if s.injected[f][elevio.BT_HallDown] {
-		cleared.HallDown = true
-		s.localHall[f][1] = false
-		if !online {
-			s.injected[f][elevio.BT_HallDown] = false
+	case elevio.MD_Down:
+		if s.injected[f][elevio.BT_HallDown] {
+			cleared.HallDown = true
+			s.localHall[f][1] = false
+			if !online {
+				s.injected[f][elevio.BT_HallDown] = false
+			}
+		}
+	case elevio.MD_Stop:
+		fallthrough
+	default:
+		if s.injected[f][elevio.BT_HallUp] {
+			cleared.HallUp = true
+			s.localHall[f][0] = false
+			if !online {
+				s.injected[f][elevio.BT_HallUp] = false
+			}
+		}
+		if s.injected[f][elevio.BT_HallDown] {
+			cleared.HallDown = true
+			s.localHall[f][1] = false
+			if !online {
+				s.injected[f][elevio.BT_HallDown] = false
+			}
 		}
 	}
 

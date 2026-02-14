@@ -138,9 +138,17 @@ func fsmThread(
 			// Timer
 			if elevfsm.Timer_timedOut() != 0 {
 				elevfsm.Timer_stop()
+				_, dirStr := elevfsm.CurrentMotionStrings(sync.Elevator)
+				var dirn elevio.MotorDirection = elevio.MD_Stop
+				switch dirStr {
+				case "up":
+					dirn = elevio.MD_Up
+				case "down":
+					dirn = elevio.MD_Down
+				}
 				elevfsm.Fsm_onDoorTimeout(sync.Elevator)
 
-				cleared = sync.ClearAtFloor(prevFloor, online)
+				cleared = sync.ClearAtFloor(prevFloor, online, dirn)
 				if cleared.HallUp || cleared.HallDown || cleared.Cab {
 					changedServiced = true
 					log.Printf("fsmThread: serviced requests at floor %d", prevFloor)
