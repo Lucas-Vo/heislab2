@@ -104,6 +104,7 @@
 |---|---|---|---|
 | 1 & 2 | E1 at floor 1, E2 at floor 4 | Press `Hall4Down` | Prefer E2 serves quickly (already at 4); E1 should not race there “just in case” |
 | 1 & 2 | E1 at floor 2 going up, E2 idle at floor 1 | Press `Hall2Down` | E1 should not stop (moving opposite if it’s committed up); E2 should be assigned if it can serve sooner |
+| 1 & 2 | E1 at floor 1, E2 idle at floor 4 | Press `Hall2Down` and `Hall3Up` | E1 goes to floor 2; E2 goes to floor 3 |
 
 ## 2.3 “No calls lost” under elevator crash/restart (cab calls must persist locally)
 
@@ -184,7 +185,10 @@
 
 | Elevators | Initial condition | Action | Expected |
 |---|---|---|---|
-| 1, 2, 3 | E1 at floor 1. E2 and E3 at floor 4. No hall or cab calls are active. | 1. Inside E1, press `Cab2`.<br>2. While E1 is between floors 1 and 2, press `Hall2Up` and `Hall2Down`.<br>3. While E1 is stopped at floor 2 with its door open, press `Hall1Down` (or any hall-down request below floor 2). | **At the moment E1 arrives at floor 2:**<br>• E1 stops at floor 2 and opens its door.<br>• `Hall2Up` light turns **OFF** on all workspaces when the door opens.<br>• `Hall2Down` light remains **ON** on all workspaces.<br><br>**During the stop at floor 2:**<br>• Door remains open for the normal door-open duration **plus an additional 3 seconds** (continuous open, no close/reopen).<br><br>**After the extra 3 seconds:**<br>• Door closes.<br>• E1 departs **downward** toward floor 1.<br><br>**After E1 departs:**<br>• `Hall1Down` remains active and visible in the system state.<br>• `Hall2Down` is cleared only when an elevator later arrives at floor 2 while moving downward. |
+| 1, 2, 3 | E1 at floor 1. E2 and E3 at floor 4. No hall or cab calls are active. | 1. Inside E1, press `Cab2`.<br>2. While E1 is between floors 1 and 2, press `Hall2Up` and `Hall2Down`.<br>3. While E1 is stopped at floor 2 with its door open, press `Hall1Up` (or any hall-down request below floor 2). | **At the moment E1 arrives at floor 2:**<br>• E1 stops at floor 2 and opens its door.<br>• `Hall2Up` light turns **OFF** on all workspaces when the door opens.<br>• `Hall2Down` light remains **ON** on all workspaces.<br><br>**During the stop at floor 2:**<br>• Door remains open for the normal door-open duration **plus an additional 3 seconds** (continuous open, no close/reopen).<br><br>**After the extra 3 seconds:**<br>• Door closes.<br>• E1 departs **downward** toward floor 1.<br><br>**After E1 departs:**<br>• `Hall1Up` remains active and visible in the system state.<br>• `Hall2Down` is cleared only when an elevator later arrives at floor 2 while moving downward. |
 
 
 ---
+
+# Issues on this commit
+i need clarification on this last point
