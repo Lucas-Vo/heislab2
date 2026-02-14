@@ -62,6 +62,8 @@ type WorldView struct {
 	peers []string
 
 	snapshot common.Snapshot
+	// Cab requests recovered from peers that must be preserved until echoed by self updates.
+	selfCabPending []bool
 
 	lastHeard    map[string]time.Time
 	lastSnapshot map[string]common.Snapshot
@@ -87,6 +89,7 @@ func NewWorldView(tx Transport, cfg common.Config) *WorldView {
 			HallRequests: make([][2]bool, common.N_FLOORS),
 			States:       make(map[string]common.ElevState),
 		},
+		selfCabPending: make([]bool, common.N_FLOORS),
 
 		lastHeard:    make(map[string]time.Time),
 		lastSnapshot: make(map[string]common.Snapshot),
@@ -181,6 +184,40 @@ func (wv *WorldView) mergeSnapshot(fromKey string, ns common.Snapshot, kind Upda
 			}
 			continue
 		}
+		if k == wv.selfKey && fromKey == wv.selfKey {
+			stCopy := common.CopyElevState(st)
+			if wv.selfCabPending != nil && len(wv.selfCabPending) > 0 {
+				n := len(wv.selfCabPending)
+				if len(stCopy.CabRequests) < n {
+					tmp := make([]bool, n)
+					copy(tmp, stCopy.CabRequests)
+					stCopy.CabRequests = tmp
+				}
+				for i := 0; i < n; i++ {
+					if wv.selfCabPending[i] {
+						if stCopy.CabRequests[i] {
+							// self has echoed this recovered cab
+							wv.selfCabPending[i] = false
+						} else {
+							// preserve recovered cab until echoed
+							stCopy.CabRequests[i] = true
+						}
+					}
+				}
+				anyPending := false
+				for i := 0; i < n; i++ {
+					if wv.selfCabPending[i] {
+						anyPending = true
+						break
+					}
+				}
+				if !anyPending {
+					wv.selfCabPending = nil
+				}
+			}
+			wv.snapshot.States[k] = stCopy
+			continue
+		}
 		wv.snapshot.States[k] = common.CopyElevState(st)
 	}
 }
@@ -210,6 +247,16 @@ func (wv *WorldView) recoverCabRequests(ns common.Snapshot) {
 
 	log.Printf("worldview: recoverCabRequests after local cab=%v", localSelf.CabRequests)
 	wv.snapshot.States[wv.selfKey] = localSelf
+	if n > 0 {
+		if wv.selfCabPending == nil || len(wv.selfCabPending) != n {
+			wv.selfCabPending = make([]bool, n)
+		}
+		for i := 0; i < n; i++ {
+			if localSelf.CabRequests[i] {
+				wv.selfCabPending[i] = true
+			}
+		}
+	}
 }
 
 func (wv *WorldView) PublishWorld(ch chan<- common.Snapshot) {

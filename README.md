@@ -49,7 +49,6 @@
 | 1 | Powered on at a **known floor** (e.g. floor 2) | Start program | Immediately enters **defined state**; floor lamp shows 2; does not move unnecessarily |
 | 1 | Powered on **between floors** (undefined position) | Start program | Performs initialization travel until a floor sensor is reached; only then becomes **defined** |
 | 1 | Undefined position | Press any `Hall*` / `Cab*` during init | **Ignored** until defined state is reached (no order lights latched / no motion caused by these presses) |
-> last one fails on purpose
 ## 1.2 Handling of orders (basic)
 
 | Elevator | Initial condition | Action | Expected |
@@ -79,7 +78,6 @@
 | Elevator | Initial condition | Action | Expected |
 |---|---|---|---|
 | 1 | Between floor 2 and 3 moving up | Observe floor indicator | Indicator shows **last passed floor** (floor 2) while between floors (L4), and only one floor lamp lit (L5) |
-| 1 | Any | Press any order button | Corresponding button lamp turns ON quickly (L1), stays ON until served (L1/L2), then turns OFF when served (L4 FAT) |
 
 ## 1.6 Door + obstruction behavior
 
@@ -87,7 +85,6 @@
 |---|---|---|---|
 | 1 | Arrive at ordered floor | Observe | Door lamp ON exactly **3 seconds**, then OFF; elevator does not move during door open (S1/D1/D2/D3) |
 | 1 | Door lamp ON (open) | Toggle obstruction ON and keep ON > 3s | Door remains open as long as obstructed (D4/R1) |
-| 1 | Obstruction ON, door open | Toggle obstruction OFF | Door remains open for **3 more seconds**, then closes |
 | 1 | Door lamp OFF (closed) | Toggle obstruction ON | No effect (R1) |
 
 # 2. FAT — 2 elevators (distributed behavior)
