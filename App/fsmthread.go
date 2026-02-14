@@ -48,15 +48,6 @@ func fsmThread(
 		prevFloor = f
 	} else {
 		elevfsm.Fsm_onInitBetweenFloors(sync.Elevator)
-		behavior, direction := elevfsm.CurrentMotionStrings(sync.Elevator)
-		initialSnap := sync.BuildUpdateSnapshot(prevFloor, behavior, direction)
-		sent := false
-		select {
-		case elevUpdateCh <- initialSnap:
-			sent = true
-		default:
-		}
-		log.Printf("fsmThread init: between floors, initial snapshot sent=%v floor=%d behavior=%s direction=%s", sent, prevFloor, behavior, direction)
 		if f, ok := initUntilFloor(ctx, input, sync, time.Duration(inputPollRateMs)*time.Millisecond); ok {
 			prevFloor = f
 		} else {
