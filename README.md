@@ -49,8 +49,7 @@
 | 1 | Powered on at a **known floor** (e.g. floor 2) | Start program | Immediately enters **defined state**; floor lamp shows 2; does not move unnecessarily |
 | 1 | Powered on **between floors** (undefined position) | Start program | Performs initialization travel until a floor sensor is reached; only then becomes **defined** |
 | 1 | Undefined position | Press any `Hall*` / `Cab*` during init | **Ignored** until defined state is reached (no order lights latched / no motion caused by these presses) |
-| 1 | Undefined position | Press **Stop** during init | Stop is **ignored** during init (per FAT O3); system continues to reach defined state |
-
+> last one fails
 ## 1.2 Handling of orders (basic)
 
 | Elevator | Initial condition | Action | Expected |
