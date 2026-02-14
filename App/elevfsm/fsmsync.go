@@ -86,6 +86,16 @@ func (s *FsmSync) ApplyAssigner(task common.ElevInput) {
 	}
 	prev := cloneHallSlice(s.assignedHall)
 	copyHall(s.assignedHall, task.HallTask)
+	// Keep already-injected hall requests sticky so we don't cancel mid-flight
+	// if the assigner rebalances while the request is still active.
+	for f := 0; f < common.N_FLOORS; f++ {
+		if s.injected[f][elevio.BT_HallUp] {
+			s.assignedHall[f][0] = true
+		}
+		if s.injected[f][elevio.BT_HallDown] {
+			s.assignedHall[f][1] = true
+		}
+	}
 	s.hasAssigner = true
 	s.cancelUnassigned(prev)
 }
