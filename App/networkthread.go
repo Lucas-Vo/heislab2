@@ -66,7 +66,7 @@ func networkThread(
 
 			becameReady := wv.ApplyUpdate(msg.Origin, msg.Snapshot, elevnetwork.UpdateRequests)
 			if becameReady {
-				wv.PublishWorld(netSnap1Ch)
+				// wv.PublishWorld(netSnap1Ch)
 				wv.PublishWorld(netSnap2Ch)
 			}
 			wv.Relay(elevnetwork.UpdateRequests, msg)
@@ -87,7 +87,7 @@ func networkThread(
 		case <-contactTimer.C:
 			log.Printf("networkThread: initial contact timeout; forcing ready")
 			wv.ForceReady()
-			wv.PublishWorld(netSnap1Ch)
+			//wv.PublishWorld(netSnap1Ch)
 			wv.PublishWorld(netSnap2Ch)
 
 		case <-ticker.C:
