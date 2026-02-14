@@ -141,15 +141,15 @@ func requests_clearAtCurrentFloor(e Elevator) Elevator {
 		e.requests[e.floor][elevio.BT_Cab] = false
 		switch e.dirn {
 		case elevio.MD_Up:
-			if requests_above(e) == 0 && !e.requests[e.floor][elevio.BT_HallUp] {
-				e.requests[e.floor][elevio.BT_HallDown] = false
-			}
+			// if requests_above(e) == 0 && !e.requests[e.floor][elevio.BT_HallUp] {
+			// 	e.requests[e.floor][elevio.BT_HallDown] = false
+			// }
 			e.requests[e.floor][elevio.BT_HallUp] = false
 
 		case elevio.MD_Down:
-			if requests_below(e) == 0 && !e.requests[e.floor][elevio.BT_HallDown] {
-				e.requests[e.floor][elevio.BT_HallUp] = false
-			}
+			// if requests_below(e) == 0 && !e.requests[e.floor][elevio.BT_HallDown] {
+			// 	e.requests[e.floor][elevio.BT_HallUp] = false
+			// }
 			e.requests[e.floor][elevio.BT_HallDown] = false
 
 		case elevio.MD_Stop:
