@@ -183,9 +183,10 @@ func (wv *WorldView) recoverCabRequests(ns common.Snapshot) {
 		return
 	}
 
-	localSelf := wv.snapshot.States[wv.selfKey]
-	if localSelf.Behavior == "" {
-		log.Printf("worldview: recoverCabRequests local self state empty (peer behavior=%q floor=%d dir=%q)", peerSelf.Behavior, peerSelf.Floor, peerSelf.Direction)
+	localSelf, ok := wv.snapshot.States[wv.selfKey]
+	if !ok {
+		// Seed from peer's last known self state so we never emit empty behaviour.
+		localSelf = common.CopyElevState(peerSelf)
 	}
 
 	n := len(peerSelf.CabRequests)
