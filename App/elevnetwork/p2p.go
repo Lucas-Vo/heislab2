@@ -80,7 +80,9 @@ func StartP2P(ctx context.Context, cfg common.Config, port int) (pm *PeerManager
 	log.Printf("[p2p port=%d] Self=%d peers=%v listen=%s", port, selfID, peers, listenAddr)
 
 	quicConf := &quic.Config{
-		KeepAlivePeriod: 2 * time.Second,
+		KeepAlivePeriod:      2 * time.Second,
+		HandshakeIdleTimeout: 3 * time.Second,
+		MaxIdleTimeout:       6 * time.Second,
 	}
 
 	pm = newPeerManager(selfID, QUIC_FRAME_SIZE)
@@ -90,9 +92,11 @@ func StartP2P(ctx context.Context, cfg common.Config, port int) (pm *PeerManager
 
 	go runListener(ctx, listenAddr, quicConf, pm)
 
-	// Dial all peers to speed initial connectivity; duplicates are resolved in addOrReject.
+	// Dial only peers we should keep an outbound connection to (deterministic).
 	for peerID, peerAddr := range peers {
-		go dialLoop(ctx, pm, peerID, peerAddr, quicConf)
+		if selfID < peerID {
+			go dialLoop(ctx, pm, peerID, peerAddr, quicConf)
+		}
 	}
 
 	return pm, incomingFrames
