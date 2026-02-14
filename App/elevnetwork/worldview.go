@@ -147,7 +147,7 @@ func (wv *WorldView) ShouldAcceptMsg(msg NetMsg) bool {
 	return true
 }
 
-func (wv *WorldView) ApplyUpdate(fromKey string, ns common.Snapshot, kind UpdateKind) {
+func (wv *WorldView) ApplyUpdate(fromKey string, ns common.Snapshot, kind UpdateKind) (becameReady bool) {
 	wv.mu.Lock()
 	defer wv.mu.Unlock()
 
@@ -155,13 +155,14 @@ func (wv *WorldView) ApplyUpdate(fromKey string, ns common.Snapshot, kind Update
 	wv.lastSnapshot[fromKey] = common.DeepCopySnapshot(ns)
 
 	// First contact: accept as "requests" snapshot and recover cab requests
-	if !wv.ready && fromKey != wv.selfKey {
-		kind = UpdateRequests
+	if !wv.ready && fromKey != wv.selfKey && kind == UpdateRequests {
 		wv.recoverCabRequests(ns)
 		wv.ready = true
+		becameReady = true
 	}
 
 	wv.mergeSnapshot(fromKey, ns, kind)
+	return becameReady
 }
 
 func (wv *WorldView) mergeSnapshot(fromKey string, ns common.Snapshot, kind UpdateKind) {

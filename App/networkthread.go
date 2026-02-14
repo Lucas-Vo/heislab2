@@ -58,7 +58,11 @@ func networkThread(
 				continue
 			}
 
-			wv.ApplyUpdate(msg.Origin, msg.Snapshot, elevnetwork.UpdateRequests)
+			becameReady := wv.ApplyUpdate(msg.Origin, msg.Snapshot, elevnetwork.UpdateRequests)
+			if becameReady {
+				wv.PublishWorld(netSnap1Ch)
+				wv.PublishWorld(netSnap2Ch)
+			}
 			wv.Relay(elevnetwork.UpdateRequests, msg)
 
 		case in := <-incomingSvc:
@@ -77,18 +81,15 @@ func networkThread(
 		case <-contactTimer.C:
 			log.Printf("networkThread: initial contact timeout; forcing ready")
 			wv.ForceReady()
+			wv.PublishWorld(netSnap1Ch)
+			wv.PublishWorld(netSnap2Ch)
 
 		case <-ticker.C:
 			// Periodically broadcast state
 			wv.Broadcast(elevnetwork.UpdateRequests)
 
 			// Publish to Assigner and Elevator Control
-			if wv.IsCoherent() {
-				snap := wv.SnapshotCopy()
-				if len(snap.States) == 0 {
-					log.Printf("networkThread: coherent snapshot has no states; withholding publish")
-					break
-				}
+			if wv.IsCoherent() && wv.IsReady() {
 				wv.PublishWorld(netSnap1Ch)
 				wv.PublishWorld(netSnap2Ch)
 			}

@@ -39,6 +39,7 @@ func fsmThread(
 	prevOnline := false
 	prevObstructed := false
 	timerPaused := false
+	receivedFirstSnapshot := false
 
 	// Seed floor state if the sensor is already at a floor; otherwise wait for first arrival.
 	prevFloor := -1
@@ -50,9 +51,6 @@ func fsmThread(
 
 	ticker := time.NewTicker(time.Duration(inputPollRateMs) * time.Millisecond)
 	defer ticker.Stop()
-
-	// Seed network with an initial snapshot.
-	sendInitialSnapshot(ctx, elevUpdateCh, sync.BuildUpdateSnapshot(prevFloor, behavior, direction))
 
 	for {
 		select {
@@ -68,6 +66,7 @@ func fsmThread(
 				sync.TryInjectOnline()
 			}
 			sync.ApplyLights(sync.LightsSnapshot(online))
+			receivedFirstSnapshot = true
 
 		case task := <-assignerOutputCh:
 			sync.ApplyAssigner(task)
@@ -155,6 +154,9 @@ func fsmThread(
 				changedNew = true
 			}
 
+			if !receivedFirstSnapshot {
+				continue
+			}
 			if changedServiced {
 				snap := sync.BuildServicedSnapshot(prevFloor, behavior, direction, cleared, online)
 				select {
@@ -169,18 +171,6 @@ func fsmThread(
 				default:
 				}
 			}
-		}
-	}
-}
-
-func sendInitialSnapshot(ctx context.Context, ch chan<- common.Snapshot, snap common.Snapshot) {
-	for {
-		select {
-		case ch <- snap:
-			return
-		case <-ctx.Done():
-			return
-		case <-time.After(25 * time.Millisecond):
 		}
 	}
 }
