@@ -51,19 +51,17 @@ func fsmThread(
 		elevfsm.Fsm_onInitBetweenFloors(sync.Elevator)
 		if f, ok := initUntilFloor(ctx, input, sync, time.Duration(inputPollRateMs)*time.Millisecond); ok {
 			prevFloor = f
+			behavior, direction := elevfsm.CurrentMotionStrings(sync.Elevator)
+			snap := sync.BuildUpdateSnapshot(prevFloor, behavior, direction)
+			select {
+			case elevUpdateCh <- snap:
+			default:
+			}
 		} else {
 			return
 		}
 	}
 	behavior, direction := elevfsm.CurrentMotionStrings(sync.Elevator)
-	initialSnap := sync.BuildUpdateSnapshot(prevFloor, behavior, direction)
-	sent := false
-	select {
-	case elevUpdateCh <- initialSnap:
-		sent = true
-	default:
-	}
-	log.Printf("fsmThread init: snapshot sent=%v floor=%d behavior=%s direction=%s", sent, prevFloor, behavior, direction)
 
 	ticker := time.NewTicker(time.Duration(inputPollRateMs) * time.Millisecond)
 	defer ticker.Stop()
