@@ -44,6 +44,11 @@ func assignerThread(
 				//fmt.Println("removing stale states error: ", err)
 				break
 			}
+			for id, st := range networkSnapshot.States {
+				if st.Behavior == "" {
+					fmt.Printf("assignerThread: empty behavior state id=%s floor=%d dir=%q cab=%v\n", id, st.Floor, st.Direction, st.CabRequests)
+				}
+			}
 
 			// serialize snapshot to JSON
 			jsonBytes, err := json.Marshal(networkSnapshot)

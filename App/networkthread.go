@@ -41,10 +41,16 @@ func networkThread(
 			return
 
 		case ns := <-elevRequestCh:
+			if st, ok := ns.States[selfKey]; !ok || st.Behavior == "" {
+				log.Printf("networkThread: elevRequestCh missing/empty self state (ok=%v behavior=%q floor=%d dir=%q)", ok, st.Behavior, st.Floor, st.Direction)
+			}
 			wv.ApplyUpdate(selfKey, ns, elevnetwork.UpdateRequests)
 			wv.Broadcast(elevnetwork.UpdateRequests)
 
 		case ns := <-elevServicedCh:
+			if st, ok := ns.States[selfKey]; !ok || st.Behavior == "" {
+				log.Printf("networkThread: elevServicedCh missing/empty self state (ok=%v behavior=%q floor=%d dir=%q)", ok, st.Behavior, st.Floor, st.Direction)
+			}
 			wv.ApplyUpdate(selfKey, ns, elevnetwork.UpdateServiced)
 			wv.Broadcast(elevnetwork.UpdateServiced)
 

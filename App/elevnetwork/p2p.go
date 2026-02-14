@@ -202,10 +202,6 @@ func (pm *PeerManager) startReader(ctx context.Context, p *peer) {
 
 			err := ReadFixedFramesQUIC(ctx, st, pm.frameSize, func(frame []byte) {
 				nFrames++
-				if nFrames <= 5 {
-					log.Printf("startReader: peer=%d got frame #%d len=%d head=%q",
-						peerID, nFrames, len(frame), string(frame[:min(16, len(frame))]))
-				}
 
 				ch := pm.incoming
 				if ch == nil {

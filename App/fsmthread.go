@@ -50,10 +50,13 @@ func fsmThread(
 		elevfsm.Fsm_onInitBetweenFloors(sync.Elevator)
 		behavior, direction := elevfsm.CurrentMotionStrings(sync.Elevator)
 		initialSnap := sync.BuildUpdateSnapshot(prevFloor, behavior, direction)
+		sent := false
 		select {
 		case elevUpdateCh <- initialSnap:
+			sent = true
 		default:
 		}
+		log.Printf("fsmThread init: between floors, initial snapshot sent=%v floor=%d behavior=%s direction=%s", sent, prevFloor, behavior, direction)
 		if f, ok := initUntilFloor(ctx, input, sync, time.Duration(inputPollRateMs)*time.Millisecond); ok {
 			prevFloor = f
 		} else {
@@ -62,10 +65,13 @@ func fsmThread(
 	}
 	behavior, direction := elevfsm.CurrentMotionStrings(sync.Elevator)
 	initialSnap := sync.BuildUpdateSnapshot(prevFloor, behavior, direction)
+	sent := false
 	select {
 	case elevUpdateCh <- initialSnap:
+		sent = true
 	default:
 	}
+	log.Printf("fsmThread init: snapshot sent=%v floor=%d behavior=%s direction=%s", sent, prevFloor, behavior, direction)
 
 	ticker := time.NewTicker(time.Duration(inputPollRateMs) * time.Millisecond)
 	defer ticker.Stop()
@@ -84,8 +90,6 @@ func fsmThread(
 				sync.TryInjectOnline()
 			}
 			sync.ApplyLights(sync.LightsSnapshot(online))
-
-			log.Printf("fsmThread: netCab=%v localCab=%v", sync.NetCabCopy(), sync.LocalCabCopy())
 
 		case task := <-assignerOutputCh:
 			sync.ApplyAssigner(task)
@@ -208,6 +212,7 @@ func initUntilFloor(
 	sync *elevfsm.FsmSync,
 	poll time.Duration,
 ) (int, bool) {
+	log.Printf("fsmThread init: waiting for first floor sensor (poll=%s)", poll)
 	ticker := time.NewTicker(poll)
 	defer ticker.Stop()
 	for {
@@ -216,6 +221,7 @@ func initUntilFloor(
 			return -1, false
 		case <-ticker.C:
 			if f := input.FloorSensor(); f != -1 {
+				log.Printf("fsmThread init: first floor detected f=%d", f)
 				elevfsm.Fsm_onInitFloorArrival(sync.Elevator, f)
 				return f, true
 			}
