@@ -39,15 +39,21 @@ func fsmThread(
 	prevOnline := false
 	prevObstructed := false
 	timerPaused := false
-	receivedFirstSnapshot := false
 
-	// Seed floor state if the sensor is already at a floor; otherwise wait for first arrival.
+	// Seed floor state if the sensor is already at a floor; otherwise start moving to find one.
 	prevFloor := -1
 	if f := input.FloorSensor(); f != -1 {
 		elevfsm.Fsm_onFloorArrival(sync.Elevator, f)
 		prevFloor = f
+	} else {
+		elevfsm.Fsm_onInitBetweenFloors(sync.Elevator)
 	}
 	behavior, direction := elevfsm.CurrentMotionStrings(sync.Elevator)
+	initialSnap := sync.BuildUpdateSnapshot(prevFloor, behavior, direction)
+	select {
+	case elevUpdateCh <- initialSnap:
+	default:
+	}
 
 	ticker := time.NewTicker(time.Duration(inputPollRateMs) * time.Millisecond)
 	defer ticker.Stop()
@@ -66,7 +72,6 @@ func fsmThread(
 				sync.TryInjectOnline()
 			}
 			sync.ApplyLights(sync.LightsSnapshot(online))
-			receivedFirstSnapshot = true
 
 		case task := <-assignerOutputCh:
 			sync.ApplyAssigner(task)
@@ -154,9 +159,6 @@ func fsmThread(
 				changedNew = true
 			}
 
-			if !receivedFirstSnapshot {
-				continue
-			}
 			if changedServiced {
 				snap := sync.BuildServicedSnapshot(prevFloor, behavior, direction, cleared, online)
 				select {
