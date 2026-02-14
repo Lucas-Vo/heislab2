@@ -49,7 +49,7 @@
 | 1 | Powered on at a **known floor** (e.g. floor 2) | Start program | Immediately enters **defined state**; floor lamp shows 2; does not move unnecessarily |
 | 1 | Powered on **between floors** (undefined position) | Start program | Performs initialization travel until a floor sensor is reached; only then becomes **defined** |
 | 1 | Undefined position | Press any `Hall*` / `Cab*` during init | **Ignored** until defined state is reached (no order lights latched / no motion caused by these presses) |
-> last one fails
+> last one fails on purpose
 ## 1.2 Handling of orders (basic)
 
 | Elevator | Initial condition | Action | Expected |
@@ -67,7 +67,6 @@
 
 ## 1.4 Order clearing at stop (all orders in floor are cleared appropriately)
 
-> Norwegian H3 says “all orders in the floor are considered served when stopping”. In the distributed spec, hall calls are direction-specific.  
 > For **single-elevator FAT**, verify clearing behavior matches your implemented policy and the test rig’s expectations.
 
 | Elevator | Initial condition | Action | Expected |
@@ -174,19 +173,21 @@
 ---
 
 # 5. Direction-specific hall clearing & “announce direction change” (distributed spec)
-
-## 5.1 Only clears matching direction
-
-| Elevators | Initial condition | Action | Expected |
-|---|---|---|---|
-| 2 or 3 | One elevator assigned to go UP to floor 2 (e.g. from 1) | Ensure both `Hall2Up` and `Hall2Down` are active (press both, from any workspaces) | When elevator arrives announcing UP: clears **only** `Hall2Up`; `Hall2Down` remains lit until a down-serving stop occurs |
-
-## 5.2 Direction change “announcement” (extra 3s)
+> fails both of these tests
+## 5.1 Passing through (no direction change)
 
 | Elevators | Initial condition | Action | Expected |
 |---|---|---|---|
-| 2 or 3 | At floor 2 with both `Hall2Up` and `Hall2Down` active; and elevator has no reason to continue UP after opening (simulate by having only down traffic remaining) | Observe stop logic | Elevator clears opposite-direction call first, then keeps door open for an additional **3s** to “announce” direction change, then proceeds down and later clears the down call properly |
+| 1, 2, 3 | E1 at floor 1. E2 and E3 at floor 4. No hall or cab calls are active. | 1. Inside E1, press `Cab3` (or any floor above 2). Confirm that E1 starts moving upward toward floor 3.<br>2. While E1 is between floors 1 and 2, press `Hall2Up` and `Hall2Down`. | **At the moment E1 arrives at floor 2:**<br>• E1 stops at floor 2 and opens its door.<br>• Door remains open for the normal door-open duration only (no extra delay).<br>• `Hall2Up` light turns **OFF** on all workspaces at the time the door opens.<br>• `Hall2Down` light remains **ON** on all workspaces while the door is open.<br>• Door closes after the normal door-open duration.<br>• E1 continues moving upward toward floor 3 after leaving floor 2.<br><br>**After E1 departs:**<br>• `Hall2Down` remains active and visible in the system state.<br>• `Hall2Down` is cleared only when an elevator later arrives at floor 2 while moving downward. |
+
 
 ---
 
+## 5.2 Turn around (direction change with extra 3s)
 
+| Elevators | Initial condition | Action | Expected |
+|---|---|---|---|
+| 1, 2, 3 | E1 at floor 1. E2 and E3 at floor 4. No hall or cab calls are active. | 1. Inside E1, press `Cab2`.<br>2. While E1 is between floors 1 and 2, press `Hall2Up` and `Hall2Down`.<br>3. While E1 is stopped at floor 2 with its door open, press `Hall1Down` (or any hall-down request below floor 2). | **At the moment E1 arrives at floor 2:**<br>• E1 stops at floor 2 and opens its door.<br>• `Hall2Up` light turns **OFF** on all workspaces when the door opens.<br>• `Hall2Down` light remains **ON** on all workspaces.<br><br>**During the stop at floor 2:**<br>• Door remains open for the normal door-open duration **plus an additional 3 seconds** (continuous open, no close/reopen).<br><br>**After the extra 3 seconds:**<br>• Door closes.<br>• E1 departs **downward** toward floor 1.<br><br>**After E1 departs:**<br>• `Hall1Down` remains active and visible in the system state.<br>• `Hall2Down` is cleared only when an elevator later arrives at floor 2 while moving downward. |
+
+
+---
