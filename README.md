@@ -191,3 +191,13 @@
 
 
 ---
+
+tests to add 
+- 1 elevator active on 1st floor, press all, should clear up, 4th floor, then down, and fall back down
+- cab revival from all elevators on the system
+- spam cab button on current floor to see door stays open
+- spam hall button on current floor to see door stays open
+- press hall when a door light is desynced with hall
+- press cab when a door light is desynced with cab
+- e1 on 3rd, press hall2up
+- e1 on 2nd, press hall3down
