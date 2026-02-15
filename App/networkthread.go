@@ -89,10 +89,14 @@ func networkThread(
 
 		case <-ticker.C:
 			// Periodically broadcast state
+			if !wv.IsReady() {
+				continue
+			}
+
 			wv.Broadcast(elevnetwork.UpdateRequests)
 
 			// Publish to Assigner and Elevator Control
-			if wv.IsCoherent() && wv.IsReady() {
+			if wv.IsCoherent() {
 				wv.PublishWorld(netSnap1Ch)
 				wv.PublishWorld(netSnap2Ch)
 			}
