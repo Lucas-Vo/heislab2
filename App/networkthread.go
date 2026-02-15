@@ -53,6 +53,7 @@ func networkThread(
 			if err := json.Unmarshal(common.TrimZeros(in), &msg); err != nil {
 				continue
 			}
+			log.Printf("Cabs from other %v, that comes from peer nr (%v)", msg.Snapshot.States[msg.Origin].CabRequests, msg.Origin)
 
 			if !wv.ShouldAcceptMsg(msg) {
 				continue
