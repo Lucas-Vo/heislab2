@@ -155,12 +155,19 @@ func (wv *WorldView) ApplyUpdate(fromKey string, ns common.Snapshot, kind Update
 	wv.lastSnapshot[fromKey] = common.DeepCopySnapshot(ns)
 
 	// First contact: accept as "requests" snapshot and recover cab requests
+	DELETE := false
 	if !wv.ready && fromKey != wv.selfKey && kind == UpdateRequests {
+		log.Printf("Suggested recovered cab BEFORE is: %v", wv.snapshot.States[wv.selfKey].CabRequests)
 		wv.recoverCabRequests(ns)
 		wv.ready = true
 		becameReady = true
+		DELETE = true
 	}
 	wv.mergeSnapshot(fromKey, ns, kind)
+	if DELETE {
+		log.Printf("Suggested recovered cab AFTER is: %v", wv.snapshot.States[wv.selfKey].CabRequests)
+		DELETE = false
+	}
 	return becameReady
 }
 
