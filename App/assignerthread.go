@@ -6,6 +6,7 @@ import (
 	"elevator/elevassigner"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os/exec"
 	"time"
 )
@@ -52,6 +53,7 @@ func assignerThread(
 				break
 
 			}
+			log.Printf("%s", jsonBytes)
 
 			// Run external hall request assigner executable
 			ret, err := exec.Command("./elevassigner/"+HRA_EXECUTABLE, "-i", string(jsonBytes)).CombinedOutput()
@@ -67,6 +69,8 @@ func assignerThread(
 				fmt.Println("json.Unmarshal error:", err)
 				break
 			}
+
+			log.Printf("%v", output)
 
 			// pick tasks for THIS elevator to send to fsmthread
 			currentElevInput = ElevInput{HallTask: output[selfKey]}
