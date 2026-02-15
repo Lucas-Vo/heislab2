@@ -74,6 +74,12 @@ func fsmThread(
 			sync.ApplyLights(sync.LightsSnapshot(online))
 
 			log.Printf("fsmThread: netCab=%v localCab=%v", sync.NetCabCopy(), sync.LocalCabCopy())
+			log.Printf("==================================")
+			log.Printf("localhall: %v", sync.GetLocalHall())
+			log.Printf("nethall: %v", sync.GetNetHall())
+			log.Printf("localcab: %v", sync.GetLocalCab())
+			log.Printf("netcab: %v", sync.GetNetCab())
+			log.Printf("==================================")
 
 		case task := <-assignerOutputCh:
 			sync.ApplyAssigner(task)

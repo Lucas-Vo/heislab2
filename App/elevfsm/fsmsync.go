@@ -514,3 +514,17 @@ func cloneBoolSlice(in []bool) []bool {
 	}
 	return out
 }
+
+func (s *FsmSync) GetNetHall() [][2]bool {
+	return s.netHall
+}
+func (s *FsmSync) GetLocalHall() [][2]bool {
+	return s.localHall
+}
+
+func (s *FsmSync) GetNetCab() []bool {
+	return s.netCab
+}
+func (s *FsmSync) GetLocalCab() []bool {
+	return s.localCab
+}
