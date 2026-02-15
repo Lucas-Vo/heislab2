@@ -210,6 +210,10 @@ func CurrentBehaviour(e *Elevator) ElevatorBehaviour {
 	return e.behaviour
 }
 
+func CurrentDirection(e *Elevator) elevio.MotorDirection {
+	return e.dirn
+}
+
 func DoorOpenDuration(e *Elevator) float64 {
 	return e.config.doorOpenDuration_s
 }

@@ -138,9 +138,10 @@ func fsmThread(
 			// Timer
 			if elevfsm.Timer_timedOut() != 0 {
 				elevfsm.Timer_stop()
+				arrivalDirn := elevfsm.CurrentDirection(sync.Elevator)
 				elevfsm.Fsm_onDoorTimeout(sync.Elevator)
 
-				cleared = sync.ClearAtFloor(prevFloor, online)
+				cleared = sync.ClearAtFloor(prevFloor, online, arrivalDirn)
 				if cleared.HallUp || cleared.HallDown || cleared.Cab {
 					changedServiced = true
 					log.Printf("fsmThread: serviced requests at floor %d", prevFloor)
