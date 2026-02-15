@@ -158,6 +158,7 @@ func (wv *WorldView) ApplyUpdate(fromKey string, ns common.Snapshot, kind Update
 	DELETE := false
 	if !wv.ready && fromKey != wv.selfKey && kind == UpdateRequests {
 		log.Printf("Suggested recovered cab BEFORE is: %v", wv.snapshot.States[wv.selfKey].CabRequests)
+		log.Printf("INBOUND cabs from peer is: %v", ns.States[wv.selfKey].CabRequests)
 		wv.recoverCabRequests(ns)
 		wv.ready = true
 		becameReady = true
