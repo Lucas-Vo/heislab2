@@ -130,6 +130,9 @@ func (wv *WorldView) ShouldAcceptMsg(msg NetMsg) bool {
 	wv.mu.Lock()
 	defer wv.mu.Unlock()
 
+	if msg.Origin == wv.selfKey {
+		return false
+	}
 	now := time.Now()
 	prevHeard, hadPrev := wv.lastHeard[msg.Origin]
 	wv.lastHeard[msg.Origin] = now
