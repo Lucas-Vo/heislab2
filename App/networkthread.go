@@ -45,6 +45,9 @@ func networkThread(
 			wv.Broadcast(elevnetwork.UpdateRequests)
 
 		case ns := <-elevServicedCh:
+			if !wv.IsReady() {
+				continue
+			}
 			wv.ApplyUpdate(selfKey, ns, elevnetwork.UpdateServiced)
 			wv.Broadcast(elevnetwork.UpdateServiced)
 
@@ -83,7 +86,7 @@ func networkThread(
 			log.Printf("networkThread: initial contact timeout; forcing ready")
 			wv.ForceReady()
 			// wv.PublishWorld(netSnap1Ch)
-			wv.PublishWorld(netSnap2Ch)
+			// wv.PublishWorld(netSnap2Ch)
 
 		case <-ticker.C:
 			// Periodically broadcast state
