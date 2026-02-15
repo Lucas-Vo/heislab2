@@ -112,6 +112,9 @@ func fsmThread(
 					if v != 0 && v != prevReq[f][b] {
 						sync.OnLocalPress(f, elevio.ButtonType(b), now)
 						changedNew = true
+						if input.FloorSensor() == f {
+							elevfsm.Timer_start(doorOpenDuration)
+						}
 					}
 					prevReq[f][b] = v
 				}
