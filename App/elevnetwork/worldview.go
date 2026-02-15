@@ -160,7 +160,6 @@ func (wv *WorldView) ApplyUpdate(fromKey string, ns common.Snapshot, kind Update
 		wv.ready = true
 		becameReady = true
 	}
-
 	wv.mergeSnapshot(fromKey, ns, kind)
 	return becameReady
 }
@@ -178,8 +177,11 @@ func (wv *WorldView) mergeSnapshot(fromKey string, ns common.Snapshot, kind Upda
 }
 
 func (wv *WorldView) recoverCabRequests(ns common.Snapshot) {
+	log.Printf("recoverCabRequests entered")
+	log.Printf("")
 	peerSelf, ok := ns.States[wv.selfKey]
 	if !ok {
+		log.Printf("skipped recoverCabRequests due to lack of external")
 		return
 	}
 
@@ -214,7 +216,7 @@ func (wv *WorldView) PublishWorld(ch chan<- common.Snapshot) {
 		alive[id] = startupGrace
 	}
 	cp.Alive = alive
-	log.Printf("%v", cp.Alive)
+	// log.Printf("%v", cp.Alive)
 	wv.mu.Unlock()
 
 	select {
