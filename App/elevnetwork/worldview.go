@@ -198,6 +198,7 @@ func (wv *WorldView) recoverCabRequests(ns common.Snapshot) {
 	}
 
 	wv.snapshot.States[wv.selfKey] = localSelf
+	log.Printf("sucessfully recoverCabRequests")
 }
 
 func (wv *WorldView) PublishWorld(ch chan<- common.Snapshot) {
