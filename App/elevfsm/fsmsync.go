@@ -343,8 +343,14 @@ func (s *FsmSync) ClearAtFloor(f int, online bool, arrivalDirn elevio.MotorDirec
 		switch arrivalDirn {
 		case elevio.MD_Up:
 			clearHallUp = true
+			if s.Elevator.floor == common.N_FLOORS-1 {
+				clearHallDown = true
+			}
 		case elevio.MD_Down:
 			clearHallDown = true
+			if s.Elevator.floor == 0 {
+				clearHallUp = true
+			}
 		case elevio.MD_Stop:
 			clearHallUp = true
 			clearHallDown = true
