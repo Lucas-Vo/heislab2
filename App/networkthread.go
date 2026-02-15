@@ -42,12 +42,12 @@ func networkThread(
 
 		case ns := <-elevRequestCh:
 			wv.ApplyUpdate(selfKey, ns, elevnetwork.UpdateRequests)
-			wv.Broadcast(elevnetwork.UpdateRequests)
-
-		case ns := <-elevServicedCh:
 			if !wv.IsReady() {
 				continue
 			}
+			wv.Broadcast(elevnetwork.UpdateRequests)
+
+		case ns := <-elevServicedCh:
 			wv.ApplyUpdate(selfKey, ns, elevnetwork.UpdateServiced)
 			wv.Broadcast(elevnetwork.UpdateServiced)
 
