@@ -245,7 +245,6 @@ func (wv *WorldView) computeAlive(now time.Time) map[string]bool {
 	return alive
 }
 
-
 func (wv *WorldView) IsCoherent() bool {
 	wv.mu.Lock()
 	defer wv.mu.Unlock()
@@ -294,7 +293,7 @@ func (wv *WorldView) Broadcast(kind UpdateKind) {
 	now := time.Now()
 
 	snapshot := common.DeepCopySnapshot(wv.snapshot)
-	wv.lastHeard[wv.selfKey] = now
+	wv.lastHeard[wv.selfKey] = now // TODO: Widdewavvy this line ahah
 	wv.lastSnapshot[wv.selfKey] = snapshot
 	msg := NetMsg{
 		Origin:   wv.selfKey,
