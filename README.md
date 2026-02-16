@@ -58,6 +58,9 @@
 | 1 | Floor 4, idle | Press `Hall2Down`, `Hall3Down` | Lamps turn ON quickly; elevator goes to 3 first, stop+door 3s, clears Hall3Down; then goes to 2, stop+door 3s, clears Hall2Down |
 | 1 | Floor 4, idle | Press `Cab2`, `Cab3` | Cab lamps turn ON quickly; elevator goes to 3, stop+door 3s, clears Cab3; then goes to 2, stop+door 3s, clears Cab2 |
 | 1 | Idle (any floor) | Press many buttons rapidly (all valid halls + all cabs) | System never deadlocks; all lit orders eventually served (H1/H4/H5) |
+| 1 | Floor 1, idle | Press **all valid hall calls** + **all cab calls**x| (rapidly) | Elevator performs a **sensible sweep**: serves all upward-reachable requests while moving up, reaches floor 4, then serves remaining downward-direction requests on the way down. No deadlock, no oscillation, no unnecessary stops. All orders are eventually cleared. |
+| 1 | Floor 3, idle | Press `Hall2Up` | Elevator moves **down** to floor 2, stops, opens door, clears `Hall2Up`. |
+| 1 | Floor 2, idle | Press `Hall3Down` | Elevator moves **up** to floor 3, stops, opens door, clears `Hall3Down`. |
 
 ## 1.3 Direction rule (don’t serve opposite-direction hall calls)
 
@@ -73,6 +76,8 @@
 |---|---|---|---|
 | 1 | Floor 2 idle | Press `Cab2` (already at floor 2) | Door lamp ON immediately for 3s; Cab2 lamp turns OFF; elevator stays still |
 | 1 | Approaching floor 3 with `Cab3` active | Also press `Hall3Up` before arrival | On stop at floor 3: clears Cab3; and clears hall call(s) according to your “served at stop” policy; door 3s; no extra stop at 3 afterwards |
+| 1 | Idle at floor F | Repeatedly press `CabF` while door is open | Door remains open as long as presses continue; door closes **3 seconds after the last press**. No motion occurs. |
+| 1 | Idle at floor F | Repeatedly press valid `HallFUp` / `HallFDown` | Door remains open as long as presses continue; door closes **3 seconds after the last press**. Corresponding hall lamp clears once served. |
 
 ## 1.5 Lights (floor indicator + order lamps)
 
@@ -89,6 +94,8 @@
 | 1 | Door lamp ON (open) | Toggle obstruction ON and keep ON > 3s | Door remains open as long as obstructed (D4/R1) |
 | 1 | Obstruction ON, door open | Toggle obstruction OFF | Door remains open for **3 more seconds**, then closes |
 | 1 | Door lamp OFF (closed) | Toggle obstruction ON | No effect (R1) |
+| 1 | Door lamp ON, CabF lamp OFF | Press `CabF` | Door remains open (timer resets); no duplicate order is created; cab lamp behavior remains consistent. |
+| 1 | Door lamp ON, HallF* lamp OFF | Press valid `HallF*` | Door remains open (timer resets); hall lamp clears immediately when served; no extra stop later. |
 
 # 2. FAT — 2 elevators (distributed behavior)
 
@@ -113,7 +120,9 @@
 | Elevator | Initial condition | Action | Expected |
 |---|---|---|---|
 | 1 & 2 | Both connected, idle | On E1: press `Cab4` (lamp ON), then **kill/restart E1 software** | After restart, E1 recovers its Cab4 request (lamp ON again if your HW supports), and eventually serves it (cab calls not lost) |
+| 1 & 2 | Both connected, idle | On E2: press `Cab3` (lamp ON), then **kill/restart E2 software** | After restart, E2 recovers its Cab3 request (lamp ON again if your HW supports), and eventually serves it (cab calls not lost) |
 | 1 & 2 | Both connected, idle | Press `Hall3Up`, then **kill/restart E2 software** | Hall3Up remains guaranteed: some elevator (likely E1) serves it; once E2 returns it re-joins and syncs hall state |
+| 1 & 2 | E1 servicing a hall request | While E1 is moving, **cut motor power** so it stops between floors | E2 detects E1 failure within seconds and takes over servicing **all remaining hall calls**. No hall call is lost. |
 
 ## 2.4 Network disconnect handling (disconnected elevator still serves its lit calls)
 
@@ -144,6 +153,8 @@
 | Elevator | Initial condition | Action | Expected |
 |---|---|---|---|
 | 1,2,3 | All connected, idle | Create hall calls on multiple floors; then crash E1 and disconnect E2 | Remaining elevator (E3) still serves all lit hall calls; system remains usable; no call lost |
+| 1,2,3 | All connected, idle | On E2: press `Cab3` (lamp ON), then **kill/restart E2 software** | After restart, E2 recovers its Cab3 request (lamp ON again if your HW supports), and eventually serves it (cab calls not lost) **REDO ON THE TWO OTHER ELEVATORS**|
+| 1,2,3 | E1 servicing hall call, E2 idle, E3 idle | Disable E1 motor so it is stuck between floors | E2 or E3 takes over remaining hall calls. E1 does not block global progress. System remains usable. |
 
 ---
 
