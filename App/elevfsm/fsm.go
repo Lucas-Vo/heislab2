@@ -116,6 +116,7 @@ func Fsm_onRequestButtonPress(e *Elevator, btn_floor int, btn_type elevio.Button
 		}
 
 	case EB_Moving:
+		
 		e.requests[btn_floor][btn_type] = true
 
 	case EB_Idle:

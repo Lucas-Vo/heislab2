@@ -60,6 +60,7 @@ func fsmThread(
 	defer ticker.Stop()
 
 	for {
+		log.Printf("BEHAVIOUR: %v ###########################", sync.Elevator.GetBehaviour())
 		select {
 		case <-ctx.Done():
 			return

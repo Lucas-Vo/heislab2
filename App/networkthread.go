@@ -35,12 +35,17 @@ func networkThread(
 	contactTimer := time.NewTimer(INITIAL_CONTACT_TIMEOUT)
 	defer contactTimer.Stop()
 
+	previousBehavior := ""
+	elevatorErrorTimer := time.NewTimer(4 * time.Second)
+	defer elevatorErrorTimer.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
 			return
 
 		case ns := <-elevRequestCh:
+			previousBehavior = wv.SnapshotCopy().States[selfKey].Behavior
 			wv.ApplyUpdate(selfKey, ns, elevnetwork.UpdateRequests)
 			if !wv.IsReady() {
 				continue
@@ -84,15 +89,16 @@ func networkThread(
 		case <-contactTimer.C:
 			log.Printf("networkThread: initial contact timeout; forcing ready")
 			wv.ForceReady()
-			// wv.PublishWorld(netSnap1Ch)
-			// wv.PublishWorld(netSnap2Ch)
 
 		case <-ticker.C:
 			// Periodically broadcast state
 			if !wv.IsReady() {
 				continue
 			}
-
+			if wv.SnapshotCopy().States[selfKey].Behavior != previousBehavior || wv.SnapshotCopy().States[selfKey].Behavior == "idle"{
+				previousBehavior = wv.SnapshotCopy().States[selfKey].Behavior
+				elevatorErrorTimer.Reset(4 * time.Second)
+			}
 			wv.Broadcast(elevnetwork.UpdateRequests)
 
 			// Publish to Assigner and Elevator Control
@@ -100,6 +106,10 @@ func networkThread(
 				wv.PublishWorld(netSnap1Ch)
 				wv.PublishWorld(netSnap2Ch)
 			}
+		case <-elevatorErrorTimer.C:
+			log.Printf("No behavior change detected for 4 seconds, marking Elevator as stale")
+			wv.SnapshotCopy().Alive[selfKey] = false
+			elevatorErrorTimer.Stop() // Stop until next behavior change
 		}
 	}
 }

@@ -217,8 +217,20 @@ func (wv *WorldView) PublishWorld(ch chan<- common.Snapshot) {
 	cp := common.DeepCopySnapshot(wv.snapshot)
 
 	now := time.Now()
+	cp.Alive = wv.computeAlive(now)
+
+	wv.mu.Unlock()
+
+	select {
+	case ch <- cp:
+	default:
+	}
+}
+
+func (wv *WorldView) computeAlive(now time.Time) map[string]bool {
 	alive := make(map[string]bool, len(wv.peers))
 	startupGrace := now.Sub(wv.startTime) <= wv.peerTimeout
+
 	for _, id := range wv.peers {
 		t, ok := wv.lastHeard[id]
 		if ok {
@@ -227,15 +239,12 @@ func (wv *WorldView) PublishWorld(ch chan<- common.Snapshot) {
 		}
 		alive[id] = startupGrace
 	}
-	cp.Alive = alive
-	// log.Printf("%v", cp.Alive)
-	wv.mu.Unlock()
-
-	select {
-	case ch <- cp:
-	default:
+	if now.Sub(wv.lastHeard[wv.selfKey]) > wv.peerTimeout {
+		alive[wv.selfKey] = false
 	}
+	return alive
 }
+
 
 func (wv *WorldView) IsCoherent() bool {
 	wv.mu.Lock()

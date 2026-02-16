@@ -6,7 +6,6 @@ import (
 	"elevator/elevassigner"
 	"encoding/json"
 	"fmt"
-	"log"
 	"os/exec"
 	"time"
 )
@@ -37,12 +36,14 @@ func assignerThread(
 
 	for {
 		select {
-		case networkSnapshot := <-networkSnapshotCh:
+		case <-context.Done():
+			return
 
+		case networkSnapshot := <-networkSnapshotCh:
 			//delete elevators marked stale
 			err := elevassigner.RemoveStaleStates(&networkSnapshot, selfKey)
 			if err != nil {
-				//fmt.Println("removing stale states error: ", err)
+				fmt.Println("removing stale states error: ", err)
 				break
 			}
 
@@ -53,7 +54,6 @@ func assignerThread(
 				break
 
 			}
-			log.Printf("%s", jsonBytes)
 
 			// Run external hall request assigner executable
 			ret, err := exec.Command("./elevassigner/"+HRA_EXECUTABLE, "-i", string(jsonBytes)).CombinedOutput()
@@ -70,21 +70,12 @@ func assignerThread(
 				break
 			}
 
-			log.Printf("%v", output)
-
 			// pick tasks for THIS elevator to send to fsmthread
 			currentElevInput = ElevInput{HallTask: output[selfKey]}
 			elevatorTasksCh <- currentElevInput
 
 		case <-time.After(NETWORK_PACKET_TIMEOUT * time.Second):
 			fmt.Println("Snapshot from network update timeout, withholding updates until next network ack")
-		}
-
-		// Avoid busy looping; also respects context
-		select {
-		case <-time.After(100 * time.Millisecond):
-		case <-context.Done():
-			return
 		}
 	}
 }
