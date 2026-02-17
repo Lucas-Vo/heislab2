@@ -302,6 +302,7 @@ func (wv *WorldView) Broadcast(kind UpdateKind) {
 	wv.mu.Unlock()
 
 	wv.sendMsg(kind, msg)
+	log.Printf("BROADCASTING")
 }
 
 // Relay re-broadcasts an already-constructed msg on the SAME net it arrived on.
@@ -310,6 +311,7 @@ func (wv *WorldView) Relay(kind UpdateKind, msg NetMsg) {
 		return
 	}
 	wv.sendMsg(kind, msg)
+	log.Printf("RELAYING")
 }
 
 func (wv *WorldView) sendMsg(kind UpdateKind, msg NetMsg) {
