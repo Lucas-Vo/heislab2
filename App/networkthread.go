@@ -107,7 +107,7 @@ func networkThread(
 			}
 		case <-elevatorErrorTimer.C:
 			log.Printf("No behavior change detected for 4 seconds, marking Elevator as stale")
-			if wv.SnapshotCopy().States[selfKey].Behavior != "EB_Idle" {
+			if wv.SnapshotCopy().States[selfKey].Behavior != "idle" {
 				wv.SelfAlive = false // Stop until next behavior change
 			}
 		}
