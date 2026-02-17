@@ -50,12 +50,15 @@ func networkThread(
 			if !wv.IsReady() {
 				continue
 			}
+			wv.SelfAlive = true
 			wv.Broadcast(elevnetwork.UpdateRequests)
+
 
 		case ns := <-elevServicedCh:
 			wv.ApplyUpdate(selfKey, ns, elevnetwork.UpdateServiced)
+			wv.SelfAlive = true
 			wv.Broadcast(elevnetwork.UpdateServiced)
-
+			
 		case in := <-incomingReq:
 			var msg elevnetwork.NetMsg
 			if err := json.Unmarshal(common.TrimZeros(in), &msg); err != nil {
@@ -95,7 +98,7 @@ func networkThread(
 			if !wv.IsReady() {
 				continue
 			}
-			if wv.SnapshotCopy().States[selfKey].Behavior != previousBehavior || wv.SnapshotCopy().States[selfKey].Behavior == "idle"{
+			if wv.SnapshotCopy().States[selfKey].Behavior != previousBehavior || wv.SnapshotCopy().States[selfKey].Behavior == "idle" {
 				previousBehavior = wv.SnapshotCopy().States[selfKey].Behavior
 				elevatorErrorTimer.Reset(4 * time.Second)
 			}
@@ -108,8 +111,7 @@ func networkThread(
 			}
 		case <-elevatorErrorTimer.C:
 			log.Printf("No behavior change detected for 4 seconds, marking Elevator as stale")
-			wv.SnapshotCopy().Alive[selfKey] = false
-			elevatorErrorTimer.Stop() // Stop until next behavior change
+			wv.SelfAlive = false // Stop until next behavior change
 		}
 	}
 }
