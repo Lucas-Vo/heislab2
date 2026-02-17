@@ -44,17 +44,19 @@ func networkThread(
 			return
 
 		case ns := <-elevRequestCh:
+			wv.SelfAlive = true
 			wv.ApplyUpdate(selfKey, ns, elevnetwork.UpdateRequests)
 			if !wv.IsReady() {
 				continue
 			}
-			wv.SelfAlive = true
+
 			elevatorErrorTimer.Reset(4 * time.Second)
 			wv.Broadcast(elevnetwork.UpdateRequests)
 
 		case ns := <-elevServicedCh:
-			wv.ApplyUpdate(selfKey, ns, elevnetwork.UpdateServiced)
 			wv.SelfAlive = true
+			wv.ApplyUpdate(selfKey, ns, elevnetwork.UpdateServiced)
+
 			elevatorErrorTimer.Reset(4 * time.Second)
 
 			wv.Broadcast(elevnetwork.UpdateServiced)
@@ -106,9 +108,13 @@ func networkThread(
 				wv.PublishWorld(netSnap2Ch)
 			}
 		case <-elevatorErrorTimer.C:
-			log.Printf("No behavior change detected for 4 seconds, marking Elevator as stale")
+			
 			if wv.SnapshotCopy().States[selfKey].Behavior != "idle" {
 				wv.SelfAlive = false // Stop until next behavior change
+				log.Printf("No behavior change detected for 4 seconds, marking Elevator as stale")
+			} else {
+				wv.SelfAlive = true
+				elevatorErrorTimer.Reset(4 * time.Second)
 			}
 		}
 	}
