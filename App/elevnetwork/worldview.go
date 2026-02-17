@@ -71,7 +71,8 @@ type WorldView struct {
 	// set true when received a snapshot or timeout
 	ready bool
 
-	selfKey string
+	selfKey   string
+	selfAlive bool
 
 	counter     uint64
 	latestCount map[string]uint64
@@ -239,9 +240,9 @@ func (wv *WorldView) computeAlive(now time.Time) map[string]bool {
 		}
 		alive[id] = startupGrace
 	}
-	if now.Sub(wv.lastHeard[wv.selfKey]) > wv.peerTimeout {
-		alive[wv.selfKey] = false
-	}
+
+	wv.selfAlive = now.Sub(wv.lastHeard[wv.selfKey]) <= wv.peerTimeout
+
 	return alive
 }
 
@@ -284,7 +285,7 @@ func (wv *WorldView) IsCoherent() bool {
 
 // Broadcast constructs a NetMsg from current snapshot and sends it on the correct net for the kind.
 func (wv *WorldView) Broadcast(kind UpdateKind) {
-	if wv.tx == nil {
+	if wv.tx == nil || !wv.selfAlive { //TODO: This boo thang has been changed, but it could have problem with sending
 		return
 	}
 
@@ -307,7 +308,7 @@ func (wv *WorldView) Broadcast(kind UpdateKind) {
 
 // Relay re-broadcasts an already-constructed msg on the SAME net it arrived on.
 func (wv *WorldView) Relay(kind UpdateKind, msg NetMsg) {
-	if wv.tx == nil {
+	if wv.tx == nil || !wv.selfAlive {
 		return
 	}
 	wv.sendMsg(kind, msg)
