@@ -173,6 +173,9 @@ func (wv *WorldView) ApplyUpdate(fromKey string, ns common.Snapshot, kind Update
 		log.Printf("Suggested recovered cab AFTER is: %v", wv.snapshot.States[wv.selfKey].CabRequests)
 		DELETE = false
 	}
+	if fromKey != wv.selfKey && kind == UpdateServiced {
+		log.Printf("APPLIED SERVICED ############")
+	}
 	return becameReady
 }
 

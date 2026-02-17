@@ -103,18 +103,18 @@ func networkThread(
 			wv.Broadcast(elevnetwork.UpdateRequests)
 
 			// Publish to Assigner and Elevator Control
-			if wv.IsCoherent() {
-				wv.PublishWorld(netSnap1Ch)
+			if wv.IsCoherent() || !wv.SelfAlive {
+				log.Printf("IS COHERENT JJJJJJJJJJJJJJJJJJJJJJJJJJJ")
+				wv.PublishWorld(netSnap1Ch) //TODO: Move this auta tha case <-elevatorErrorTimer.c block cuzzz ya don nned that if we take this a  naturale in tha ticker
 				wv.PublishWorld(netSnap2Ch)
 			}
 		case <-elevatorErrorTimer.C:
-			
-			if wv.SnapshotCopy().States[selfKey].Behavior != "idle" {
+			if wv.SnapshotCopy().States[selfKey].Behavior != "idle" { //TODO: why do we have "EB_Idle" as well as "idle"????? maybe we should just have "idle" and then have the assigner decide when to switch to "EB_Idle" based on the snapshot?
 				wv.SelfAlive = false // Stop until next behavior change
 				log.Printf("No behavior change detected for 4 seconds, marking Elevator as stale")
 			} else {
-				wv.SelfAlive = true
 				elevatorErrorTimer.Reset(4 * time.Second)
+				wv.SelfAlive = true
 			}
 		}
 	}
