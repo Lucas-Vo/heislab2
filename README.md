@@ -198,17 +198,16 @@
 
 | Elevators | Initial condition | Action | Expected |
 |---|---|---|---|
-| 1, 2, 3 | E1 at floor 1. E2 and E3 at floor 4. No hall or cab calls are active. | 1. Inside E1, press `Cab2`.<br>2. While E1 is between floors 1 and 2, press `Hall2Up` and `Hall2Down`.<br>3. While E1 is stopped at floor 2 with its door open, press `Hall1Down` (or any hall-down request below floor 2). | **At the moment E1 arrives at floor 2:**<br>• E1 stops at floor 2 and opens its door.<br>• `Hall2Up` light turns **OFF** on all workspaces when the door opens.<br>• `Hall2Down` light remains **ON** on all workspaces.<br><br>**During the stop at floor 2:**<br>• Door remains open for the normal door-open duration **plus an additional 3 seconds** (continuous open, no close/reopen).<br><br>**After the extra 3 seconds:**<br>• Door closes.<br>• E1 departs **downward** toward floor 1.<br><br>**After E1 departs:**<br>• `Hall1Down` remains active and visible in the system state.<br>• `Hall2Down` is cleared only when an elevator later arrives at floor 2 while moving downward. |
+| 1, 2, 3 | E1 at floor 1. E2 and E3 at floor 4. No hall or cab calls are active. | 1. Inside E1, press `Cab2`.<br>2. While E1 is between floors 1 and 2, press `Hall2Up` and `Hall2Down`.<br>3. While E1 is stopped at floor 2 with its door open, press `Hall1Down` (or any hall-down request below floor 2). | **At the moment E1 arrives at floor 2:**<br>• E1 stops at floor 2 and opens its door.<br>• `Hall2Up` light turns **OFF** on all workspaces when the door opens.<br>• `Hall2Down` light remains **ON** on all workspaces.<br><br>**During the stop at floor 2:**<br>• Door remains open for the normal door-open duration **plus an additional 3 seconds** (continuous open, no close/reopen).<br><br>**After the extra 3 seconds:**<br>• Door closes.<br>• E1 departs **downward** toward floor 1.<br><br>**After E1 departs:**<br>• `Hall1Up` remains active and visible in the system state.<br>• `Hall2Down` is cleared only when an elevator later arrives at floor 2 while moving downward. <br>• Note, an elevator on 4th floor might go down, but thats not a bug, hall assigner wants that|
 
 
 ---
 
 tests to add 
-- 1 elevator active on 1st floor, press all, should clear up, 4th floor, then down, and fall back down
-- cab revival from all elevators on the system
-- spam cab button on current floor to see door stays open
-- spam hall button on current floor to see door stays open
-- press hall when a door light is desynced with hall
-- press cab when a door light is desynced with cab
-- e1 on 3rd, press hall2up
-- e1 on 2nd, press hall3down
+- obstruction on, then press hall, door should stay on
+- obstruction on, then press cab, door should stay on
+- 2.2.2 vague af. should be between floor x and y isntead of on floor 2 going up.
+- 
+bugs:
+- performing 5.2 but pressing cab3 instead of cab2, The light on cab3 on E1 remains on indefinitely
+- pressing hall or cab after obstruction is on, the door closes after 3 sec, it should be on

@@ -189,6 +189,7 @@ func fsmThread(
 				default:
 				}
 			}
+			// TODO: make channels buffered
 		}
 	}
 }

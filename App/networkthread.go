@@ -21,6 +21,7 @@ func networkThread(
 	netSnap1Ch chan<- common.Snapshot,
 	netSnap2Ch chan<- common.Snapshot,
 ) {
+	// merge serviced and request channels
 	selfKey := cfg.SelfKey
 
 	pmReq, incomingReq := elevnetwork.StartP2P(ctx, cfg, 4242)
