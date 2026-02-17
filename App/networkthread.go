@@ -35,7 +35,6 @@ func networkThread(
 	contactTimer := time.NewTimer(INITIAL_CONTACT_TIMEOUT)
 	defer contactTimer.Stop()
 
-	previousBehavior := ""
 	elevatorErrorTimer := time.NewTimer(4 * time.Second)
 	defer elevatorErrorTimer.Stop()
 
@@ -45,20 +44,21 @@ func networkThread(
 			return
 
 		case ns := <-elevRequestCh:
-			previousBehavior = wv.SnapshotCopy().States[selfKey].Behavior
 			wv.ApplyUpdate(selfKey, ns, elevnetwork.UpdateRequests)
 			if !wv.IsReady() {
 				continue
 			}
 			wv.SelfAlive = true
+			elevatorErrorTimer.Reset(4 * time.Second)
 			wv.Broadcast(elevnetwork.UpdateRequests)
-
 
 		case ns := <-elevServicedCh:
 			wv.ApplyUpdate(selfKey, ns, elevnetwork.UpdateServiced)
 			wv.SelfAlive = true
+			elevatorErrorTimer.Reset(4 * time.Second)
+
 			wv.Broadcast(elevnetwork.UpdateServiced)
-			
+
 		case in := <-incomingReq:
 			var msg elevnetwork.NetMsg
 			if err := json.Unmarshal(common.TrimZeros(in), &msg); err != nil {
@@ -97,10 +97,6 @@ func networkThread(
 			// Periodically broadcast state
 			if !wv.IsReady() {
 				continue
-			}
-			if wv.SnapshotCopy().States[selfKey].Behavior != previousBehavior || wv.SnapshotCopy().States[selfKey].Behavior == "idle" {
-				previousBehavior = wv.SnapshotCopy().States[selfKey].Behavior
-				elevatorErrorTimer.Reset(4 * time.Second)
 			}
 			wv.Broadcast(elevnetwork.UpdateRequests)
 

@@ -241,8 +241,6 @@ func (wv *WorldView) computeAlive(now time.Time) map[string]bool {
 		alive[id] = startupGrace
 	}
 
-	wv.SelfAlive = now.Sub(wv.lastHeard[wv.selfKey]) <= wv.peerTimeout
-
 	return alive
 }
 
