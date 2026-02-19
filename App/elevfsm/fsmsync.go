@@ -1,7 +1,6 @@
 package elevfsm
 
 import (
-	elevio "Driver-go/elevio"
 	"elevator/common"
 	"log"
 	"time"
@@ -101,17 +100,17 @@ func (s *FsmSync) ApplyAssigner(task common.ElevInput) {
 func (s *FsmSync) cancelUnassigned(prev [][2]bool) {
 	for f := 0; f < common.N_FLOORS; f++ {
 		if prev[f][0] && !s.assignedHall[f][0] {
-			s.cancelHall(f, elevio.BT_HallUp, "unassigned")
+			s.cancelHall(f, common.BT_HallUp, "unassigned")
 		}
 		if prev[f][1] && !s.assignedHall[f][1] {
-			s.cancelHall(f, elevio.BT_HallDown, "unassigned")
+			s.cancelHall(f, common.BT_HallDown, "unassigned")
 		}
 	}
 }
 
 // cancelHall clears a specific hall request from local state and the FSM's request table.
-func (s *FsmSync) cancelHall(f int, btn elevio.ButtonType, reason string) {
-	if btn != elevio.BT_HallUp && btn != elevio.BT_HallDown {
+func (s *FsmSync) cancelHall(f int, btn common.ButtonType, reason string) {
+	if btn != common.BT_HallUp && btn != common.BT_HallDown {
 		return
 	}
 	if f < 0 || f >= common.N_FLOORS {
@@ -123,7 +122,7 @@ func (s *FsmSync) cancelHall(f int, btn elevio.ButtonType, reason string) {
 	s.pendingAt[f][btn] = time.Time{}
 	s.injected[f][btn] = false
 	s.confirmed[f][btn] = false
-	if btn == elevio.BT_HallUp {
+	if btn == common.BT_HallUp {
 		s.localHall[f][0] = false
 	} else {
 		s.localHall[f][1] = false
@@ -150,42 +149,42 @@ func (s *FsmSync) ApplyNetworkSnapshot(snap common.Snapshot, now time.Time) {
 
 	for f := 0; f < common.N_FLOORS; f++ {
 		// Hall up
-		wasConfirmed := s.confirmed[f][elevio.BT_HallUp]
+		wasConfirmed := s.confirmed[f][common.BT_HallUp]
 		if s.netHall[f][0] {
-			s.pendingAt[f][elevio.BT_HallUp] = time.Time{}
-			s.confirmed[f][elevio.BT_HallUp] = true
+			s.pendingAt[f][common.BT_HallUp] = time.Time{}
+			s.confirmed[f][common.BT_HallUp] = true
 		} else {
-			s.confirmed[f][elevio.BT_HallUp] = false
+			s.confirmed[f][common.BT_HallUp] = false
 			if wasConfirmed {
 				s.localHall[f][0] = false
-				s.injected[f][elevio.BT_HallUp] = false
+				s.injected[f][common.BT_HallUp] = false
 			}
 		}
 
 		// Hall down
-		wasConfirmed = s.confirmed[f][elevio.BT_HallDown]
+		wasConfirmed = s.confirmed[f][common.BT_HallDown]
 		if s.netHall[f][1] {
-			s.pendingAt[f][elevio.BT_HallDown] = time.Time{}
-			s.confirmed[f][elevio.BT_HallDown] = true
+			s.pendingAt[f][common.BT_HallDown] = time.Time{}
+			s.confirmed[f][common.BT_HallDown] = true
 		} else {
-			s.confirmed[f][elevio.BT_HallDown] = false
+			s.confirmed[f][common.BT_HallDown] = false
 			if wasConfirmed {
 				s.localHall[f][1] = false
-				s.injected[f][elevio.BT_HallDown] = false
+				s.injected[f][common.BT_HallDown] = false
 			}
 		}
 
 		// Cab
-		wasConfirmed = s.confirmed[f][elevio.BT_Cab]
+		wasConfirmed = s.confirmed[f][common.BT_Cab]
 		if s.netCab[f] {
-			s.pendingAt[f][elevio.BT_Cab] = time.Time{}
-			s.confirmed[f][elevio.BT_Cab] = true
+			s.pendingAt[f][common.BT_Cab] = time.Time{}
+			s.confirmed[f][common.BT_Cab] = true
 			s.localCab[f] = true
 		} else {
-			s.confirmed[f][elevio.BT_Cab] = false
+			s.confirmed[f][common.BT_Cab] = false
 			if wasConfirmed {
 				s.localCab[f] = false
-				s.injected[f][elevio.BT_Cab] = false
+				s.injected[f][common.BT_Cab] = false
 			}
 		}
 	}
@@ -210,21 +209,21 @@ func (s *FsmSync) copyCabFromSnapshot(snap common.Snapshot) bool {
 }
 
 // OnLocalPress records a local button press and marks it pending confirmation/injection.
-func (s *FsmSync) OnLocalPress(f int, btn elevio.ButtonType, now time.Time) {
+func (s *FsmSync) OnLocalPress(f int, btn common.ButtonType, now time.Time) {
 	s.markPending(f, btn, now)
 
 	switch btn {
-	case elevio.BT_HallUp:
+	case common.BT_HallUp:
 		s.localHall[f][0] = true
-	case elevio.BT_HallDown:
+	case common.BT_HallDown:
 		s.localHall[f][1] = true
-	case elevio.BT_Cab:
+	case common.BT_Cab:
 		s.localCab[f] = true
 	}
 }
 
 // markPending starts the confirmation timer for a locally pressed request.
-func (s *FsmSync) markPending(f int, btn elevio.ButtonType, now time.Time) {
+func (s *FsmSync) markPending(f int, btn common.ButtonType, now time.Time) {
 	if s.pendingAt[f][btn].IsZero() {
 		s.pendingAt[f][btn] = now
 		log.Printf("fsmThread: pending request f=%d b=%s (local press)", f, common.ElevioButtonToString(btn))
@@ -233,7 +232,7 @@ func (s *FsmSync) markPending(f int, btn elevio.ButtonType, now time.Time) {
 
 // inject forwards a request into the local FSM once it's confirmed or timed out.
 // This bridges net-confirmed requests or offline fallback into the elevator's request table.
-func (s *FsmSync) inject(f int, btn elevio.ButtonType, reason string) {
+func (s *FsmSync) inject(f int, btn common.ButtonType, reason string) {
 	if s.injected[f][btn] {
 		return
 	}
@@ -243,11 +242,11 @@ func (s *FsmSync) inject(f int, btn elevio.ButtonType, reason string) {
 	s.pendingAt[f][btn] = time.Time{}
 
 	switch btn {
-	case elevio.BT_HallUp:
+	case common.BT_HallUp:
 		s.localHall[f][0] = true
-	case elevio.BT_HallDown:
+	case common.BT_HallDown:
 		s.localHall[f][1] = true
-	case elevio.BT_Cab:
+	case common.BT_Cab:
 		s.localCab[f] = true
 	}
 }
@@ -259,24 +258,24 @@ func (s *FsmSync) TryInjectOnline() {
 	}
 	for f := 0; f < common.N_FLOORS; f++ {
 		if s.netCab[f] {
-			s.inject(f, elevio.BT_Cab, "net-confirmed")
+			s.inject(f, common.BT_Cab, "net-confirmed")
 		}
 
 		if s.hasAssigner {
 			if s.netHall[f][0] && s.assignedHall[f][0] {
-				s.inject(f, elevio.BT_HallUp, "net-confirmed")
+				s.inject(f, common.BT_HallUp, "net-confirmed")
 			}
 			if s.netHall[f][1] && s.assignedHall[f][1] {
-				s.inject(f, elevio.BT_HallDown, "net-confirmed")
+				s.inject(f, common.BT_HallDown, "net-confirmed")
 			}
 
-			if s.netHall[f][0] && !s.assignedHall[f][0] && !s.pendingAt[f][elevio.BT_HallUp].IsZero() {
+			if s.netHall[f][0] && !s.assignedHall[f][0] && !s.pendingAt[f][common.BT_HallUp].IsZero() {
 				log.Printf("fsmThread: hall up f=%d assigned elsewhere", f)
-				s.pendingAt[f][elevio.BT_HallUp] = time.Time{}
+				s.pendingAt[f][common.BT_HallUp] = time.Time{}
 			}
-			if s.netHall[f][1] && !s.assignedHall[f][1] && !s.pendingAt[f][elevio.BT_HallDown].IsZero() {
+			if s.netHall[f][1] && !s.assignedHall[f][1] && !s.pendingAt[f][common.BT_HallDown].IsZero() {
 				log.Printf("fsmThread: hall down f=%d assigned elsewhere", f)
-				s.pendingAt[f][elevio.BT_HallDown] = time.Time{}
+				s.pendingAt[f][common.BT_HallDown] = time.Time{}
 			}
 		}
 	}
@@ -286,25 +285,25 @@ func (s *FsmSync) TryInjectOnline() {
 func (s *FsmSync) TryInjectOffline(now time.Time, confirmTimeout time.Duration) {
 	for f := 0; f < common.N_FLOORS; f++ {
 		if s.localHall[f][0] {
-			if s.readyToInject(f, elevio.BT_HallUp, now, confirmTimeout) {
-				s.inject(f, elevio.BT_HallUp, "offline")
+			if s.readyToInject(f, common.BT_HallUp, now, confirmTimeout) {
+				s.inject(f, common.BT_HallUp, "offline")
 			}
 		}
 		if s.localHall[f][1] {
-			if s.readyToInject(f, elevio.BT_HallDown, now, confirmTimeout) {
-				s.inject(f, elevio.BT_HallDown, "offline")
+			if s.readyToInject(f, common.BT_HallDown, now, confirmTimeout) {
+				s.inject(f, common.BT_HallDown, "offline")
 			}
 		}
 		if s.localCab[f] {
-			if s.readyToInject(f, elevio.BT_Cab, now, confirmTimeout) {
-				s.inject(f, elevio.BT_Cab, "offline")
+			if s.readyToInject(f, common.BT_Cab, now, confirmTimeout) {
+				s.inject(f, common.BT_Cab, "offline")
 			}
 		}
 	}
 }
 
 // readyToInject returns true once a request is either unconfirmed or past the confirm timeout.
-func (s *FsmSync) readyToInject(f int, btn elevio.ButtonType, now time.Time, confirmTimeout time.Duration) bool {
+func (s *FsmSync) readyToInject(f int, btn common.ButtonType, now time.Time, confirmTimeout time.Duration) bool {
 	if s.injected[f][btn] {
 		return false
 	}
@@ -318,18 +317,18 @@ func (s *FsmSync) readyToInject(f int, btn elevio.ButtonType, now time.Time, con
 // Direction-aware: only the in-direction hall (plus cab) is cleared for CV_InDirn.
 // When online, keep injected flags until the network snapshot removes the requests.
 // When offline, clear injected flags immediately.
-func (s *FsmSync) ClearAtFloor(f int, online bool, arrivalDirn elevio.MotorDirection) ServicedAt {
+func (s *FsmSync) ClearAtFloor(f int, online bool, arrivalDirn common.MotorDirection) ServicedAt {
 	if f < 0 || f >= common.N_FLOORS {
 		return ServicedAt{}
 	}
 
 	var cleared ServicedAt
 
-	if s.injected[f][elevio.BT_Cab] {
+	if s.injected[f][common.BT_Cab] {
 		cleared.Cab = true
 		s.localCab[f] = false
 		if !online {
-			s.injected[f][elevio.BT_Cab] = false
+			s.injected[f][common.BT_Cab] = false
 		}
 	}
 
@@ -341,40 +340,40 @@ func (s *FsmSync) ClearAtFloor(f int, online bool, arrivalDirn elevio.MotorDirec
 		clearHallDown = true
 	case CV_InDirn:
 		switch arrivalDirn {
-		case elevio.MD_Up:
+		case common.MD_Up:
 			clearHallUp = true
 			if s.Elevator.floor == common.N_FLOORS-1 {
 				clearHallDown = true
 			}
-			if requests_above(*s.Elevator) == 0 && !s.Elevator.requests[s.Elevator.floor][elevio.BT_HallUp] {
+			if requests_above(*s.Elevator) == 0 && !s.Elevator.requests[s.Elevator.floor][common.BT_HallUp] {
 				clearHallDown = true
 			}
-		case elevio.MD_Down:
+		case common.MD_Down:
 			clearHallDown = true
 			if s.Elevator.floor == 0 {
 				clearHallUp = true
 			}
-			if requests_below(*s.Elevator) == 0 && !s.Elevator.requests[s.Elevator.floor][elevio.BT_HallDown] {
+			if requests_below(*s.Elevator) == 0 && !s.Elevator.requests[s.Elevator.floor][common.BT_HallDown] {
 				clearHallUp = true
 			}
-		case elevio.MD_Stop:
+		case common.MD_Stop:
 			clearHallUp = true
 			clearHallDown = true
 		}
 	}
 
-	if clearHallUp && s.injected[f][elevio.BT_HallUp] {
+	if clearHallUp && s.injected[f][common.BT_HallUp] {
 		cleared.HallUp = true
 		s.localHall[f][0] = false
 		if !online {
-			s.injected[f][elevio.BT_HallUp] = false
+			s.injected[f][common.BT_HallUp] = false
 		}
 	}
-	if clearHallDown && s.injected[f][elevio.BT_HallDown] {
+	if clearHallDown && s.injected[f][common.BT_HallDown] {
 		cleared.HallDown = true
 		s.localHall[f][1] = false
 		if !online {
-			s.injected[f][elevio.BT_HallDown] = false
+			s.injected[f][common.BT_HallDown] = false
 		}
 	}
 
@@ -470,9 +469,9 @@ func (s *FsmSync) ApplyLights(snap common.Snapshot) {
 
 	output := common.ElevioGetOutputDevice()
 	for floor := 0; floor < common.N_FLOORS; floor++ {
-		output.RequestButtonLight(floor, elevio.BT_HallUp, hall[floor][0])
-		output.RequestButtonLight(floor, elevio.BT_HallDown, hall[floor][1])
-		output.RequestButtonLight(floor, elevio.BT_Cab, cab[floor])
+		output.RequestButtonLight(floor, common.BT_HallUp, hall[floor][0])
+		output.RequestButtonLight(floor, common.BT_HallDown, hall[floor][1])
+		output.RequestButtonLight(floor, common.BT_Cab, cab[floor])
 	}
 }
 

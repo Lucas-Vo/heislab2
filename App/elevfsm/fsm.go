@@ -1,7 +1,6 @@
 package elevfsm
 
 import (
-	"Driver-go/elevio"
 	"elevator/common"
 	"log"
 )
@@ -87,19 +86,19 @@ func SetAllLights(_ Elevator) {
 	}
 
 	for floor := range common.N_FLOORS {
-		outputDevice.RequestButtonLight(floor, elevio.BT_HallUp, hallLamp[floor][0])
-		outputDevice.RequestButtonLight(floor, elevio.BT_HallDown, hallLamp[floor][1])
-		outputDevice.RequestButtonLight(floor, elevio.BT_Cab, cabLamp[floor])
+		outputDevice.RequestButtonLight(floor, common.BT_HallUp, hallLamp[floor][0])
+		outputDevice.RequestButtonLight(floor, common.BT_HallDown, hallLamp[floor][1])
+		outputDevice.RequestButtonLight(floor, common.BT_Cab, cabLamp[floor])
 	}
 }
 
 func Fsm_onInitBetweenFloors(e *Elevator) {
-	outputDevice.MotorDirection(elevio.MD_Down)
-	e.dirn = elevio.MD_Down
+	outputDevice.MotorDirection(common.MD_Down)
+	e.dirn = common.MD_Down
 	e.behaviour = EB_Moving
 }
 
-func Fsm_onRequestButtonPress(e *Elevator, btn_floor int, btn_type elevio.ButtonType) {
+func Fsm_onRequestButtonPress(e *Elevator, btn_floor int, btn_type common.ButtonType) {
 	log.Printf("FSM: request press floor=%d btn=%s (before floor=%d dir=%s behav=%s)",
 		btn_floor,
 		common.ElevioButtonToString(btn_type),
@@ -156,7 +155,7 @@ func Fsm_onFloorArrival(e *Elevator, newFloor int) {
 	switch e.behaviour {
 	case EB_Moving:
 		if requests_shouldStop(*e) != 0 {
-			outputDevice.MotorDirection(elevio.MD_Stop)
+			outputDevice.MotorDirection(common.MD_Stop)
 			outputDevice.DoorLight(true)
 			*e = requests_clearAtCurrentFloor(*e)
 			Timer_start(e.config.doorOpenDuration_s)
@@ -210,7 +209,7 @@ func CurrentBehaviour(e *Elevator) ElevatorBehaviour {
 	return e.behaviour
 }
 
-func CurrentDirection(e *Elevator) elevio.MotorDirection {
+func CurrentDirection(e *Elevator) common.MotorDirection {
 	return e.dirn
 }
 
@@ -231,11 +230,11 @@ func CurrentMotionStrings(e *Elevator) (behavior string, direction string) {
 	}
 
 	switch e.dirn {
-	case elevio.MD_Up:
+	case common.MD_Up:
 		direction = "up"
-	case elevio.MD_Down:
+	case common.MD_Down:
 		direction = "down"
-	case elevio.MD_Stop:
+	case common.MD_Stop:
 		direction = "stop"
 	default:
 		direction = "stop"

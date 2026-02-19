@@ -1,7 +1,6 @@
 package main
 
 import (
-	elevio "Driver-go/elevio"
 	"context"
 	"log"
 	"time"
@@ -108,12 +107,12 @@ func fsmThread(
 			// Request buttons (edge-detected)
 			for f := 0; f < common.N_FLOORS; f++ {
 				for b := 0; b < common.N_BUTTONS; b++ {
-					v := input.RequestButton(f, elevio.ButtonType(b))
+					v := input.RequestButton(f, common.ButtonType(b))
 					if v != 0 && v != prevReq[f][b] {
-						sync.OnLocalPress(f, elevio.ButtonType(b), now)
+						sync.OnLocalPress(f, common.ButtonType(b), now)
 						changedNew = true
 						if input.FloorSensor() == f {
-							elevfsm.Fsm_onRequestButtonPress(sync.Elevator, f, elevio.ButtonType(b))
+							elevfsm.Fsm_onRequestButtonPress(sync.Elevator, f, common.ButtonType(b))
 						}
 					}
 					prevReq[f][b] = v
