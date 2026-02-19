@@ -521,6 +521,7 @@ func cloneBoolSlice(in []bool) []bool {
 	return out
 }
 
+// TODO: delete
 func (s *FsmSync) GetNetHall() [][2]bool {
 	return s.netHall
 }

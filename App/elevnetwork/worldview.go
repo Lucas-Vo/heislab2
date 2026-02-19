@@ -71,7 +71,8 @@ type WorldView struct {
 	// set true when received a snapshot or timeout
 	ready bool
 
-	selfKey string
+	selfKey   string
+	SelfAlive bool
 
 	counter     uint64
 	latestCount map[string]uint64
@@ -172,6 +173,9 @@ func (wv *WorldView) ApplyUpdate(fromKey string, ns common.Snapshot, kind Update
 		log.Printf("Suggested recovered cab AFTER is: %v", wv.snapshot.States[wv.selfKey].CabRequests)
 		DELETE = false
 	}
+	if fromKey != wv.selfKey && kind == UpdateServiced {
+		log.Printf("APPLIED SERVICED ############")
+	}
 	return becameReady
 }
 
@@ -217,8 +221,20 @@ func (wv *WorldView) PublishWorld(ch chan<- common.Snapshot) {
 	cp := common.DeepCopySnapshot(wv.snapshot)
 
 	now := time.Now()
+	cp.Alive = wv.computeAlive(now)
+
+	wv.mu.Unlock()
+
+	select {
+	case ch <- cp:
+	default:
+	}
+}
+
+func (wv *WorldView) computeAlive(now time.Time) map[string]bool {
 	alive := make(map[string]bool, len(wv.peers))
 	startupGrace := now.Sub(wv.startTime) <= wv.peerTimeout
+
 	for _, id := range wv.peers {
 		t, ok := wv.lastHeard[id]
 		if ok {
@@ -227,14 +243,8 @@ func (wv *WorldView) PublishWorld(ch chan<- common.Snapshot) {
 		}
 		alive[id] = startupGrace
 	}
-	cp.Alive = alive
-	// log.Printf("%v", cp.Alive)
-	wv.mu.Unlock()
 
-	select {
-	case ch <- cp:
-	default:
-	}
+	return alive
 }
 
 func (wv *WorldView) IsCoherent() bool {
@@ -276,7 +286,7 @@ func (wv *WorldView) IsCoherent() bool {
 
 // Broadcast constructs a NetMsg from current snapshot and sends it on the correct net for the kind.
 func (wv *WorldView) Broadcast(kind UpdateKind) {
-	if wv.tx == nil {
+	if wv.tx == nil || !wv.SelfAlive { //TODO: This boo thang has been changed, but it could have problem with sending
 		return
 	}
 
@@ -285,7 +295,7 @@ func (wv *WorldView) Broadcast(kind UpdateKind) {
 	now := time.Now()
 
 	snapshot := common.DeepCopySnapshot(wv.snapshot)
-	wv.lastHeard[wv.selfKey] = now
+	wv.lastHeard[wv.selfKey] = now // TODO: Widdewavvy this line ahah
 	wv.lastSnapshot[wv.selfKey] = snapshot
 	msg := NetMsg{
 		Origin:   wv.selfKey,
@@ -295,14 +305,16 @@ func (wv *WorldView) Broadcast(kind UpdateKind) {
 	wv.mu.Unlock()
 
 	wv.sendMsg(kind, msg)
+	log.Printf("BROADCASTING")
 }
 
 // Relay re-broadcasts an already-constructed msg on the SAME net it arrived on.
 func (wv *WorldView) Relay(kind UpdateKind, msg NetMsg) {
-	if wv.tx == nil {
+	if wv.tx == nil || !wv.SelfAlive {
 		return
 	}
 	wv.sendMsg(kind, msg)
+	log.Printf("RELAYING")
 }
 
 func (wv *WorldView) sendMsg(kind UpdateKind, msg NetMsg) {

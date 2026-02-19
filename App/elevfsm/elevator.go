@@ -92,3 +92,7 @@ func elevator_uninitialized() Elevator {
 	elevator.config.doorOpenDuration_s = 3.0
 	return elevator
 }
+
+func (e *Elevator) GetBehaviour() ElevatorBehaviour {
+	return e.behaviour
+}

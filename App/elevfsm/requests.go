@@ -130,7 +130,7 @@ func requests_shouldClearImmediately(e Elevator, btn_floor int, btn_type elevio.
 	}
 }
 
-func requests_clearAtCurrentFloor(e Elevator) Elevator {
+func requests_clearAtCurrentFloor(e Elevator) Elevator { // TODO: this code is implemented twice
 	switch e.config.clearRequestVariant {
 	case CV_All:
 		for btn := elevio.ButtonType(0); btn < common.N_BUTTONS; btn++ {

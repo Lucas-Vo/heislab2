@@ -36,20 +36,30 @@ func networkThread(
 	contactTimer := time.NewTimer(INITIAL_CONTACT_TIMEOUT)
 	defer contactTimer.Stop()
 
+	elevatorErrorTimer := time.NewTimer(4 * time.Second)
+	defer elevatorErrorTimer.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
 			return
 
 		case ns := <-elevRequestCh:
+			wv.SelfAlive = true
 			wv.ApplyUpdate(selfKey, ns, elevnetwork.UpdateRequests)
 			if !wv.IsReady() {
 				continue
 			}
+
+			elevatorErrorTimer.Reset(4 * time.Second)
 			wv.Broadcast(elevnetwork.UpdateRequests)
 
 		case ns := <-elevServicedCh:
+			wv.SelfAlive = true
 			wv.ApplyUpdate(selfKey, ns, elevnetwork.UpdateServiced)
+
+			elevatorErrorTimer.Reset(4 * time.Second)
+
 			wv.Broadcast(elevnetwork.UpdateServiced)
 
 		case in := <-incomingReq:
@@ -85,21 +95,27 @@ func networkThread(
 		case <-contactTimer.C:
 			log.Printf("networkThread: initial contact timeout; forcing ready")
 			wv.ForceReady()
-			// wv.PublishWorld(netSnap1Ch)
-			// wv.PublishWorld(netSnap2Ch)
 
 		case <-ticker.C:
 			// Periodically broadcast state
 			if !wv.IsReady() {
 				continue
 			}
-
 			wv.Broadcast(elevnetwork.UpdateRequests)
 
 			// Publish to Assigner and Elevator Control
-			if wv.IsCoherent() {
-				wv.PublishWorld(netSnap1Ch)
+			if wv.IsCoherent() || !wv.SelfAlive {
+				log.Printf("IS COHERENT JJJJJJJJJJJJJJJJJJJJJJJJJJJ")
+				wv.PublishWorld(netSnap1Ch) //TODO: Move this auta tha case <-elevatorErrorTimer.c block cuzzz ya don nned that if we take this a  naturale in tha ticker
 				wv.PublishWorld(netSnap2Ch)
+			}
+		case <-elevatorErrorTimer.C:
+			if wv.SnapshotCopy().States[selfKey].Behavior != "idle" { //TODO: why do we have "EB_Idle" as well as "idle"????? maybe we should just have "idle" and then have the assigner decide when to switch to "EB_Idle" based on the snapshot?
+				wv.SelfAlive = false // Stop until next behavior change
+				log.Printf("No behavior change detected for 4 seconds, marking Elevator as stale")
+			} else {
+				elevatorErrorTimer.Reset(4 * time.Second)
+				wv.SelfAlive = true
 			}
 		}
 	}
