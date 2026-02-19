@@ -23,10 +23,20 @@ func networkThread(
 	// merge serviced and request channels
 	selfKey := cfg.SelfKey
 
-	incomingPacket := elevnetwork.StartP2P(ctx, cfg, 4242)
+	pm, incomingPacket := elevnetwork.StartP2P(ctx, cfg, 4242)
 
-	wv := elevnetwork.NewWorldView(cfg)
+	wv := elevnetwork.NewWorldView(pm, cfg)
 
+	wv.Relay(elevnetwork.NetMsg{
+		Origin:  selfKey,
+		Counter: 0,
+		Snapshot: common.Snapshot{
+			UpdateKind: common.UpdateRequests,
+			States:     make(map[string]common.ElevState),
+		},
+	}) // Send an initial empty msg to prompt others to respond with their state, so we can populate our world view faster. This also starts the contact timer, which will force us ready after a timeout if we don't get any responses.
+
+	//TODO: Create a separate send nothing struct function
 	ticker := time.NewTicker(300 * time.Millisecond)
 	defer ticker.Stop()
 
@@ -45,12 +55,12 @@ func networkThread(
 			wv.SelfAlive = true
 			elevatorErrorTimer.Reset(4 * time.Second)
 
+			wv.ApplyUpdate(selfKey, ns, ns.UpdateKind)
 			if ns.UpdateKind == common.UpdateRequests {
 				if !wv.IsReady() {
 					continue
 				}
 			}
-			wv.ApplyUpdate(selfKey, ns, ns.UpdateKind)
 			wv.Broadcast(ns.UpdateKind)
 
 		case in := <-incomingPacket:

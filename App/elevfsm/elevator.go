@@ -1,5 +1,6 @@
 package elevfsm
 
+//TODO: elevator.go fsm.go requests.go and timer.go is AALLLL soup. make that shit dissapear as most is implemented in fsmsync
 import (
 	"elevator/common"
 	"fmt"

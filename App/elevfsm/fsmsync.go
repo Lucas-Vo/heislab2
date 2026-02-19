@@ -98,7 +98,7 @@ func (s *FsmSync) ApplyAssigner(task common.ElevInput) {
 
 // cancelUnassigned clears local tracking for halls we no longer own after a new assignment.
 func (s *FsmSync) cancelUnassigned(prev [][2]bool) {
-	for f := 0; f < common.N_FLOORS; f++ {
+	for f := range common.N_FLOORS {
 		if prev[f][0] && !s.assignedHall[f][0] {
 			s.cancelHall(f, common.BT_HallUp, "unassigned")
 		}
@@ -147,7 +147,7 @@ func (s *FsmSync) ApplyNetworkSnapshot(snap common.Snapshot, now time.Time) {
 		s.hasNetSelf = true
 	}
 
-	for f := 0; f < common.N_FLOORS; f++ {
+	for f := range common.N_FLOORS {
 		// Hall up
 		wasConfirmed := s.confirmed[f][common.BT_HallUp]
 		if s.netHall[f][0] {
@@ -191,8 +191,8 @@ func (s *FsmSync) ApplyNetworkSnapshot(snap common.Snapshot, now time.Time) {
 }
 
 // copyCabFromSnapshot extracts our own cab requests from a snapshot (per-elevator state).
-func (s *FsmSync) copyCabFromSnapshot(snap common.Snapshot) bool {
-	for i := 0; i < common.N_FLOORS; i++ {
+func (s *FsmSync) copyCabFromSnapshot(snap common.Snapshot) bool { //TODO: Have much better variable names. Holy fuck. Sverre will cry
+	for i := range common.N_FLOORS {
 		s.netCab[i] = false
 	}
 	if snap.States == nil {
@@ -252,11 +252,11 @@ func (s *FsmSync) inject(f int, btn common.ButtonType, reason string) {
 }
 
 // TryInjectOnline injects net-confirmed requests we own, and drops pending halls assigned elsewhere.
-func (s *FsmSync) TryInjectOnline() { //TryInject, but pass in online bool to only have 1 function, also remove reason cuz just give me areason, just a little bits enough, just a second im not broken just bent, then we can learn to love agaiiin
+func (s *FsmSync) TryInjectOnline() { //TODO: TryInject, but pass in online bool to only have 1 function, also remove reason cuz just give me areason, just a little bits enough, just a second im not broken just bent, then we can learn to love agaiiin
 	if !s.hasNet {
 		return
 	}
-	for f := 0; f < common.N_FLOORS; f++ {
+	for f := range common.N_FLOORS {
 		if s.netCab[f] {
 			s.inject(f, common.BT_Cab, "net-confirmed")
 		}
@@ -283,7 +283,7 @@ func (s *FsmSync) TryInjectOnline() { //TryInject, but pass in online bool to on
 
 // TryInjectOffline injects locally pressed requests after a confirm timeout when offline.
 func (s *FsmSync) TryInjectOffline(now time.Time, confirmTimeout time.Duration) {
-	for f := 0; f < common.N_FLOORS; f++ {
+	for f := range common.N_FLOORS {
 		if s.localHall[f][0] {
 			if s.readyToInject(f, common.BT_HallUp, now, confirmTimeout) {
 				s.inject(f, common.BT_HallUp, "offline")
@@ -423,49 +423,22 @@ func (s *FsmSync) BuildServicedSnapshot(floor int, behavior string, direction st
 				CabRequests: cloneBoolSlice(s.localCab),
 			},
 		},
-	}
-}
-
-// LightsSnapshot returns the appropriate snapshot for button lamps, preferring net when online.
-func (s *FsmSync) LightsSnapshot(online bool) common.Snapshot {
-	if online && s.hasNet {
-		return common.Snapshot{
-			HallRequests: cloneHallSlice(s.netHall),
-			States: map[string]common.ElevState{
-				s.selfKey: {CabRequests: cloneBoolSlice(s.netCab)},
-			},
-		}
-	}
-
-	if !online {
-		return common.Snapshot{
-			HallRequests: cloneHallSlice(s.localHall),
-			States: map[string]common.ElevState{
-				s.selfKey: {CabRequests: cloneBoolSlice(s.localCab)},
-			},
-		}
-	}
-
-	// Startup grace: keep lights off until we have a snapshot or go offline.
-	emptyHall := make([][2]bool, common.N_FLOORS)
-	emptyCab := make([]bool, common.N_FLOORS)
-	return common.Snapshot{
-		HallRequests: emptyHall,
-		States: map[string]common.ElevState{
-			s.selfKey: {CabRequests: emptyCab},
-		},
+		UpdateKind: common.UpdateServiced,
 	}
 }
 
 // ApplyLights drives the physical lamps from a snapshot's hall and cab requests.
-func (s *FsmSync) ApplyLights(snap common.Snapshot) {
-	hall := cloneHallSlice(snap.HallRequests)
+func (s *FsmSync) ApplyLights(online bool) {
+	hall := make([][2]bool, common.N_FLOORS)
 	cab := make([]bool, common.N_FLOORS)
-	if snap.States != nil {
-		if st, ok := snap.States[s.selfKey]; ok {
-			cab = cloneBoolSlice(st.CabRequests)
-		}
+	if online && s.hasNet {
+		hall = cloneHallSlice(s.netHall)
+		cab = cloneBoolSlice(s.netCab)
+	} else if !online {
+		hall = cloneHallSlice(s.localHall)
+		cab = cloneBoolSlice(s.localCab)
 	}
+
 	output := common.ElevioGetOutputDevice()
 	for floor := range common.N_FLOORS {
 		output.RequestButtonLight(floor, common.BT_HallUp, hall[floor][0])
@@ -490,7 +463,7 @@ func copyHall(dst [][2]bool, src [][2]bool) {
 	if dst == nil {
 		return
 	}
-	for i := 0; i < len(dst); i++ {
+	for i := range dst {
 		if src != nil && i < len(src) {
 			dst[i] = src[i]
 		} else {
@@ -509,7 +482,7 @@ func cloneHallSlice(in [][2]bool) [][2]bool {
 // cloneBoolSlice deep-copies a cab request slice to a fixed-size slice.
 func cloneBoolSlice(in []bool) []bool {
 	out := make([]bool, common.N_FLOORS)
-	for i := 0; i < common.N_FLOORS; i++ {
+	for i := range common.N_FLOORS {
 		if in != nil && i < len(in) {
 			out[i] = in[i]
 		} else {

@@ -62,7 +62,7 @@ func (pm *PeerManager) hasLivePeer(id int) bool {
 		return true
 	}
 }
-func StartP2P(ctx context.Context, cfg common.Config, port int) chan []byte {
+func StartP2P(ctx context.Context, cfg common.Config, port int) (pm *PeerManager, incoming chan []byte) {
 	selfID := cfg.SelfID
 	if selfID == 0 {
 		id, err := cfg.DetectSelfID()
@@ -85,7 +85,7 @@ func StartP2P(ctx context.Context, cfg common.Config, port int) chan []byte {
 		MaxIdleTimeout:       6 * time.Second,
 	}
 
-	pm := newPeerManager(selfID, QUIC_FRAME_SIZE)
+	pm = newPeerManager(selfID, QUIC_FRAME_SIZE)
 
 	incomingFrames := make(chan []byte, 64)
 	pm.incoming = incomingFrames
@@ -99,7 +99,7 @@ func StartP2P(ctx context.Context, cfg common.Config, port int) chan []byte {
 		}
 	}
 
-	return incomingFrames
+	return pm, incomingFrames
 }
 func newPeerManager(selfID int, frameSize int) *PeerManager {
 	if frameSize <= 0 {

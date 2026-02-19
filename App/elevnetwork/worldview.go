@@ -18,34 +18,6 @@ type NetMsg struct {
 	Snapshot common.Snapshot `json:"snapshot"`
 }
 
-// ---- Transport abstraction (so WorldView only owns ONE handle) ----
-
-type Transport interface {
-	SendToAll(net common.UpdateKind, b []byte, deadline time.Duration)
-}
-
-type MuxTransport struct {
-	reqPM *PeerManager
-	svcPM *PeerManager
-}
-
-func NewMuxTransport(reqPM *PeerManager, svcPM *PeerManager) *MuxTransport {
-	return &MuxTransport{reqPM: reqPM, svcPM: svcPM}
-}
-
-func (mt *MuxTransport) SendToAll(net common.UpdateKind, b []byte, deadline time.Duration) {
-	switch net {
-	case common.UpdateRequests:
-		if mt.reqPM != nil {
-			mt.reqPM.sendToAll(b, deadline)
-		}
-	case common.UpdateServiced:
-		if mt.svcPM != nil {
-			mt.svcPM.sendToAll(b, deadline)
-		}
-	}
-}
-
 // ---- WorldView ----
 
 type WorldView struct {
@@ -70,10 +42,10 @@ type WorldView struct {
 	counter     uint64
 	latestCount map[string]uint64
 
-	tx Transport
+	pm *PeerManager
 }
 
-func NewWorldView(cfg common.Config) *WorldView {
+func NewWorldView(pm *PeerManager, cfg common.Config) *WorldView {
 	wv := &WorldView{
 		peers: cfg.ExpectedKeys(),
 
@@ -92,6 +64,7 @@ func NewWorldView(cfg common.Config) *WorldView {
 
 		counter:     0,
 		latestCount: make(map[string]uint64),
+		pm:          pm,
 	}
 	return wv
 }
@@ -276,7 +249,7 @@ func (wv *WorldView) IsCoherent() bool {
 
 // Broadcast constructs a NetMsg from current snapshot and sends it on the correct net for the kind.
 func (wv *WorldView) Broadcast(kind common.UpdateKind) {
-	if wv.tx == nil || !wv.SelfAlive { //TODO: This boo thang has been changed, but it could have problem with sending
+	if wv.pm == nil || !wv.SelfAlive { //TODO: This boo thang has been changed, but it could have problem with sending
 		return
 	}
 
@@ -299,8 +272,8 @@ func (wv *WorldView) Broadcast(kind common.UpdateKind) {
 }
 
 // Relay re-broadcasts an already-constructed msg on the SAME net it arrived on.
-func (wv *WorldView) Relay(msg NetMsg) {
-	if wv.tx == nil || !wv.SelfAlive {
+func (wv *WorldView) Relay(msg NetMsg) { //TODO Combine Relay and sendMsg into same function bruhh. Also broadcast checks for alive as well as relay so what the FUCK is the difference and please make this more compact
+	if !wv.SelfAlive {
 		return
 	}
 	wv.sendMsg(msg)
@@ -312,12 +285,12 @@ func (wv *WorldView) sendMsg(msg NetMsg) {
 	if err != nil {
 		return
 	}
-	wv.tx.SendToAll(msg.Snapshot.UpdateKind, b, 150*time.Millisecond)
+	wv.pm.sendToAll(b, 150*time.Millisecond) //TODO: This recursion will bust my balls
 }
 
-func mergeHall(current, incoming [][2]bool, kind common.UpdateKind) [][2]bool {
+func mergeHall(current, incomingHall [][2]bool, kind common.UpdateKind) [][2]bool { // TODO: Do we need to copy incomingHall? Is this needed to make it thread safe?
 	inc := make([][2]bool, common.N_FLOORS)
-	copy(inc, incoming)
+	copy(inc, incomingHall)
 
 	out := make([][2]bool, common.N_FLOORS)
 	for i := 0; i < common.N_FLOORS; i++ {

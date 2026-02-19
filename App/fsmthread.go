@@ -33,8 +33,6 @@ func fsmThread(
 
 	confirmTimeout := 200 * time.Millisecond
 	doorOpenDuration := elevfsm.DoorOpenDuration(sync.Elevator)
-	onlineKnown := false
-	prevOnline := false
 	prevObstructed := false
 	timerPaused := false
 
@@ -70,27 +68,20 @@ func fsmThread(
 			if online {
 				sync.TryInjectOnline()
 			}
-			sync.ApplyLights(sync.LightsSnapshot(online))
+			sync.ApplyLights(online)
 
 		case task := <-assignerOutputCh:
-			sync.ApplyAssigner(task)
 			now := time.Now()
+			sync.ApplyAssigner(task)
+
 			if !sync.Offline(now) {
-				sync.TryInjectOnline()
+				sync.TryInjectOnline() //TODO: maybe put the online check inside the tryinject, but maybe inject can be reworked completely
 			}
 
 		case <-ticker.C:
 			now := time.Now()
-			online := !sync.Offline(now)
-			if !onlineKnown || online != prevOnline {
-				state := "offline"
-				if online {
-					state = "online"
-				}
-				log.Printf("fsmThread: network %s (lastNetSeen=%s)", state, sync.LastNetSeen().Format(time.RFC3339Nano))
-				prevOnline = online
-				onlineKnown = true
-			}
+			online := !sync.Offline(now) //TODO: Change name of online
+
 			changedNew := false
 			changedServiced := false
 			var cleared elevfsm.ServicedAt
@@ -149,13 +140,13 @@ func fsmThread(
 			}
 
 			// Inject confirmed requests
-			if online {
+			if online { //TODO: TryInject(online)
 				sync.TryInjectOnline()
 			} else {
 				sync.TryInjectOffline(now, confirmTimeout)
 			}
 
-			sync.ApplyLights(sync.LightsSnapshot(online))
+			sync.ApplyLights(online)
 
 			behavior, direction = elevfsm.CurrentMotionStrings(sync.Elevator)
 			if sync.MotionChanged(prevFloor, behavior, direction) {
