@@ -1,7 +1,6 @@
 package elevfsm
 
 import (
-	"Driver-go/elevio"
 	"elevator/common"
 	"fmt"
 )
@@ -26,7 +25,7 @@ const (
 // structs
 type Elevator struct {
 	floor     int
-	dirn      elevio.MotorDirection
+	dirn      common.MotorDirection
 	behaviour ElevatorBehaviour
 	requests  [common.N_FLOORS][common.N_BUTTONS]bool
 	config    struct {
@@ -66,9 +65,9 @@ func elevator_print(es Elevator) {
 
 	for f := common.N_FLOORS - 1; f >= 0; f-- {
 		fmt.Printf("  | %d", f)
-		for btn := elevio.ButtonType(0); btn < common.N_BUTTONS; btn++ {
-			if (f == common.N_FLOORS-1 && btn == elevio.BT_HallUp) ||
-				(f == 0 && btn == elevio.BT_HallDown) {
+		for btn := common.ButtonType(0); btn < common.N_BUTTONS; btn++ {
+			if (f == common.N_FLOORS-1 && btn == common.BT_HallUp) ||
+				(f == 0 && btn == common.BT_HallDown) {
 				fmt.Printf("|     ")
 			} else {
 				if es.requests[f][btn] {
@@ -86,7 +85,7 @@ func elevator_print(es Elevator) {
 func elevator_uninitialized() Elevator {
 	var elevator Elevator
 	elevator.floor = -1
-	elevator.dirn = elevio.MD_Stop
+	elevator.dirn = common.MD_Stop
 	elevator.behaviour = EB_Idle
 	elevator.config.clearRequestVariant = CV_All
 	elevator.config.doorOpenDuration_s = 3.0
