@@ -252,7 +252,7 @@ func (s *FsmSync) inject(f int, btn common.ButtonType, reason string) {
 }
 
 // TryInjectOnline injects net-confirmed requests we own, and drops pending halls assigned elsewhere.
-func (s *FsmSync) TryInjectOnline() {
+func (s *FsmSync) TryInjectOnline() { //TryInject, but pass in online bool to only have 1 function, also remove reason cuz just give me areason, just a little bits enough, just a second im not broken just bent, then we can learn to love agaiiin
 	if !s.hasNet {
 		return
 	}
@@ -317,7 +317,7 @@ func (s *FsmSync) readyToInject(f int, btn common.ButtonType, now time.Time, con
 // Direction-aware: only the in-direction hall (plus cab) is cleared for CV_InDirn.
 // When online, keep injected flags until the network snapshot removes the requests.
 // When offline, clear injected flags immediately.
-func (s *FsmSync) ClearAtFloor(f int, online bool, arrivalDirn common.MotorDirection) ServicedAt {
+func (s *FsmSync) ClearAtFloor(f int, online bool, arrivalDirn common.MotorDirection) ServicedAt { //TODO: This is so compressable
 	if f < 0 || f >= common.N_FLOORS {
 		return ServicedAt{}
 	}
@@ -381,7 +381,7 @@ func (s *FsmSync) ClearAtFloor(f int, online bool, arrivalDirn common.MotorDirec
 }
 
 // BuildUpdateSnapshot builds a snapshot based on local requests and current motion state.
-func (s *FsmSync) BuildUpdateSnapshot(floor int, behavior string, direction string) common.Snapshot {
+func (s *FsmSync) BuildUpdateSnapshot(floor int, behavior string, direction string) common.Snapshot { //TODO: Make serviced and update snapshot the same shit
 	return common.Snapshot{
 		HallRequests: cloneHallSlice(s.localHall),
 		States: map[string]common.ElevState{
@@ -466,9 +466,8 @@ func (s *FsmSync) ApplyLights(snap common.Snapshot) {
 			cab = cloneBoolSlice(st.CabRequests)
 		}
 	}
-
 	output := common.ElevioGetOutputDevice()
-	for floor := 0; floor < common.N_FLOORS; floor++ {
+	for floor := range common.N_FLOORS {
 		output.RequestButtonLight(floor, common.BT_HallUp, hall[floor][0])
 		output.RequestButtonLight(floor, common.BT_HallDown, hall[floor][1])
 		output.RequestButtonLight(floor, common.BT_Cab, cab[floor])
@@ -518,19 +517,4 @@ func cloneBoolSlice(in []bool) []bool {
 		}
 	}
 	return out
-}
-
-// TODO: delete
-func (s *FsmSync) GetNetHall() [][2]bool {
-	return s.netHall
-}
-func (s *FsmSync) GetLocalHall() [][2]bool {
-	return s.localHall
-}
-
-func (s *FsmSync) GetNetCab() []bool {
-	return s.netCab
-}
-func (s *FsmSync) GetLocalCab() []bool {
-	return s.localCab
 }

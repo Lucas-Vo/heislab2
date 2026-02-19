@@ -1,5 +1,12 @@
 package common
 
+type UpdateKind int
+
+const (
+	UpdateRequests UpdateKind = iota // OR merge
+	UpdateServiced                   // AND merge
+)
+
 type ElevState struct {
 	Behavior    string `json:"behaviour"`
 	Floor       int    `json:"floor"`
@@ -11,6 +18,7 @@ type Snapshot struct {
 	HallRequests [][2]bool            `json:"hallRequests"`
 	States       map[string]ElevState `json:"states"`
 	Alive        map[string]bool      `json:"alive"`
+	UpdateKind   UpdateKind           `json:"type"`
 }
 
 type ElevInput struct {

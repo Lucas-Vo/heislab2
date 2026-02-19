@@ -12,9 +12,8 @@ import (
 func fsmThread(
 	ctx context.Context,
 	cfg common.Config,
-	input common.ElevInputDevice,
+	elevInputDevice common.ElevInputDevice,
 	assignerOutputCh <-chan common.ElevInput,
-	elevServicedCh chan<- common.Snapshot,
 	elevUpdateCh chan<- common.Snapshot,
 	netWorldView2Ch <-chan common.Snapshot, // network -> fsm
 ) {
@@ -41,7 +40,7 @@ func fsmThread(
 
 	// Seed floor state if the sensor is already at a floor; otherwise start moving to find one.
 	prevFloor := -1
-	if f := input.FloorSensor(); f != -1 {
+	if f := elevInputDevice.FloorSensor(); f != -1 {
 		elevfsm.Fsm_onFloorArrival(sync.Elevator, f)
 		prevFloor = f
 	} else {
@@ -73,14 +72,6 @@ func fsmThread(
 			}
 			sync.ApplyLights(sync.LightsSnapshot(online))
 
-			// log.Printf("fsmThread: netCab=%v localCab=%v", sync.NetCabCopy(), sync.LocalCabCopy())
-			// log.Printf("==================================")
-			// log.Printf("localhall: %v", sync.GetLocalHall())
-			// log.Printf("nethall: %v", sync.GetNetHall())
-			// log.Printf("localcab: %v", sync.GetLocalCab())
-			// log.Printf("netcab: %v", sync.GetNetCab())
-			// log.Printf("==================================")
-
 		case task := <-assignerOutputCh:
 			sync.ApplyAssigner(task)
 			now := time.Now()
@@ -107,11 +98,11 @@ func fsmThread(
 			// Request buttons (edge-detected)
 			for f := 0; f < common.N_FLOORS; f++ {
 				for b := 0; b < common.N_BUTTONS; b++ {
-					v := input.RequestButton(f, common.ButtonType(b))
+					v := elevInputDevice.RequestButton(f, common.ButtonType(b))
 					if v != 0 && v != prevReq[f][b] {
 						sync.OnLocalPress(f, common.ButtonType(b), now)
 						changedNew = true
-						if input.FloorSensor() == f {
+						if elevInputDevice.FloorSensor() == f {
 							elevfsm.Fsm_onRequestButtonPress(sync.Elevator, f, common.ButtonType(b))
 						}
 					}
@@ -120,7 +111,7 @@ func fsmThread(
 			}
 
 			// Floor sensor
-			f := input.FloorSensor()
+			f := elevInputDevice.FloorSensor()
 			if f != -1 && f != prevFloor {
 				elevfsm.Fsm_onFloorArrival(sync.Elevator, f)
 				prevFloor = f
@@ -128,7 +119,7 @@ func fsmThread(
 			}
 
 			// Obstruction handling: keep door open while obstructed; restart timer when cleared.
-			obstructed := input.Obstruction() != 0
+			obstructed := elevInputDevice.Obstruction() != 0
 			if elevfsm.CurrentBehaviour(sync.Elevator) == elevfsm.EB_DoorOpen {
 				if obstructed {
 					if !timerPaused {
@@ -175,20 +166,20 @@ func fsmThread(
 				continue
 			}
 			if changedServiced {
-				snap := sync.BuildServicedSnapshot(prevFloor, behavior, direction, cleared, online)
+				snapshot := sync.BuildServicedSnapshot(prevFloor, behavior, direction, cleared, online)
 				select {
-				case elevServicedCh <- snap:
+				case elevUpdateCh <- snapshot:
 				default:
 				}
 			}
 			if changedNew {
-				snap := sync.BuildUpdateSnapshot(prevFloor, behavior, direction)
+				snapshot := sync.BuildUpdateSnapshot(prevFloor, behavior, direction)
 				select {
-				case elevUpdateCh <- snap:
+				case elevUpdateCh <- snapshot:
 				default:
 				}
 			}
-			// TODO: make channels buffered
+			// TODO: make channels buffered. FIX THIS SHIT WUCAS
 		}
 	}
 }

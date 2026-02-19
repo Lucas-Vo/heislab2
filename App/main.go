@@ -30,8 +30,8 @@ func main() {
 	}()
 
 	// filip til lucas
-	elevServicedCh := make(chan Snapshot)
 	elevUpdateCh := make(chan Snapshot)
+
 
 	// lucas til filip
 	netSnap2Ch := make(chan Snapshot)
@@ -48,9 +48,9 @@ func main() {
 
 	}
 
-	go networkThread(ctx, cfg, elevServicedCh, elevUpdateCh, netSnap1Ch, netSnap2Ch)
+	go networkThread(ctx, cfg, elevUpdateCh, netSnap1Ch, netSnap2Ch)
 	go assignerThread(ctx, cfg, netSnap1Ch, assignerOutCh)
-	go fsmThread(ctx, cfg, input, assignerOutCh, elevServicedCh, elevUpdateCh, netSnap2Ch)
+	go fsmThread(ctx, cfg, input, assignerOutCh, elevUpdateCh, netSnap2Ch)
 	<-ctx.Done()
 	fmt.Println("Shutting down")
 

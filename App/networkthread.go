@@ -16,19 +16,16 @@ const INITIAL_CONTACT_TIMEOUT = 8 * time.Second
 func networkThread(
 	ctx context.Context,
 	cfg common.Config,
-	elevServicedCh <-chan common.Snapshot,
-	elevRequestCh <-chan common.Snapshot,
+	elevUpdateCh <-chan common.Snapshot,
 	netSnap1Ch chan<- common.Snapshot,
 	netSnap2Ch chan<- common.Snapshot,
 ) {
 	// merge serviced and request channels
 	selfKey := cfg.SelfKey
 
-	pmReq, incomingReq := elevnetwork.StartP2P(ctx, cfg, 4242)
-	pmSvc, incomingSvc := elevnetwork.StartP2P(ctx, cfg, 4243)
+	incomingPacket := elevnetwork.StartP2P(ctx, cfg, 4242)
 
-	tx := elevnetwork.NewMuxTransport(pmReq, pmSvc)
-	wv := elevnetwork.NewWorldView(tx, cfg)
+	wv := elevnetwork.NewWorldView(cfg)
 
 	ticker := time.NewTicker(300 * time.Millisecond)
 	defer ticker.Stop()
@@ -44,25 +41,19 @@ func networkThread(
 		case <-ctx.Done():
 			return
 
-		case ns := <-elevRequestCh:
+		case ns := <-elevUpdateCh:
 			wv.SelfAlive = true
-			wv.ApplyUpdate(selfKey, ns, elevnetwork.UpdateRequests)
-			if !wv.IsReady() {
-				continue
+			elevatorErrorTimer.Reset(4 * time.Second)
+
+			if ns.UpdateKind == common.UpdateRequests {
+				if !wv.IsReady() {
+					continue
+				}
 			}
+			wv.ApplyUpdate(selfKey, ns, ns.UpdateKind)
+			wv.Broadcast(ns.UpdateKind)
 
-			elevatorErrorTimer.Reset(4 * time.Second)
-			wv.Broadcast(elevnetwork.UpdateRequests)
-
-		case ns := <-elevServicedCh:
-			wv.SelfAlive = true
-			wv.ApplyUpdate(selfKey, ns, elevnetwork.UpdateServiced)
-
-			elevatorErrorTimer.Reset(4 * time.Second)
-
-			wv.Broadcast(elevnetwork.UpdateServiced)
-
-		case in := <-incomingReq:
+		case in := <-incomingPacket:
 			var msg elevnetwork.NetMsg
 			if err := json.Unmarshal(common.TrimZeros(in), &msg); err != nil {
 				continue
@@ -71,26 +62,14 @@ func networkThread(
 			if !wv.ShouldAcceptMsg(msg) {
 				continue
 			}
-			log.Printf("Cabs from other %v, that comes from peer nr (%v)", msg.Snapshot.States[msg.Origin].CabRequests, msg.Origin)
 
-			becameReady := wv.ApplyUpdate(msg.Origin, msg.Snapshot, elevnetwork.UpdateRequests)
-			if becameReady {
-				// wv.PublishWorld(netSnap1Ch)
+			becameReady := wv.ApplyUpdate(msg.Origin, msg.Snapshot, msg.Snapshot.UpdateKind)
+
+			if msg.Snapshot.UpdateKind == common.UpdateRequests && becameReady {
 				wv.PublishWorld(netSnap2Ch)
 			}
-			wv.Relay(elevnetwork.UpdateRequests, msg)
 
-		case in := <-incomingSvc:
-			var msg elevnetwork.NetMsg
-			if err := json.Unmarshal(common.TrimZeros(in), &msg); err != nil {
-				continue
-			}
-
-			if !wv.ShouldAcceptMsg(msg) {
-				continue
-			}
-			wv.ApplyUpdate(msg.Origin, msg.Snapshot, elevnetwork.UpdateServiced)
-			wv.Relay(elevnetwork.UpdateServiced, msg)
+			wv.Relay(msg)
 
 		case <-contactTimer.C:
 			log.Printf("networkThread: initial contact timeout; forcing ready")
@@ -101,7 +80,7 @@ func networkThread(
 			if !wv.IsReady() {
 				continue
 			}
-			wv.Broadcast(elevnetwork.UpdateRequests)
+			wv.Broadcast(common.UpdateRequests)
 
 			// Publish to Assigner and Elevator Control
 			if wv.IsCoherent() || !wv.SelfAlive {

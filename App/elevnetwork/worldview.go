@@ -12,13 +12,6 @@ import (
 
 const WV_TIMEOUT_DURATION = 4
 
-type UpdateKind int
-
-const (
-	UpdateRequests UpdateKind = iota // OR merge
-	UpdateServiced                   // AND merge
-)
-
 type NetMsg struct {
 	Origin   string          `json:"origin"`
 	Counter  uint64          `json:"counter"`
@@ -28,7 +21,7 @@ type NetMsg struct {
 // ---- Transport abstraction (so WorldView only owns ONE handle) ----
 
 type Transport interface {
-	SendToAll(net UpdateKind, b []byte, deadline time.Duration)
+	SendToAll(net common.UpdateKind, b []byte, deadline time.Duration)
 }
 
 type MuxTransport struct {
@@ -40,13 +33,13 @@ func NewMuxTransport(reqPM *PeerManager, svcPM *PeerManager) *MuxTransport {
 	return &MuxTransport{reqPM: reqPM, svcPM: svcPM}
 }
 
-func (mt *MuxTransport) SendToAll(net UpdateKind, b []byte, deadline time.Duration) {
+func (mt *MuxTransport) SendToAll(net common.UpdateKind, b []byte, deadline time.Duration) {
 	switch net {
-	case UpdateRequests:
+	case common.UpdateRequests:
 		if mt.reqPM != nil {
 			mt.reqPM.sendToAll(b, deadline)
 		}
-	case UpdateServiced:
+	case common.UpdateServiced:
 		if mt.svcPM != nil {
 			mt.svcPM.sendToAll(b, deadline)
 		}
@@ -80,7 +73,7 @@ type WorldView struct {
 	tx Transport
 }
 
-func NewWorldView(tx Transport, cfg common.Config) *WorldView {
+func NewWorldView(cfg common.Config) *WorldView {
 	wv := &WorldView{
 		peers: cfg.ExpectedKeys(),
 
@@ -99,8 +92,6 @@ func NewWorldView(tx Transport, cfg common.Config) *WorldView {
 
 		counter:     0,
 		latestCount: make(map[string]uint64),
-
-		tx: tx,
 	}
 	return wv
 }
@@ -151,7 +142,7 @@ func (wv *WorldView) ShouldAcceptMsg(msg NetMsg) bool {
 	return true
 }
 
-func (wv *WorldView) ApplyUpdate(fromKey string, ns common.Snapshot, kind UpdateKind) (becameReady bool) {
+func (wv *WorldView) ApplyUpdate(fromKey string, ns common.Snapshot, kind common.UpdateKind) (becameReady bool) {
 	wv.mu.Lock()
 	defer wv.mu.Unlock()
 
@@ -160,7 +151,7 @@ func (wv *WorldView) ApplyUpdate(fromKey string, ns common.Snapshot, kind Update
 
 	// First contact: accept as "requests" snapshot and recover cab requests
 	DELETE := false
-	if !wv.ready && fromKey != wv.selfKey && kind == UpdateRequests {
+	if !wv.ready && fromKey != wv.selfKey && ns.UpdateKind == common.UpdateRequests {
 		log.Printf("Suggested recovered cab BEFORE is: %v", wv.snapshot.States[wv.selfKey].CabRequests)
 		log.Printf("INBOUND cabs from peer is: %v", ns.States[wv.selfKey].CabRequests)
 		wv.recoverCabRequests(ns)
@@ -168,19 +159,19 @@ func (wv *WorldView) ApplyUpdate(fromKey string, ns common.Snapshot, kind Update
 		becameReady = true
 		DELETE = true
 	}
-	wv.mergeSnapshot(fromKey, ns, kind)
+	wv.mergeSnapshot(fromKey, ns)
 	if DELETE {
 		log.Printf("Suggested recovered cab AFTER is: %v", wv.snapshot.States[wv.selfKey].CabRequests)
 		DELETE = false
 	}
-	if fromKey != wv.selfKey && kind == UpdateServiced {
+	if fromKey != wv.selfKey && ns.UpdateKind == common.UpdateServiced {
 		log.Printf("APPLIED SERVICED ############")
 	}
 	return becameReady
 }
 
-func (wv *WorldView) mergeSnapshot(fromKey string, ns common.Snapshot, kind UpdateKind) {
-	wv.snapshot.HallRequests = mergeHall(wv.snapshot.HallRequests, ns.HallRequests, kind)
+func (wv *WorldView) mergeSnapshot(fromKey string, ns common.Snapshot) {
+	wv.snapshot.HallRequests = mergeHall(wv.snapshot.HallRequests, ns.HallRequests, ns.UpdateKind)
 
 	for k, st := range ns.States {
 		// never overwrite our local self state with a remote copy
@@ -216,17 +207,16 @@ func (wv *WorldView) recoverCabRequests(ns common.Snapshot) {
 	log.Printf("sucessfully recoverCabRequests")
 }
 
-func (wv *WorldView) PublishWorld(ch chan<- common.Snapshot) {
+func (wv *WorldView) PublishWorld(channel chan<- common.Snapshot) {
 	wv.mu.Lock()
-	cp := common.DeepCopySnapshot(wv.snapshot)
 
 	now := time.Now()
-	cp.Alive = wv.computeAlive(now)
+	snapshotCopy := common.DeepCopySnapshot(wv.snapshot)
+	snapshotCopy.Alive = wv.computeAlive(now)
 
 	wv.mu.Unlock()
-
 	select {
-	case ch <- cp:
+	case channel <- snapshotCopy:
 	default:
 	}
 }
@@ -285,7 +275,7 @@ func (wv *WorldView) IsCoherent() bool {
 }
 
 // Broadcast constructs a NetMsg from current snapshot and sends it on the correct net for the kind.
-func (wv *WorldView) Broadcast(kind UpdateKind) {
+func (wv *WorldView) Broadcast(kind common.UpdateKind) {
 	if wv.tx == nil || !wv.SelfAlive { //TODO: This boo thang has been changed, but it could have problem with sending
 		return
 	}
@@ -304,34 +294,34 @@ func (wv *WorldView) Broadcast(kind UpdateKind) {
 	}
 	wv.mu.Unlock()
 
-	wv.sendMsg(kind, msg)
+	wv.sendMsg(msg)
 	log.Printf("BROADCASTING")
 }
 
 // Relay re-broadcasts an already-constructed msg on the SAME net it arrived on.
-func (wv *WorldView) Relay(kind UpdateKind, msg NetMsg) {
+func (wv *WorldView) Relay(msg NetMsg) {
 	if wv.tx == nil || !wv.SelfAlive {
 		return
 	}
-	wv.sendMsg(kind, msg)
+	wv.sendMsg(msg)
 	log.Printf("RELAYING")
 }
 
-func (wv *WorldView) sendMsg(kind UpdateKind, msg NetMsg) {
+func (wv *WorldView) sendMsg(msg NetMsg) {
 	b, err := json.Marshal(msg)
 	if err != nil {
 		return
 	}
-	wv.tx.SendToAll(kind, b, 150*time.Millisecond)
+	wv.tx.SendToAll(msg.Snapshot.UpdateKind, b, 150*time.Millisecond)
 }
 
-func mergeHall(current, incoming [][2]bool, kind UpdateKind) [][2]bool {
+func mergeHall(current, incoming [][2]bool, kind common.UpdateKind) [][2]bool {
 	inc := make([][2]bool, common.N_FLOORS)
 	copy(inc, incoming)
 
 	out := make([][2]bool, common.N_FLOORS)
 	for i := 0; i < common.N_FLOORS; i++ {
-		if kind == UpdateServiced {
+		if kind == common.UpdateServiced {
 			out[i][0] = current[i][0] && inc[i][0]
 			out[i][1] = current[i][1] && inc[i][1]
 		} else {
