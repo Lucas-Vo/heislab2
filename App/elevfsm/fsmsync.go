@@ -191,19 +191,19 @@ func (s *FsmSync) ApplyNetworkSnapshot(snap common.Snapshot, now time.Time) {
 }
 
 // copyCabFromSnapshot extracts our own cab requests from a snapshot (per-elevator state).
-func (s *FsmSync) copyCabFromSnapshot(snap common.Snapshot) bool { //TODO: Have much better variable names. Holy fuck. Sverre will cry
-	for i := range common.N_FLOORS {
-		s.netCab[i] = false
+func (s *FsmSync) copyCabFromSnapshot(snapshot common.Snapshot) bool {
+	for floor := range common.N_FLOORS {
+		s.netCab[floor] = false
 	}
-	if snap.States == nil {
+	if snapshot.States == nil {
 		return false
 	}
-	st, ok := snap.States[s.selfKey]
-	if !ok || st.CabRequests == nil {
+	state, found := snapshot.States[s.selfKey]
+	if !found || state.CabRequests == nil {
 		return false
 	}
-	for i := 0; i < common.N_FLOORS && i < len(st.CabRequests); i++ {
-		s.netCab[i] = st.CabRequests[i]
+	for floor := 0; floor < common.N_FLOORS && floor < len(state.CabRequests); floor++ {
+		s.netCab[floor] = state.CabRequests[floor]
 	}
 	return true
 }
