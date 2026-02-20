@@ -29,7 +29,7 @@ func fsmThread(
 	sync := elevfsm.NewFsmSync(cfg)
 	sync.Elevator = elevfsm.Fsm_init()
 
-	var prevReq [common.N_FLOORS][common.N_BUTTONS]int
+	var previousRequests [common.N_FLOORS][common.N_BUTTONS]int
 
 	confirmTimeout := 200 * time.Millisecond
 	doorOpenDuration := elevfsm.DoorOpenDuration(sync.Elevator)
@@ -90,14 +90,14 @@ func fsmThread(
 			for f := 0; f < common.N_FLOORS; f++ {
 				for b := 0; b < common.N_BUTTONS; b++ {
 					v := elevInputDevice.RequestButton(f, common.ButtonType(b))
-					if v != 0 && v != prevReq[f][b] {
+					if v != 0 && v != previousRequests[f][b] {
 						sync.OnLocalPress(f, common.ButtonType(b), now)
 						changedNew = true
 						if elevInputDevice.FloorSensor() == f {
 							elevfsm.Fsm_onRequestButtonPress(sync.Elevator, f, common.ButtonType(b))
 						}
 					}
-					prevReq[f][b] = v
+					previousRequests[f][b] = v
 				}
 			}
 

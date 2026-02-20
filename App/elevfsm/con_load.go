@@ -23,9 +23,9 @@ func ConLoad(file string, cases ...Case) {
 	}
 	defer f.Close()
 
-	sc := bufio.NewScanner(f)
-	for sc.Scan() {
-		line := sc.Text()
+	fileScanner := bufio.NewScanner(f)
+	for fileScanner.Scan() {
+		line := fileScanner.Text()
 
 		if !strings.HasPrefix(line, "--") {
 			continue
@@ -67,11 +67,11 @@ func ConEnum[T any](key string, dest *T, matches ...EnumMatch[T]) Case {
 		if !strings.EqualFold(k, key) {
 			return
 		}
-		var tmp T
+		var parsedValue T
 		for _, m := range matches {
 			if strings.EqualFold(v, m.name) {
-				tmp = m.value
-				*dest = tmp
+				parsedValue = m.value
+				*dest = parsedValue
 				return
 			}
 		}

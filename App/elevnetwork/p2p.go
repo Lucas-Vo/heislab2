@@ -41,17 +41,17 @@ type peer struct {
 func (pm *PeerManager) ConnectedPeerIDs() []int {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
-	out := make([]int, 0, len(pm.peers))
-	for id := range pm.peers {
-		out = append(out, id)
+	ids := make([]int, 0, len(pm.peers))
+	for peerID := range pm.peers {
+		ids = append(ids, peerID)
 	}
-	return out
+	return ids
 }
 
-func (pm *PeerManager) hasLivePeer(id int) bool {
+func (pm *PeerManager) hasLivePeer(peerID int) bool {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
-	p := pm.peers[id]
+	p := pm.peers[peerID]
 	if p == nil || p.conn == nil {
 		return false
 	}
@@ -65,11 +65,11 @@ func (pm *PeerManager) hasLivePeer(id int) bool {
 func StartP2P(ctx context.Context, cfg common.Config, port int) (pm *PeerManager, incoming chan []byte) {
 	selfID := cfg.SelfID
 	if selfID == 0 {
-		id, err := cfg.DetectSelfID()
+		detectedID, err := cfg.DetectSelfID()
 		if err != nil {
 			log.Fatalf("DetectSelfID: %v", err)
 		}
-		selfID = id
+		selfID = detectedID
 	}
 
 	peers, _, err := cfg.PeerAddrsForPort(port)
@@ -168,21 +168,21 @@ func (pm *PeerManager) removePeerByConn(conn *quic.Conn, reason string) {
 	}
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
-	for id, p := range pm.peers {
+	for peerID, p := range pm.peers {
 		if p != nil && p.conn == conn {
-			delete(pm.peers, id)
-			log.Printf("peer %d removed (%s). connected=%v", id, reason, pm.connectedIDsLocked())
+			delete(pm.peers, peerID)
+			log.Printf("peer %d removed (%s). connected=%v", peerID, reason, pm.connectedIDsLocked())
 			return
 		}
 	}
 }
 
 func (pm *PeerManager) connectedIDsLocked() []int {
-	out := make([]int, 0, len(pm.peers))
-	for id := range pm.peers {
-		out = append(out, id)
+	ids := make([]int, 0, len(pm.peers))
+	for peerID := range pm.peers {
+		ids = append(ids, peerID)
 	}
-	return out
+	return ids
 }
 
 func safeRemote(c *quic.Conn) any {
@@ -253,12 +253,12 @@ func (pm *PeerManager) dialPeerOnce(ctx context.Context, peerAddr string, quicCo
 		defer d.SetReadDeadline(time.Time{}) // clear
 	}
 
-	buf := make([]byte, pm.frameSize)
-	if _, err := io.ReadFull(st, buf); err != nil {
+	frameBuf := make([]byte, pm.frameSize)
+	if _, err := io.ReadFull(st, frameBuf); err != nil {
 		return fail(fmt.Errorf("read hello: %w", err))
 	}
 
-	peerID, ok := decodeHelloFrame(buf)
+	peerID, ok := decodeHelloFrame(frameBuf)
 	if !ok || peerID <= 0 {
 		return fail(fmt.Errorf("invalid HELLO from %s", peerAddr))
 	}
@@ -277,18 +277,18 @@ func (pm *PeerManager) dialPeerOnce(ctx context.Context, peerAddr string, quicCo
 }
 
 // dialLoop keeps the connection alive: connect -> wait for close -> reconnect.
-func dialLoop(ctx context.Context, pm *PeerManager, id int, addr string, conf *quic.Config) {
+func dialLoop(ctx context.Context, pm *PeerManager, peerID int, addr string, conf *quic.Config) {
 	backoff := 200 * time.Millisecond
 	for ctx.Err() == nil {
-		if pm.hasLivePeer(id) {
+		if pm.hasLivePeer(peerID) {
 			time.Sleep(500 * time.Millisecond)
 			continue
 		}
-		log.Printf("dialLoop: attempting elev-%d at %s", id, addr)
+		log.Printf("dialLoop: attempting elev-%d at %s", peerID, addr)
 
 		peerID, sender, err := pm.dialPeerOnce(ctx, addr, conf)
 		if err != nil {
-			log.Printf("dial to elev-%d (%s) failed: %v", id, addr, err)
+			log.Printf("dial to elev-%d (%s) failed: %v", peerID, addr, err)
 			time.Sleep(backoff)
 			if backoff < 2*time.Second {
 				backoff *= 2
@@ -297,7 +297,7 @@ func dialLoop(ctx context.Context, pm *PeerManager, id int, addr string, conf *q
 		}
 
 		backoff = 200 * time.Millisecond
-		log.Printf("Connected (dial) to elev-%d at %s (peerID=%d)", id, addr, peerID)
+		log.Printf("Connected (dial) to elev-%d at %s (peerID=%d)", peerID, addr, peerID)
 
 		select {
 		case <-ctx.Done():
@@ -307,7 +307,7 @@ func dialLoop(ctx context.Context, pm *PeerManager, id int, addr string, conf *q
 		case <-sender.Conn().Context().Done():
 			_ = sender.Close()
 			pm.removePeerByConn(sender.Conn(), "dial conn done")
-			log.Printf("dialLoop: connection to elev-%d ended, reconnecting", id)
+			log.Printf("dialLoop: connection to elev-%d ended, reconnecting", peerID)
 			time.Sleep(300 * time.Millisecond)
 		}
 	}
@@ -337,14 +337,14 @@ func (pm *PeerManager) handleIncomingConn(ctx context.Context, conn *quic.Conn) 
 		defer d.SetReadDeadline(time.Time{})
 	}
 
-	buf := make([]byte, pm.frameSize)
-	if _, err := io.ReadFull(st, buf); err != nil {
+	frameBuf := make([]byte, pm.frameSize)
+	if _, err := io.ReadFull(st, frameBuf); err != nil {
 		_ = st.Close()
 		_ = conn.CloseWithError(0, "hello read failed")
 		return
 	}
 
-	peerID, ok := decodeHelloFrame(buf)
+	peerID, ok := decodeHelloFrame(frameBuf)
 	if !ok {
 		_ = st.Close()
 		_ = conn.CloseWithError(0, "bad hello")
@@ -387,11 +387,11 @@ func decodeHelloFrame(frame []byte) (peerID int, ok bool) {
 	if binary.BigEndian.Uint32(frame[0:4]) != helloMagic {
 		return 0, false
 	}
-	id := int(binary.BigEndian.Uint32(frame[4:8]))
-	if id <= 0 {
+	peerID = int(binary.BigEndian.Uint32(frame[4:8]))
+	if peerID <= 0 {
 		return 0, false
 	}
-	return id, true
+	return peerID, true
 }
 
 // SendTo / SendToAll

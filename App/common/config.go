@@ -41,12 +41,12 @@ func DefaultConfig() (Config, string, error) {
 
 // InitSelf detects and stores SelfID/SelfKey inside cfg.
 func (c *Config) InitSelf() error {
-	id, err := c.DetectSelfID()
+	elevID, err := c.DetectSelfID()
 	if err != nil {
 		return err
 	}
-	c.SelfID = id
-	c.SelfKey = fmt.Sprintf("%d", id)
+	c.SelfID = elevID
+	c.SelfKey = fmt.Sprintf("%d", elevID)
 	return nil
 }
 
@@ -57,11 +57,11 @@ func (c Config) ListenAddrForPort(port int) string {
 
 // AddrByIDForPort returns full "ip:port" addrs for a given port.
 func (c Config) AddrByIDForPort(port int) map[int]string {
-	out := make(map[int]string, len(c.HostByID))
-	for id, host := range c.HostByID {
-		out[id] = fmt.Sprintf("%s:%d", host, port)
+	addrMap := make(map[int]string, len(c.HostByID))
+	for elevID, host := range c.HostByID {
+		addrMap[elevID] = fmt.Sprintf("%s:%d", host, port)
 	}
-	return out
+	return addrMap
 }
 
 func (c Config) DetectSelfID() (int, error) {
@@ -71,20 +71,20 @@ func (c Config) DetectSelfID() (int, error) {
 	}
 
 	ids := make([]int, 0, len(c.HostByID))
-	for id := range c.HostByID {
-		ids = append(ids, id)
+	for elevID := range c.HostByID {
+		ids = append(ids, elevID)
 	}
 	sort.Ints(ids)
 
 	matches := make([]int, 0, 1)
-	for _, id := range ids {
-		ip := net.ParseIP(c.HostByID[id])
+	for _, elevID := range ids {
+		ip := net.ParseIP(c.HostByID[elevID])
 		if ip == nil {
-			return 0, fmt.Errorf("host for id %d is not an IP: %q", id, c.HostByID[id])
+			return 0, fmt.Errorf("host for id %d is not an IP: %q", elevID, c.HostByID[elevID])
 		}
 		if v4 := ip.To4(); v4 != nil {
 			if localIPs[v4.String()] {
-				matches = append(matches, id)
+				matches = append(matches, elevID)
 			}
 		}
 	}
@@ -113,9 +113,9 @@ func (c Config) PeerAddrsForPort(port int) (map[int]string, int, error) {
 	addrByID := c.AddrByIDForPort(port)
 
 	peers := make(map[int]string, len(addrByID)-1)
-	for id, addr := range addrByID {
-		if id != selfID {
-			peers[id] = addr
+	for elevID, addr := range addrByID {
+		if elevID != selfID {
+			peers[elevID] = addr
 		}
 	}
 	return peers, selfID, nil
@@ -123,16 +123,16 @@ func (c Config) PeerAddrsForPort(port int) (map[int]string, int, error) {
 
 func (c Config) ExpectedKeys() []string {
 	ids := make([]int, 0, len(c.HostByID))
-	for id := range c.HostByID {
-		ids = append(ids, id)
+	for elevID := range c.HostByID {
+		ids = append(ids, elevID)
 	}
 	sort.Ints(ids)
 
-	out := make([]string, 0, len(ids))
-	for _, id := range ids {
-		out = append(out, fmt.Sprintf("%d", id))
+	keyStrings := make([]string, 0, len(ids))
+	for _, elevID := range ids {
+		keyStrings = append(keyStrings, fmt.Sprintf("%d", elevID))
 	}
-	return out
+	return keyStrings
 }
 
 // NOTE: hostIPFromAddr is no longer needed for self-detect since HostByID is already IPs,

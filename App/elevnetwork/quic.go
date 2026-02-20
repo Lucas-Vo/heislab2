@@ -110,7 +110,7 @@ func ReadFixedFramesQUIC(
 		frameSize = QUIC_FRAME_SIZE
 	}
 
-	buf := make([]byte, frameSize)
+	frameBuf := make([]byte, frameSize)
 
 	for {
 		select {
@@ -119,7 +119,7 @@ func ReadFixedFramesQUIC(
 		default:
 		}
 
-		_, err := io.ReadFull(r, buf)
+		_, err := io.ReadFull(r, frameBuf)
 		if err != nil {
 			if err == io.EOF || err == io.ErrUnexpectedEOF {
 				return nil
@@ -128,7 +128,7 @@ func ReadFixedFramesQUIC(
 		}
 
 		frame := make([]byte, frameSize)
-		copy(frame, buf)
+		copy(frame, frameBuf)
 		handler(frame)
 	}
 }

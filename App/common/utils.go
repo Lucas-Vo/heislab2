@@ -18,16 +18,16 @@ func CopyElevState(st ElevState) ElevState {
 }
 
 func DeepCopySnapshot(ns Snapshot) Snapshot {
-	out := Snapshot{
+	snapshotCopy := Snapshot{
 		HallRequests: nil,
 		States:       make(map[string]ElevState, len(ns.States)),
 	}
 	if ns.HallRequests != nil {
-		out.HallRequests = make([][2]bool, len(ns.HallRequests))
-		copy(out.HallRequests, ns.HallRequests)
+		snapshotCopy.HallRequests = make([][2]bool, len(ns.HallRequests))
+		copy(snapshotCopy.HallRequests, ns.HallRequests)
 	}
 	for k, st := range ns.States {
-		out.States[k] = CopyElevState(st)
+		snapshotCopy.States[k] = CopyElevState(st)
 	}
-	return out
+	return snapshotCopy
 }

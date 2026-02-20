@@ -474,20 +474,20 @@ func copyHall(dst [][2]bool, src [][2]bool) {
 
 // cloneHallSlice deep-copies a hall request matrix to a fixed-size slice.
 func cloneHallSlice(in [][2]bool) [][2]bool {
-	out := make([][2]bool, common.N_FLOORS)
-	copyHall(out, in)
-	return out
+	copiedHall := make([][2]bool, common.N_FLOORS)
+	copyHall(copiedHall, in)
+	return copiedHall
 }
 
 // cloneBoolSlice deep-copies a cab request slice to a fixed-size slice.
 func cloneBoolSlice(in []bool) []bool {
-	out := make([]bool, common.N_FLOORS)
+	copiedCab := make([]bool, common.N_FLOORS)
 	for i := range common.N_FLOORS {
 		if in != nil && i < len(in) {
-			out[i] = in[i]
+			copiedCab[i] = in[i]
 		} else {
-			out[i] = false
+			copiedCab[i] = false
 		}
 	}
-	return out
+	return copiedCab
 }
