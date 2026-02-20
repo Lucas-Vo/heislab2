@@ -1,10 +1,12 @@
 package common
 
 // This file is SOUP, and is from the driver-go repository.
-import "time"
-import "sync"
-import "net"
-import "fmt"
+import (
+	"fmt"
+	"net"
+	"sync"
+	"time"
+)
 
 const _pollRate = 20 * time.Millisecond
 
@@ -142,13 +144,13 @@ func read(in [4]byte) [4]byte {
 		panic("Lost connection to Elevator Server")
 	}
 
-	var out [4]byte
-	_, err = _conn.Read(out[:])
+	var outFrame [4]byte
+	_, err = _conn.Read(outFrame[:])
 	if err != nil {
 		panic("Lost connection to Elevator Server")
 	}
 
-	return out
+	return outFrame
 }
 
 func write(in [4]byte) {
@@ -162,17 +164,17 @@ func write(in [4]byte) {
 }
 
 func toByte(a bool) byte {
-	var b byte = 0
+	var byteVal byte = 0
 	if a {
-		b = 1
+		byteVal = 1
 	}
-	return b
+	return byteVal
 }
 
 func toBool(a byte) bool {
-	var b bool = false
+	var boolVal bool = false
 	if a != 0 {
-		b = true
+		boolVal = true
 	}
-	return b
+	return boolVal
 }

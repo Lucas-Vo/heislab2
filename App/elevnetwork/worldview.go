@@ -168,9 +168,9 @@ func (wv *WorldView) recoverCabRequests(ns common.Snapshot) {
 
 	n := len(peerSelf.CabRequests)
 	if len(localSelf.CabRequests) < n {
-		tmp := make([]bool, n)
-		copy(tmp, localSelf.CabRequests)
-		localSelf.CabRequests = tmp
+		cabRequestsCopy := make([]bool, n)
+		copy(cabRequestsCopy, localSelf.CabRequests)
+		localSelf.CabRequests = cabRequestsCopy
 	}
 	for i := 0; i < n; i++ {
 		localSelf.CabRequests[i] = localSelf.CabRequests[i] || peerSelf.CabRequests[i]
@@ -292,17 +292,17 @@ func mergeHall(current, incomingHall [][2]bool, kind common.UpdateKind) [][2]boo
 	inc := make([][2]bool, common.N_FLOORS)
 	copy(inc, incomingHall)
 
-	out := make([][2]bool, common.N_FLOORS)
+	mergedHall := make([][2]bool, common.N_FLOORS)
 	for i := 0; i < common.N_FLOORS; i++ {
 		if kind == common.UpdateServiced {
-			out[i][0] = current[i][0] && inc[i][0]
-			out[i][1] = current[i][1] && inc[i][1]
+			mergedHall[i][0] = current[i][0] && inc[i][0]
+			mergedHall[i][1] = current[i][1] && inc[i][1]
 		} else {
-			out[i][0] = current[i][0] || inc[i][0]
-			out[i][1] = current[i][1] || inc[i][1]
+			mergedHall[i][0] = current[i][0] || inc[i][0]
+			mergedHall[i][1] = current[i][1] || inc[i][1]
 		}
 	}
-	return out
+	return mergedHall
 }
 
 // Ignore Alive; compare HallRequests + States.
