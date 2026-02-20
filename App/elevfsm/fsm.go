@@ -12,8 +12,14 @@ var cabLamp []bool
 func Fsm_init() (elevator *Elevator) {
 	e := new(Elevator)
 	*e = elevator_uninitialized()
-	e.config.clearRequestVariant = DefaultClearRequestVariant
-	e.config.doorOpenDuration_s = DefaultDoorOpenDurationSeconds
+
+	ConLoad("elevator.con",
+		ConVal("doorOpenDuration_s", &e.config.doorOpenDuration_s, "%f"),
+		ConEnum("clearRequestVariant", &e.config.clearRequestVariant,
+			ConMatch("CV_All", CV_All),
+			ConMatch("CV_InDirn", CV_InDirn),
+		),
+	)
 
 	outputDevice = common.ElevioGetOutputDevice()
 
