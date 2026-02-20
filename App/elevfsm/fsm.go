@@ -6,8 +6,6 @@ import (
 )
 
 var outputDevice common.ElevOutputDevice
-var hallLamp [][2]bool
-var cabLamp []bool
 
 func Fsm_init() (elevator *Elevator) {
 	e := new(Elevator)
@@ -22,10 +20,6 @@ func Fsm_init() (elevator *Elevator) {
 	)
 
 	outputDevice = common.ElevioGetOutputDevice()
-
-	// Init lamp buffers
-	hallLamp = make([][2]bool, common.N_FLOORS)
-	cabLamp = make([]bool, common.N_FLOORS)
 
 	return e
 }

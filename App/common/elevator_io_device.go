@@ -86,7 +86,7 @@ func ElevioGetOutputDevice() ElevOutputDevice {
 	}
 }
 
-func ElevioDirnToString(d MotorDirection) string {
+func ElevioDirnToString(d MotorDirection) string { //TODO: Remove after no need for printing 
 	switch d {
 	case MD_Up:
 		return "MD_Up"
@@ -99,7 +99,7 @@ func ElevioDirnToString(d MotorDirection) string {
 	}
 }
 
-func ElevioButtonToString(b ButtonType) string {
+func ElevioButtonToString(b ButtonType) string { //TODO: Same here, there is nothing using this for except printing
 	switch b {
 	case BT_HallUp:
 		return "BT_HallUp"
