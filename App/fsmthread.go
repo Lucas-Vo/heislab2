@@ -9,6 +9,8 @@ import (
 	"elevator/elevfsm"
 )
 
+const inputPollRateMs = 25
+
 func fsmThread(
 	ctx context.Context,
 	cfg common.Config,
@@ -21,17 +23,11 @@ func fsmThread(
 
 	// Initialize FSM state and output device before any events are handled.
 
-	inputPollRateMs := 25
-	elevfsm.ConLoad("elevator.con",
-		elevfsm.ConVal("inputPollRate_ms", &inputPollRateMs, "%d"),
-	)
-
 	sync := elevfsm.NewFsmSync(cfg)
 	sync.Elevator = elevfsm.Fsm_init()
 
 	var prevReq [common.N_FLOORS][common.N_BUTTONS]int
 
-	confirmTimeout := 200 * time.Millisecond
 	doorOpenDuration := elevfsm.DoorOpenDuration(sync.Elevator)
 	prevObstructed := false
 	timerPaused := false
@@ -143,7 +139,7 @@ func fsmThread(
 			if online { //TODO: TryInject(online)
 				sync.TryInjectOnline()
 			} else {
-				sync.TryInjectOffline(now, confirmTimeout)
+				sync.TryInjectOffline(now, 200*time.Millisecond)
 			}
 
 			sync.ApplyLights(online)
