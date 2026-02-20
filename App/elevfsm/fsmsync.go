@@ -317,7 +317,7 @@ func (s *FsmSync) readyToInject(f int, btn common.ButtonType, now time.Time, con
 // Direction-aware: only the in-direction hall (plus cab) is cleared for CV_InDirn.
 // When online, keep injected flags until the network snapshot removes the requests.
 // When offline, clear injected flags immediately.
-func (s *FsmSync) ClearAtFloor(f int, online bool, arrivalDirn common.MotorDirection) ServicedAt { //TODO: This is so compressable
+func (s *FsmSync) ClearAtFloor(f int, online bool, arrivalDirn common.MotorDirection) ServicedAt {
 	if f < 0 || f >= common.N_FLOORS {
 		return ServicedAt{}
 	}
@@ -332,50 +332,40 @@ func (s *FsmSync) ClearAtFloor(f int, online bool, arrivalDirn common.MotorDirec
 		}
 	}
 
-	clearHallUp := false
-	clearHallDown := false
+	var clearUp, clearDown bool
 	switch s.Elevator.config.clearRequestVariant {
 	case CV_All:
-		clearHallUp = true
-		clearHallDown = true
+		clearUp, clearDown = true, true
 	case CV_InDirn:
 		switch arrivalDirn {
 		case common.MD_Up:
-			clearHallUp = true
-			if s.Elevator.floor == common.N_FLOORS-1 {
-				clearHallDown = true
-			}
-			if requests_above(*s.Elevator) == 0 && !s.Elevator.requests[s.Elevator.floor][common.BT_HallUp] {
-				clearHallDown = true
+			clearUp = true
+			if s.Elevator.floor == common.N_FLOORS-1 || (requests_above(*s.Elevator) == 0 && !s.Elevator.requests[s.Elevator.floor][common.BT_HallUp]) {
+				clearDown = true
 			}
 		case common.MD_Down:
-			clearHallDown = true
-			if s.Elevator.floor == 0 {
-				clearHallUp = true
-			}
-			if requests_below(*s.Elevator) == 0 && !s.Elevator.requests[s.Elevator.floor][common.BT_HallDown] {
-				clearHallUp = true
+			clearDown = true
+			if s.Elevator.floor == 0 || (requests_below(*s.Elevator) == 0 && !s.Elevator.requests[s.Elevator.floor][common.BT_HallDown]) {
+				clearUp = true
 			}
 		case common.MD_Stop:
-			clearHallUp = true
-			clearHallDown = true
+			clearUp, clearDown = true, true
 		}
 	}
 
-	if clearHallUp && s.injected[f][common.BT_HallUp] {
-		cleared.HallUp = true
-		s.localHall[f][0] = false
-		if !online {
-			s.injected[f][common.BT_HallUp] = false
+	// helper to apply hall clears concisely
+	applyHallClear := func(btn common.ButtonType, idx int, mark *bool, setCleared func()) {
+		if *mark && s.injected[f][btn] {
+			setCleared()
+			s.localHall[f][idx] = false
+			if !online {
+				s.injected[f][btn] = false
+			}
 		}
 	}
-	if clearHallDown && s.injected[f][common.BT_HallDown] {
-		cleared.HallDown = true
-		s.localHall[f][1] = false
-		if !online {
-			s.injected[f][common.BT_HallDown] = false
-		}
-	}
+
+	applyHallClear(common.BT_HallUp, 0, &clearUp, func() { cleared.HallUp = true })
+	applyHallClear(common.BT_HallDown, 1, &clearDown, func() { cleared.HallDown = true })
 
 	return cleared
 }
