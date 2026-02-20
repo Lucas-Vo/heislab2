@@ -18,6 +18,19 @@ type NetMsg struct {
 	Snapshot common.Snapshot `json:"snapshot"`
 }
 
+// MakeEmptyNetMsg constructs a minimal NetMsg with an empty snapshot of the given kind.
+// This helper centralizes the construction so callers don't inline the struct literal.
+func MakeEmptyNetMsg(origin string, kind common.UpdateKind) NetMsg {
+	return NetMsg{
+		Origin:  origin,
+		Counter: 0,
+		Snapshot: common.Snapshot{
+			UpdateKind: kind,
+			States:     make(map[string]common.ElevState),
+		},
+	}
+}
+
 // ---- WorldView ----
 
 type WorldView struct {
