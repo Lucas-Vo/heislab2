@@ -85,18 +85,27 @@ func networkThread(
 			wv.Broadcast(common.UpdateRequests)
 
 			// Publish to Assigner and Elevator Control
-			if wv.IsCoherent() || !wv.SelfAlive {
-				log.Printf("IS COHERENT JJJJJJJJJJJJJJJJJJJJJJJJJJJ")
-				wv.PublishWorld(netSnap1Ch) //TODO: Move this auta tha case <-elevatorErrorTimer.c block cuzzz ya don nned that if we take this a  naturale in tha ticker
-				wv.PublishWorld(netSnap2Ch)
-			}
+			// Publishing will be handled when elevator liveness changes (see elevatorErrorTimer.C)
 		case <-elevatorErrorTimer.C:
+			// Re-evaluate elevator liveness and notify other components when it changes.
 			if wv.SnapshotCopy().States[selfKey].Behavior != "idle" { //TODO: why do we have "EB_Idle" as well as "idle"????? maybe we should just have "idle" and then have the assigner decide when to switch to "EB_Idle" based on the snapshot?
-				wv.SelfAlive = false // Stop until next behavior change
-				log.Printf("No behavior change detected for 4 seconds, marking Elevator as stale")
+				if wv.SelfAlive {
+					// Transition from alive -> stale
+					wv.SelfAlive = false
+					log.Printf("No behavior change detected for 4 seconds, marking Elevator as stale")
+					// Notify assigner and elevator control of the updated world view
+					wv.PublishWorld(netSnap1Ch)
+					wv.PublishWorld(netSnap2Ch)
+				}
 			} else {
+				// Behavior is idle; keep or restore alive state and reset timer
+				if !wv.SelfAlive {
+					// Transition from stale -> alive
+					wv.SelfAlive = true
+					wv.PublishWorld(netSnap1Ch)
+					wv.PublishWorld(netSnap2Ch)
+				}
 				elevatorErrorTimer.Reset(4 * time.Second)
-				wv.SelfAlive = true
 			}
 		}
 	}
