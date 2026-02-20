@@ -82,9 +82,9 @@ func fsmThread(
 			now := time.Now()
 			online := !sync.Offline(now) //TODO: Change name of online
 
-			changedNew := false
-			changedServiced := false
-			var cleared elevfsm.ServicedAt
+			elevStateChange := false
+
+			var servicedCall elevfsm.ServicedAt
 
 			// Request buttons (edge-detected)
 			for f := range common.N_FLOORS {
@@ -92,7 +92,7 @@ func fsmThread(
 					v := elevInputDevice.RequestButton(f, common.ButtonType(b))
 					if v != 0 && v != previousRequests[f][b] {
 						sync.OnLocalPress(f, common.ButtonType(b), now)
-						changedNew = true
+						elevStateChange = true
 						if elevInputDevice.FloorSensor() == f {
 							elevfsm.Fsm_onRequestButtonPress(sync.Elevator, f, common.ButtonType(b))
 						}
@@ -106,7 +106,7 @@ func fsmThread(
 			if f != -1 && f != prevFloor {
 				elevfsm.Fsm_onFloorArrival(sync.Elevator, f)
 				prevFloor = f
-				changedNew = true
+				elevStateChange = true
 			}
 
 			// Obstruction handling: keep door open while obstructed; restart timer when cleared.
@@ -134,11 +134,7 @@ func fsmThread(
 				arrivalDirn := elevfsm.CurrentDirection(sync.Elevator)
 				elevfsm.Fsm_onDoorTimeout(sync.Elevator)
 
-				cleared = sync.ClearAtFloor(prevFloor, online, arrivalDirn) // TODO: change name and maybe combine with changedServiced
-				if cleared.HallUp || cleared.HallDown || cleared.Cab {
-					changedServiced = true
-					log.Printf("fsmThread: serviced requests at floor %d", prevFloor)
-				}
+				servicedCall = sync.ClearAtFloor(prevFloor, online, arrivalDirn)
 			}
 
 			// Inject confirmed requests
@@ -148,21 +144,21 @@ func fsmThread(
 
 			behavior, direction = elevfsm.CurrentMotionStrings(sync.Elevator)
 			if sync.MotionChanged(prevFloor, behavior, direction) {
-				changedNew = true
+				elevStateChange = true
 			}
 
 			if !sync.HasNetSelf() {
 				continue
 			}
-			if changedServiced {
-				snapshot := sync.BuildServicedSnapshot(prevFloor, behavior, direction, cleared, online)
+			if servicedCall.HallUp || servicedCall.HallDown || servicedCall.Cab {
+				snapshot := sync.BuildSnapshot(prevFloor, behavior, direction, common.UpdateServiced, servicedCall,  online)
 				select {
 				case elevUpdateCh <- snapshot:
 				default:
 				}
 			}
-			if changedNew {
-				snapshot := sync.BuildUpdateSnapshot(prevFloor, behavior, direction)
+			if elevStateChange {
+				snapshot := sync.BuildSnapshot(prevFloor, behavior, direction, common.UpdateRequests, servicedCall,  online)
 				select {
 				case elevUpdateCh <- snapshot:
 				default:

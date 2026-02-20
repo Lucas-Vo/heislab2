@@ -359,6 +359,7 @@ func (s *FsmSync) BuildUpdateSnapshot(floor int, behavior string, direction stri
 				CabRequests: cloneBoolSlice(s.localCab),
 			},
 		},
+		UpdateKind: common.UpdateRequests,
 	}
 }
 
@@ -393,7 +394,41 @@ func (s *FsmSync) BuildServicedSnapshot(floor int, behavior string, direction st
 		UpdateKind: common.UpdateServiced,
 	}
 }
+func (s *FsmSync) BuildSnapshot(floor int, behavior string, direction string, kind common.UpdateKind, cleared ServicedAt, online bool) common.Snapshot {
 
+	// Choose base hall source
+	baseHall := s.localHall
+	if kind == common.UpdateServiced && online && s.hasNet {
+		baseHall = s.netHall
+	}
+
+	outHall := cloneHallSlice(baseHall)
+
+	// Apply servicing modification only when relevant
+	if kind == common.UpdateServiced &&
+		floor >= 0 && floor < len(outHall) {
+
+		if cleared.HallUp {
+			outHall[floor][0] = false
+		}
+		if cleared.HallDown {
+			outHall[floor][1] = false
+		}
+	}
+
+	return common.Snapshot{
+		HallRequests: outHall,
+		States: map[string]common.ElevState{
+			s.selfKey: {
+				Behavior:    behavior,
+				Floor:       floor,
+				Direction:   direction,
+				CabRequests: cloneBoolSlice(s.localCab),
+			},
+		},
+		UpdateKind: kind,
+	}
+}
 // ApplyLights drives the physical lamps from a snapshot's hall and cab requests.
 func (s *FsmSync) ApplyLights(online bool) {
 	hall := make([][2]bool, common.N_FLOORS)
