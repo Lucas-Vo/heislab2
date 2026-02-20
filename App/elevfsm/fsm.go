@@ -41,7 +41,7 @@ func Fsm_onRequestButtonPress(e *Elevator, btn_floor int, btn_type common.Button
 	switch e.behaviour {
 	case EB_DoorOpen:
 		if requests_shouldClearImmediately(*e, btn_floor, btn_type) != 0 {
-			Timer_start(e.config.doorOpenDuration_s)
+			// timer is handled by the fsm thread; no-op here
 		} else {
 			e.requests[btn_floor][btn_type] = true
 		}
@@ -58,7 +58,6 @@ func Fsm_onRequestButtonPress(e *Elevator, btn_floor int, btn_type common.Button
 		switch pair.behaviour {
 		case EB_DoorOpen:
 			outputDevice.DoorLight(true)
-			Timer_start(e.config.doorOpenDuration_s)
 			*e = requests_clearAtCurrentFloor(*e)
 
 		case EB_Moving:
@@ -87,7 +86,7 @@ func Fsm_onFloorArrival(e *Elevator, newFloor int) {
 			outputDevice.MotorDirection(common.MD_Stop)
 			outputDevice.DoorLight(true)
 			*e = requests_clearAtCurrentFloor(*e)
-			Timer_start(e.config.doorOpenDuration_s)
+			// timer is handled by the fsm thread; no-op here
 			//SetAllLights(*e)
 			e.behaviour = EB_DoorOpen
 		}
@@ -116,7 +115,7 @@ func Fsm_onDoorTimeout(e *Elevator) {
 
 		switch e.behaviour {
 		case EB_DoorOpen:
-			Timer_start(e.config.doorOpenDuration_s)
+			// timer is handled by the fsm thread; no-op here
 			*e = requests_clearAtCurrentFloor(*e)
 			//SetAllLights(*e)
 

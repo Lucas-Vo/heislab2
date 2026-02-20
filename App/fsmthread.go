@@ -32,9 +32,13 @@ func fsmThread(
 	var previousRequests [common.N_FLOORS][common.N_BUTTONS]int
 
 	confirmTimeout := 200 * time.Millisecond
-	doorOpenDuration := elevfsm.DoorOpenDuration(sync.Elevator)
 	prevObstructed := false
 	timerPaused := false
+
+	// Local timer state so this thread uses only the standard `time` package
+	// instead of package-level helper functions.
+	var doorTimerEnd time.Time
+	var doorTimerActive bool
 
 	// Seed floor state if the sensor is already at a floor; otherwise start moving to find one.
 	prevFloor := -1
@@ -45,6 +49,7 @@ func fsmThread(
 		elevfsm.Fsm_onInitBetweenFloors(sync.Elevator)
 	}
 	behavior, direction := elevfsm.CurrentMotionStrings(sync.Elevator)
+	prevBehaviour := elevfsm.CurrentBehaviour(sync.Elevator)
 	initialSnap := sync.BuildUpdateSnapshot(prevFloor, behavior, direction)
 
 	select {
@@ -114,11 +119,15 @@ func fsmThread(
 			if elevfsm.CurrentBehaviour(sync.Elevator) == elevfsm.EB_DoorOpen {
 				if obstructed {
 					if !timerPaused {
-						elevfsm.Timer_stop()
+						// stop local timer
+						doorTimerActive = false
 						timerPaused = true
 					}
 				} else if timerPaused || prevObstructed {
-					elevfsm.Timer_start(doorOpenDuration)
+					// start local timer using doorOpenDuration (seconds)
+					d := time.Duration(elevfsm.DoorOpenDuration(sync.Elevator) * float64(time.Second))
+					doorTimerEnd = time.Now().Add(d)
+					doorTimerActive = true
 					timerPaused = false
 				}
 			} else {
@@ -126,9 +135,10 @@ func fsmThread(
 			}
 			prevObstructed = obstructed
 
-			// Timer
-			if elevfsm.Timer_timedOut() != 0 {
-				elevfsm.Timer_stop()
+			// Timer (use local time-based timer instead of elevfsm helpers)
+			if doorTimerActive && time.Now().After(doorTimerEnd) {
+				// stop timer
+				doorTimerActive = false
 				arrivalDirn := elevfsm.CurrentDirection(sync.Elevator)
 				elevfsm.Fsm_onDoorTimeout(sync.Elevator)
 
@@ -149,9 +159,18 @@ func fsmThread(
 			sync.ApplyLights(online)
 
 			behavior, direction = elevfsm.CurrentMotionStrings(sync.Elevator)
+			newBehaviour := elevfsm.CurrentBehaviour(sync.Elevator)
+			if prevBehaviour != newBehaviour && newBehaviour == elevfsm.EB_DoorOpen {
+				// start door timer when entering DoorOpen
+				d := time.Duration(elevfsm.DoorOpenDuration(sync.Elevator) * float64(time.Second))
+				doorTimerEnd = time.Now().Add(d)
+				doorTimerActive = true
+				timerPaused = false
+			}
 			if sync.MotionChanged(prevFloor, behavior, direction) {
 				changedNew = true
 			}
+			prevBehaviour = newBehaviour
 
 			if !sync.HasNetSelf() {
 				continue
