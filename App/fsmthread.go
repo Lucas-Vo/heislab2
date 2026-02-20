@@ -87,7 +87,7 @@ func fsmThread(
 			var cleared elevfsm.ServicedAt
 
 			// Request buttons (edge-detected)
-			for f := 0; f < common.N_FLOORS; f++ {
+			for f := range common.N_FLOORS {
 				for b := 0; b < common.N_BUTTONS; b++ {
 					v := elevInputDevice.RequestButton(f, common.ButtonType(b))
 					if v != 0 && v != prevReq[f][b] {

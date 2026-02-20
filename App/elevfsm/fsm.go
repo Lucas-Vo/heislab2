@@ -27,69 +27,7 @@ func Fsm_init() (elevator *Elevator) {
 	hallLamp = make([][2]bool, common.N_FLOORS)
 	cabLamp = make([]bool, common.N_FLOORS)
 
-	// Clear lamps at init
-	SetAllLights(*e)
 	return e
-}
-
-func SetAllRequestLightsFromSnapshot(e *Elevator, ns common.Snapshot, selfKey string) {
-	// Update hall lamp buffer if present
-	if ns.HallRequests != nil {
-		if hallLamp == nil || len(hallLamp) != common.N_FLOORS {
-			hallLamp = make([][2]bool, common.N_FLOORS)
-		}
-
-		n := len(ns.HallRequests)
-		if n > common.N_FLOORS {
-			n = common.N_FLOORS
-		}
-		for f := 0; f < n; f++ {
-			hallLamp[f] = ns.HallRequests[f]
-		}
-		for f := n; f < common.N_FLOORS; f++ {
-			hallLamp[f] = [2]bool{false, false}
-		}
-	}
-
-	// Update cab lamp buffer for self if present
-	if ns.States != nil {
-		if st, ok := ns.States[selfKey]; ok && st.CabRequests != nil {
-			if cabLamp == nil || len(cabLamp) != common.N_FLOORS {
-				cabLamp = make([]bool, common.N_FLOORS)
-			}
-
-			n := len(st.CabRequests)
-			if n > common.N_FLOORS {
-				n = common.N_FLOORS
-			}
-			for f := 0; f < n; f++ {
-				cabLamp[f] = st.CabRequests[f]
-			}
-			for f := n; f < common.N_FLOORS; f++ {
-				cabLamp[f] = false
-			}
-		}
-	}
-
-	// Apply to hardware
-	SetAllLights(*e)
-}
-
-// UPDATED: SetAllLights no longer uses the FSM's internal request matrix for lamps.
-// It uses hallLamp/cabLamp (network/glue driven) so hall lamps reflect building-wide HallRequests.
-func SetAllLights(_ Elevator) {
-	if hallLamp == nil || len(hallLamp) != common.N_FLOORS {
-		hallLamp = make([][2]bool, common.N_FLOORS)
-	}
-	if cabLamp == nil || len(cabLamp) != common.N_FLOORS {
-		cabLamp = make([]bool, common.N_FLOORS)
-	}
-
-	for floor := range common.N_FLOORS {
-		outputDevice.RequestButtonLight(floor, common.BT_HallUp, hallLamp[floor][0])
-		outputDevice.RequestButtonLight(floor, common.BT_HallDown, hallLamp[floor][1])
-		outputDevice.RequestButtonLight(floor, common.BT_Cab, cabLamp[floor])
-	}
 }
 
 func Fsm_onInitBetweenFloors(e *Elevator) {
@@ -115,7 +53,6 @@ func Fsm_onRequestButtonPress(e *Elevator, btn_floor int, btn_type common.Button
 		}
 
 	case EB_Moving:
-		
 		e.requests[btn_floor][btn_type] = true
 
 	case EB_Idle:
@@ -137,9 +74,6 @@ func Fsm_onRequestButtonPress(e *Elevator, btn_floor int, btn_type common.Button
 			// do nothing
 		}
 	}
-
-	// Lamps are driven by network/glue state; keep applying current lamp buffers.
-	SetAllLights(*e)
 }
 
 func Fsm_onFloorArrival(e *Elevator, newFloor int) {
@@ -160,7 +94,7 @@ func Fsm_onFloorArrival(e *Elevator, newFloor int) {
 			outputDevice.DoorLight(true)
 			*e = requests_clearAtCurrentFloor(*e)
 			Timer_start(e.config.doorOpenDuration_s)
-			SetAllLights(*e)
+			//SetAllLights(*e)
 			e.behaviour = EB_DoorOpen
 		}
 	default:
@@ -190,7 +124,7 @@ func Fsm_onDoorTimeout(e *Elevator) {
 		case EB_DoorOpen:
 			Timer_start(e.config.doorOpenDuration_s)
 			*e = requests_clearAtCurrentFloor(*e)
-			SetAllLights(*e)
+			//SetAllLights(*e)
 
 		case EB_Moving, EB_Idle:
 			outputDevice.DoorLight(false)

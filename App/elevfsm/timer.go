@@ -1,6 +1,6 @@
 package elevfsm
 
-import "time"
+import "time" //TODO: only use the time library as this is unessecary
 
 func get_wall_time_s() float64 {
 	return float64(time.Now().UnixNano()) * 1e-9
