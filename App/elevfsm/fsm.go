@@ -20,6 +20,7 @@ func Fsm_init() (elevator *Elevator) {
 	)
 
 	outputDevice = common.ElevioGetOutputDevice()
+	outputDevice.DoorLight(false)
 
 	return e
 }

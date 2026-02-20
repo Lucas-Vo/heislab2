@@ -31,7 +31,8 @@ func fsmThread(
 
 	var previousRequests [common.N_FLOORS][common.N_BUTTONS]int
 
-	confirmTimeout := 200 * time.Millisecond
+	confirmTimeout := 200 * time.Millisecond //TODO make global or some shit
+	doorOpenDuration := elevfsm.DoorOpenDuration(sync.Elevator)
 	prevObstructed := false
 	timerPaused := false
 
@@ -67,21 +68,21 @@ func fsmThread(
 
 		case snap := <-netWorldView2Ch:
 			now := time.Now()
+			online := !sync.Offline(now)
+
 			sync.ApplyNetworkSnapshot(snap, now)
 
-			online := !sync.Offline(now)
-			if online {
-				sync.TryInjectOnline()
-			}
+			sync.TryInject(now, confirmTimeout, online)
 			sync.ApplyLights(online)
 
 		case task := <-assignerOutputCh:
 			now := time.Now()
+			online := !sync.Offline(now)
+
 			sync.ApplyAssigner(task)
 
-			if !sync.Offline(now) {
-				sync.TryInjectOnline() //TODO: maybe put the online check inside the tryinject, but maybe inject can be reworked completely
-			}
+			sync.TryInject(now, confirmTimeout, online)
+			sync.ApplyLights(online)
 
 		case <-ticker.C:
 			now := time.Now()
@@ -116,7 +117,8 @@ func fsmThread(
 
 			// Obstruction handling: keep door open while obstructed; restart timer when cleared.
 			obstructed := elevInputDevice.Obstruction() != 0
-			if elevfsm.CurrentBehaviour(sync.Elevator) == elevfsm.EB_DoorOpen {
+			if elevfsm.CurrentBehaviour(sync.Elevator) == elevfsm.EB_DoorOpen && obstructed {
+				elevfsm.Timer_start(doorOpenDuration)
 				if obstructed {
 					if !timerPaused {
 						// stop local timer
@@ -135,14 +137,14 @@ func fsmThread(
 			}
 			prevObstructed = obstructed
 
-			// Timer (use local time-based timer instead of elevfsm helpers)
-			if doorTimerActive && time.Now().After(doorTimerEnd) {
-				// stop timer
-				doorTimerActive = false
+			// Timer
+			if elevfsm.Timer_timedOut() != 0 {
+				elevfsm.Timer_stop()
+				timerPaused = true
 				arrivalDirn := elevfsm.CurrentDirection(sync.Elevator)
 				elevfsm.Fsm_onDoorTimeout(sync.Elevator)
 
-				cleared = sync.ClearAtFloor(prevFloor, online, arrivalDirn)
+				cleared = sync.ClearAtFloor(prevFloor, online, arrivalDirn) // TODO: change name and maybe combine with changedServiced
 				if cleared.HallUp || cleared.HallDown || cleared.Cab {
 					changedServiced = true
 					log.Printf("fsmThread: serviced requests at floor %d", prevFloor)
@@ -150,11 +152,7 @@ func fsmThread(
 			}
 
 			// Inject confirmed requests
-			if online { //TODO: TryInject(online)
-				sync.TryInjectOnline()
-			} else {
-				sync.TryInjectOffline(now, confirmTimeout)
-			}
+			sync.TryInject(now, confirmTimeout, online)
 
 			sync.ApplyLights(online)
 
