@@ -232,11 +232,11 @@ func (s *FsmSync) markPending(f int, btn common.ButtonType, now time.Time) {
 
 // inject forwards a request into the local FSM once it's confirmed or timed out.
 // This bridges net-confirmed requests or offline fallback into the elevator's request table.
-func (s *FsmSync) inject(f int, btn common.ButtonType, reason string) {
+func (s *FsmSync) inject(f int, btn common.ButtonType) {
 	if s.injected[f][btn] {
 		return
 	}
-	log.Printf("fsmThread: inject request f=%d b=%s (%s)", f, common.ElevioButtonToString(btn), reason)
+	log.Printf("fsmThread: inject request f=%d b=%s", f, common.ElevioButtonToString(btn))
 	Fsm_onRequestButtonPress(s.Elevator, f, btn)
 	s.injected[f][btn] = true
 	s.pendingAt[f][btn] = time.Time{}
@@ -251,57 +251,6 @@ func (s *FsmSync) inject(f int, btn common.ButtonType, reason string) {
 	}
 }
 
-// TryInjectOnline injects net-confirmed requests we own, and drops pending halls assigned elsewhere.
-func (s *FsmSync) TryInjectOnline() { //TODO: TryInject, but pass in online bool to only have 1 function, also remove reason cuz just give me areason, just a little bits enough, just a second im not broken just bent, then we can learn to love agaiiin
-	if !s.hasNet {
-		return
-	}
-	for f := range common.N_FLOORS {
-		if s.netCab[f] {
-			s.inject(f, common.BT_Cab, "net-confirmed")
-		}
-
-		if s.hasAssigner {
-			if s.netHall[f][0] && s.assignedHall[f][0] {
-				s.inject(f, common.BT_HallUp, "net-confirmed")
-			}
-			if s.netHall[f][1] && s.assignedHall[f][1] {
-				s.inject(f, common.BT_HallDown, "net-confirmed")
-			}
-
-			if s.netHall[f][0] && !s.assignedHall[f][0] && !s.pendingAt[f][common.BT_HallUp].IsZero() {
-				log.Printf("fsmThread: hall up f=%d assigned elsewhere", f)
-				s.pendingAt[f][common.BT_HallUp] = time.Time{}
-			}
-			if s.netHall[f][1] && !s.assignedHall[f][1] && !s.pendingAt[f][common.BT_HallDown].IsZero() {
-				log.Printf("fsmThread: hall down f=%d assigned elsewhere", f)
-				s.pendingAt[f][common.BT_HallDown] = time.Time{}
-			}
-		}
-	}
-}
-
-// TryInjectOffline injects locally pressed requests after a confirm timeout when offline.
-func (s *FsmSync) TryInjectOffline(now time.Time, confirmTimeout time.Duration) {
-	for f := range common.N_FLOORS {
-		if s.localHall[f][0] {
-			if s.readyToInject(f, common.BT_HallUp, now, confirmTimeout) {
-				s.inject(f, common.BT_HallUp, "offline")
-			}
-		}
-		if s.localHall[f][1] {
-			if s.readyToInject(f, common.BT_HallDown, now, confirmTimeout) {
-				s.inject(f, common.BT_HallDown, "offline")
-			}
-		}
-		if s.localCab[f] {
-			if s.readyToInject(f, common.BT_Cab, now, confirmTimeout) {
-				s.inject(f, common.BT_Cab, "offline")
-			}
-		}
-	}
-}
-
 // readyToInject returns true once a request is either unconfirmed or past the confirm timeout.
 func (s *FsmSync) readyToInject(f int, btn common.ButtonType, now time.Time, confirmTimeout time.Duration) bool {
 	if s.injected[f][btn] {
@@ -311,6 +260,51 @@ func (s *FsmSync) readyToInject(f int, btn common.ButtonType, now time.Time, con
 		return true
 	}
 	return now.Sub(s.pendingAt[f][btn]) >= confirmTimeout
+}
+
+func (s *FsmSync) TryInject(now time.Time, confirmTimeout time.Duration,online bool){
+	hall := make([][2]bool, common.N_FLOORS)
+	cab := make([]bool, common.N_FLOORS)
+	if online && s.hasNet {
+		hall = cloneHallSlice(s.netHall)
+		cab = cloneBoolSlice(s.netCab)
+	} else if !online {
+		hall = cloneHallSlice(s.localHall)
+		cab = cloneBoolSlice(s.localCab)
+	}
+
+	for f := range common.N_FLOORS {
+		if cab[f] && online{
+			s.inject(f, common.BT_Cab)
+		}
+
+		if s.hasAssigner && online {
+			if hall[f][0] && s.assignedHall[f][0] {
+				s.inject(f, common.BT_HallUp)
+			}
+			if hall[f][1] && s.assignedHall[f][1] {
+				s.inject(f, common.BT_HallDown)
+			}
+			if hall[f][0] && !s.assignedHall[f][0] && !s.pendingAt[f][common.BT_HallUp].IsZero() {
+				log.Printf("fsmThread: hall up f=%d assigned elsewhere", f)
+				s.pendingAt[f][common.BT_HallUp] = time.Time{}
+			}
+			if hall[f][1] && !s.assignedHall[f][1] && !s.pendingAt[f][common.BT_HallDown].IsZero() {
+				log.Printf("fsmThread: hall down f=%d assigned elsewhere", f)
+				s.pendingAt[f][common.BT_HallDown] = time.Time{}
+			}
+		} else if !online {
+			if hall[f][0] && s.readyToInject(f, common.BT_HallUp, now, confirmTimeout) {
+					s.inject(f, common.BT_HallUp)
+			}
+			if hall[f][1] && s.readyToInject(f, common.BT_HallDown, now, confirmTimeout){
+					s.inject(f, common.BT_HallDown)
+			}
+			if cab[f] && s.readyToInject(f, common.BT_Cab, now, confirmTimeout){
+					s.inject(f, common.BT_Cab)
+			}
+		}
+	}
 }
 
 // ClearAtFloor clears injected requests serviced at a floor and returns which types were cleared.
