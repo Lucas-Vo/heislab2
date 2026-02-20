@@ -11,14 +11,6 @@ func Fsm_init() (elevator *Elevator) {
 	e := new(Elevator)
 	*e = elevator_uninitialized()
 
-	ConLoad("elevator.con",
-		ConVal("doorOpenDuration_s", &e.config.doorOpenDuration_s, "%f"),
-		ConEnum("clearRequestVariant", &e.config.clearRequestVariant,
-			ConMatch("CV_All", CV_All),
-			ConMatch("CV_InDirn", CV_InDirn),
-		),
-	)
-
 	outputDevice = common.ElevioGetOutputDevice()
 	outputDevice.DoorLight(false)
 

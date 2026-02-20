@@ -291,7 +291,6 @@ func (s *FsmSync) TryInjectAll(now time.Time, confirmTimeout time.Duration, onli
 }
 
 // ClearAtFloor clears injected requests serviced at a floor and returns which types were cleared.
-// Direction-aware: only the in-direction hall (plus cab) is cleared for CV_InDirn.
 // When online, keep injected flags until the network snapshot removes the requests.
 // When offline, clear injected flags immediately.
 func (s *FsmSync) ClearAtFloor(f int, online bool, arrivalDirn common.MotorDirection) ServicedAt {

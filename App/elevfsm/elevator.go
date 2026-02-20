@@ -18,11 +18,6 @@ const (
 
 type ClearRequestVariant int
 
-const (
-	CV_All ClearRequestVariant = iota
-	CV_InDirn
-)
-
 // structs
 type Elevator struct {
 	floor     int
@@ -88,7 +83,6 @@ func elevator_uninitialized() Elevator {
 	elevator.floor = -1
 	elevator.dirn = common.MD_Stop
 	elevator.behaviour = EB_Idle
-	elevator.config.clearRequestVariant = CV_All
 	elevator.config.doorOpenDuration_s = 3.0
 	return elevator
 }
