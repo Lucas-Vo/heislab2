@@ -30,17 +30,16 @@ func main() {
 	}()
 
 	// filip til lucas
-	elevUpdateCh := make(chan Snapshot)
-
+	elevUpdateCh := make(chan Snapshot, 8)
 
 	// lucas til filip
-	netSnap2Ch := make(chan Snapshot)
+	netSnap2Ch := make(chan Snapshot, 8)
 
 	// lucas til vetle
-	netSnap1Ch := make(chan Snapshot)
+	netSnap1Ch := make(chan Snapshot, 8)
 
 	// vetle til filip
-	assignerOutCh := make(chan ElevInput)
+	assignerOutCh := make(chan ElevInput, 4)
 
 	cfg, _, err := common.DefaultConfig()
 	if err != nil {

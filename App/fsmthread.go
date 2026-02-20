@@ -170,7 +170,7 @@ func fsmThread(
 				default:
 				}
 			}
-			// TODO: make channels buffered. FIX THIS SHIT WUCAS
+
 		}
 	}
 }
