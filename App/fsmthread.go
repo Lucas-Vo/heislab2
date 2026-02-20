@@ -9,8 +9,6 @@ import (
 	"elevator/elevfsm"
 )
 
-const inputPollRateMs = 25
-
 func fsmThread(
 	ctx context.Context,
 	cfg common.Config,
@@ -23,15 +21,17 @@ func fsmThread(
 
 	// Initialize FSM state and output device before any events are handled.
 
+	inputPollRateMs := 25
+	elevfsm.ConLoad("elevator.con",
+		elevfsm.ConVal("inputPollRate_ms", &inputPollRateMs, "%d"),
+	)
+
 	sync := elevfsm.NewFsmSync(cfg)
 	sync.Elevator = elevfsm.Fsm_init()
 
 	var previousRequests [common.N_FLOORS][common.N_BUTTONS]int
 
-	confirmTimeout := 200 * time.Millisecond //TODO make global or some shit
-	// doorOpenDuration is read when starting the timer dynamically; keep
-	// a local variable removed to avoid unused variable errors.
-	doorOpenDuration := elevfsm.DoorOpenDuration(sync.Elevator)
+	confirmTimeout := 200 * time.Millisecond
 	prevObstructed := false
 	timerPaused := false
 

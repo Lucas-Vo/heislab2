@@ -23,11 +23,6 @@ const (
 	CV_InDirn
 )
 
-const (
-	DefaultDoorOpenDurationSeconds = 3.0
-	DefaultClearRequestVariant     = CV_All
-)
-
 // structs
 type Elevator struct {
 	floor     int
@@ -93,8 +88,8 @@ func elevator_uninitialized() Elevator {
 	elevator.floor = -1
 	elevator.dirn = common.MD_Stop
 	elevator.behaviour = EB_Idle
-	elevator.config.clearRequestVariant = DefaultClearRequestVariant
-	elevator.config.doorOpenDuration_s = DefaultDoorOpenDurationSeconds
+	elevator.config.clearRequestVariant = CV_All
+	elevator.config.doorOpenDuration_s = 3.0
 	return elevator
 }
 
