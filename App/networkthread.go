@@ -46,10 +46,10 @@ func networkThread(
 			return
 
 		case ns := <-elevUpdateCh:
-			wv.SelfAlive = true
+			wv.SetSelfAlive(true)
 			elevatorErrorTimer.Reset(4 * time.Second)
 
-			wv.ApplyUpdate(selfKey, ns, ns.UpdateKind)
+			wv.ApplyUpdate(selfKey, ns)
 			if ns.UpdateKind == common.UpdateRequests {
 				if !wv.IsReady() {
 					continue
@@ -67,7 +67,7 @@ func networkThread(
 				continue
 			}
 
-			becameReady := wv.ApplyUpdate(msg.Origin, msg.Snapshot, msg.Snapshot.UpdateKind)
+			becameReady := wv.ApplyUpdate(msg.Origin, msg.Snapshot)
 
 			if msg.Snapshot.UpdateKind == common.UpdateRequests && becameReady {
 				wv.PublishWorld(netSnap2Ch)
@@ -90,10 +90,10 @@ func networkThread(
 			// Publishing will be handled when elevator liveness changes (see elevatorErrorTimer.C)
 		case <-elevatorErrorTimer.C:
 			// Re-evaluate elevator liveness and notify other components when it changes.
-			if wv.SnapshotCopy().States[selfKey].Behavior != "idle" { //TODO: why do we have "EB_Idle" as well as "idle"????? maybe we should just have "idle" and then have the assigner decide when to switch to "EB_Idle" based on the snapshot?
-				if wv.SelfAlive {
+			if wv.Snapshot().States[selfKey].Behavior != "idle" { //TODO: why do we have "EB_Idle" as well as "idle"????? maybe we should just have "idle" and then have the assigner decide when to switch to "EB_Idle" based on the snapshot?
+				if wv.IsSelfAlive() {
 					// Transition from alive -> stale
-					wv.SelfAlive = false
+					wv.SetSelfAlive(false)
 					log.Printf("No behavior change detected for 4 seconds, marking Elevator as stale")
 					// Notify assigner and elevator control of the updated world view
 					wv.PublishWorld(netSnap1Ch)
@@ -101,9 +101,9 @@ func networkThread(
 				}
 			} else {
 				// Behavior is idle; keep or restore alive state and reset timer
-				if !wv.SelfAlive {
+				if !wv.IsSelfAlive() {
 					// Transition from stale -> alive
-					wv.SelfAlive = true
+					wv.SetSelfAlive(true)
 					wv.PublishWorld(netSnap1Ch)
 					wv.PublishWorld(netSnap2Ch)
 				}
