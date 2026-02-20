@@ -27,16 +27,8 @@ func networkThread(
 
 	wv := elevnetwork.NewWorldView(pm, cfg)
 
-	wv.Relay(elevnetwork.NetMsg{
-		Origin:  selfKey,
-		Counter: 0,
-		Snapshot: common.Snapshot{
-			UpdateKind: common.UpdateRequests,
-			States:     make(map[string]common.ElevState),
-		},
-	}) // Send an initial empty msg to prompt others to respond with their state, so we can populate our world view faster. This also starts the contact timer, which will force us ready after a timeout if we don't get any responses.
+	wv.Relay(elevnetwork.MakeEmptyNetMsg(selfKey, common.UpdateRequests)) // Send an initial empty msg to prompt others to respond with their state, so we can populate our world view faster. This also starts the contact timer, which will force us ready after a timeout if we don't get any responses.
 
-	//TODO: Create a separate send nothing struct function
 	ticker := time.NewTicker(300 * time.Millisecond)
 	defer ticker.Stop()
 
