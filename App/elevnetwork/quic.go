@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"math/big"
-	"net"
 	"time"
 
 	quic "github.com/quic-go/quic-go"
@@ -17,7 +16,7 @@ import (
 
 const (
 	QUIC_ALPN       = "networkmod-quic"
-	QUIC_FRAME_SIZE = 1024 // fixed-size frames (stream framing, not datagrams)
+	QUIC_FRAME_SIZE = 1024
 )
 
 func NewQUICServerTLSConfig() (*tls.Config, error) {
@@ -171,22 +170,17 @@ func WriteFixedFrameQUIC(
 	return total, nil
 }
 
-type QUICSender struct {
-	conn   *quic.Conn
-	stream *quic.Stream
-}
-
-func NewQUICSender(
+func DialQUIC(
 	ctx context.Context,
 	remoteAddr string,
 	quicConf *quic.Config,
 	openStreamTimeout time.Duration,
-) (*QUICSender, error) {
+) (*quic.Conn, *quic.Stream, error) {
 	tlsConf := NewQUICClientTLSConfig()
 
 	conn, err := quic.DialAddr(ctx, remoteAddr, tlsConf, quicConf)
 	if err != nil {
-		return nil, fmt.Errorf("quic dial: %w", err)
+		return nil, nil, fmt.Errorf("quic dial: %w", err)
 	}
 
 	stCtx := ctx
@@ -199,56 +193,21 @@ func NewQUICSender(
 	stream, err := conn.OpenStreamSync(stCtx)
 	if err != nil {
 		_ = conn.CloseWithError(0, "open stream failed")
-		return nil, fmt.Errorf("open stream: %w", err)
+		return nil, nil, fmt.Errorf("open stream: %w", err)
 	}
 
-	return &QUICSender{conn: conn, stream: stream}, nil
+	return conn, stream, nil
 }
 
-func (s *QUICSender) Close() error {
-	if s == nil {
-		return nil
+func CloseQUIC(conn *quic.Conn, stream *quic.Stream, reason string) {
+	if stream != nil {
+		_ = stream.Close()
 	}
-	if s.stream != nil {
-		_ = s.stream.Close()
+	if conn == nil {
+		return
 	}
-	if s.conn != nil {
-		return s.conn.CloseWithError(0, "bye")
+	if reason == "" {
+		reason = "bye"
 	}
-	return nil
-}
-
-func (s *QUICSender) Conn() *quic.Conn {
-	if s == nil {
-		return nil
-	}
-	return s.conn
-}
-
-func (s *QUICSender) Stream() *quic.Stream {
-	if s == nil {
-		return nil
-	}
-	return s.stream
-}
-
-func (s *QUICSender) LocalAddr() net.Addr {
-	if s == nil || s.conn == nil {
-		return nil
-	}
-	return s.conn.LocalAddr()
-}
-
-func (s *QUICSender) RemoteAddr() net.Addr {
-	if s == nil || s.conn == nil {
-		return nil
-	}
-	return s.conn.RemoteAddr()
-}
-
-func (s *QUICSender) SendFixed(payload []byte, frameSize int, timeout time.Duration) (int, error) {
-	if s == nil || s.stream == nil {
-		return 0, fmt.Errorf("quic sender is nil")
-	}
-	return WriteFixedFrameQUIC(s.stream, payload, frameSize, timeout)
+	_ = conn.CloseWithError(0, reason)
 }
