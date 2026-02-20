@@ -310,24 +310,20 @@ func (s *FsmSync) ClearAtFloor(f int, online bool, arrivalDirn common.MotorDirec
 	}
 
 	var clearUp, clearDown bool
-	switch s.Elevator.config.clearRequestVariant {
-	case CV_All:
-		clearUp, clearDown = true, true
-	case CV_InDirn:
-		switch arrivalDirn {
-		case common.MD_Up:
-			clearUp = true
-			if s.Elevator.floor == common.N_FLOORS-1 || (requests_above(*s.Elevator) == 0 && !s.Elevator.requests[s.Elevator.floor][common.BT_HallUp]) {
-				clearDown = true
-			}
-		case common.MD_Down:
+
+	switch arrivalDirn {
+	case common.MD_Up:
+		clearUp = true
+		if s.Elevator.floor == common.N_FLOORS-1 || (requests_above(*s.Elevator) == 0 && !s.Elevator.requests[s.Elevator.floor][common.BT_HallUp]) {
 			clearDown = true
-			if s.Elevator.floor == 0 || (requests_below(*s.Elevator) == 0 && !s.Elevator.requests[s.Elevator.floor][common.BT_HallDown]) {
-				clearUp = true
-			}
-		case common.MD_Stop:
-			clearUp, clearDown = true, true
 		}
+	case common.MD_Down:
+		clearDown = true
+		if s.Elevator.floor == 0 || (requests_below(*s.Elevator) == 0 && !s.Elevator.requests[s.Elevator.floor][common.BT_HallDown]) {
+			clearUp = true
+		}
+	case common.MD_Stop:
+		clearUp, clearDown = true, true
 	}
 
 	// helper to apply hall clears concisely

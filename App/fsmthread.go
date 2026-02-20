@@ -93,7 +93,7 @@ func fsmThread(
 
 			// Request buttons (edge-detected)
 			for f := range common.N_FLOORS {
-				for b := 0; b < common.N_BUTTONS; b++ {
+				for b := range common.N_BUTTONS {
 					v := elevInputDevice.RequestButton(f, common.ButtonType(b))
 					if v != 0 && v != previousRequests[f][b] {
 						sync.OnLocalPress(f, common.ButtonType(b), now)

@@ -107,59 +107,36 @@ func requests_shouldStop(e Elevator) int {
 }
 
 func requests_shouldClearImmediately(e Elevator, btn_floor int, btn_type common.ButtonType) int {
-	switch e.config.clearRequestVariant {
-	case CV_All:
-		if e.floor == btn_floor {
-			return 1
-		}
-		return 0
-
-	case CV_InDirn:
-		if e.floor == btn_floor &&
-			((e.dirn == common.MD_Up && btn_type == common.BT_HallUp) ||
-				(e.dirn == common.MD_Down && btn_type == common.BT_HallDown) ||
-				e.dirn == common.MD_Stop ||
-				btn_type == common.BT_Cab) {
-			return 1
-		}
-		return 0
-
-	default:
-		return 0
+	if e.floor == btn_floor &&
+		((e.dirn == common.MD_Up && btn_type == common.BT_HallUp) ||
+			(e.dirn == common.MD_Down && btn_type == common.BT_HallDown) ||
+			e.dirn == common.MD_Stop ||
+			btn_type == common.BT_Cab) {
+		return 1
 	}
+	return 0
 }
 
 func requests_clearAtCurrentFloor(e Elevator) Elevator { // TODO: this code is implemented twice
-	switch e.config.clearRequestVariant {
-	case CV_All:
-		for btn := common.ButtonType(0); btn < common.N_BUTTONS; btn++ {
-			e.requests[e.floor][btn] = false
-		}
-
-	case CV_InDirn:
-		e.requests[e.floor][common.BT_Cab] = false
-		switch e.dirn {
-		case common.MD_Up:
-			if requests_above(e) == 0 && !e.requests[e.floor][common.BT_HallUp] {
-				e.requests[e.floor][common.BT_HallDown] = false
-			}
-			e.requests[e.floor][common.BT_HallUp] = false
-
-		case common.MD_Down:
-			if requests_below(e) == 0 && !e.requests[e.floor][common.BT_HallDown] {
-				e.requests[e.floor][common.BT_HallUp] = false
-			}
-			e.requests[e.floor][common.BT_HallDown] = false
-
-		case common.MD_Stop:
-			fallthrough
-		default:
-			e.requests[e.floor][common.BT_HallUp] = false
+	e.requests[e.floor][common.BT_Cab] = false
+	switch e.dirn {
+	case common.MD_Up:
+		if requests_above(e) == 0 && !e.requests[e.floor][common.BT_HallUp] {
 			e.requests[e.floor][common.BT_HallDown] = false
 		}
+		e.requests[e.floor][common.BT_HallUp] = false
 
+	case common.MD_Down:
+		if requests_below(e) == 0 && !e.requests[e.floor][common.BT_HallDown] {
+			e.requests[e.floor][common.BT_HallUp] = false
+		}
+		e.requests[e.floor][common.BT_HallDown] = false
+
+	case common.MD_Stop:
+		fallthrough
 	default:
-		// do nothing
+		e.requests[e.floor][common.BT_HallUp] = false
+		e.requests[e.floor][common.BT_HallDown] = false
 	}
 
 	return e
