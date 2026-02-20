@@ -23,7 +23,9 @@ func networkThread(
 	// merge serviced and request channels
 	selfKey := cfg.SelfKey
 
-	pm, incomingPacket := elevnetwork.StartP2P(ctx, cfg, 4242)
+	pm := &elevnetwork.PeerManager{}
+	pm.NewPeerManager(cfg)
+	incomingPacket := pm.StartP2P(ctx, cfg, 4242)
 
 	wv := elevnetwork.NewWorldView(pm, cfg)
 
