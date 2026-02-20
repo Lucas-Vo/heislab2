@@ -123,7 +123,7 @@ func fsmThread(
 					}
 				} else if timerPaused || prevObstructed {
 					// start local timer using doorOpenDuration (seconds)
-					d := time.Duration(elevfsm.DoorOpenDuration(sync.Elevator) * float64(time.Second))
+					d := time.Duration(3 * time.Second)
 					doorTimerEnd = time.Now().Add(d)
 					doorTimerActive = true
 					timerPaused = false
@@ -153,7 +153,7 @@ func fsmThread(
 			newBehaviour := elevfsm.CurrentBehaviour(sync.Elevator)
 			if prevBehaviour != newBehaviour && newBehaviour == elevfsm.EB_DoorOpen {
 				// start door timer when entering DoorOpen
-				d := time.Duration(elevfsm.DoorOpenDuration(sync.Elevator) * float64(time.Second))
+				d := time.Duration(3 * time.Second)
 				doorTimerEnd = time.Now().Add(d)
 				doorTimerActive = true
 				timerPaused = false

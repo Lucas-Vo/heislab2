@@ -45,7 +45,7 @@ func Fsm_onRequestButtonPress(e *Elevator, btn_floor int, btn_type common.Button
 		switch pair.behaviour {
 		case EB_DoorOpen:
 			outputDevice.DoorLight(true)
-			*e = requests_clearAtCurrentFloor(*e)
+			*e = requests_clearAtCurrentFloor(*e) //TODO: Bro we have same function in fsmsync. Make it one, make it snappy.
 
 		case EB_Moving:
 			outputDevice.MotorDirection(e.dirn)
@@ -106,10 +106,6 @@ func CurrentBehaviour(e *Elevator) ElevatorBehaviour {
 
 func CurrentDirection(e *Elevator) common.MotorDirection {
 	return e.dirn
-}
-
-func DoorOpenDuration(e *Elevator) float64 {
-	return e.config.doorOpenDuration_s
 }
 
 func CurrentMotionStrings(e *Elevator) (behavior string, direction string) {
