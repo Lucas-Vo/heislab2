@@ -2,7 +2,6 @@ package elevfsm
 
 import (
 	"elevator/common"
-	"log"
 )
 
 var outputDevice common.ElevOutputDevice
@@ -24,13 +23,7 @@ func Fsm_onInitBetweenFloors(e *Elevator) {
 }
 
 func Fsm_onRequestButtonPress(e *Elevator, btn_floor int, btn_type common.ButtonType) {
-	log.Printf("FSM: request press floor=%d btn=%s (before floor=%d dir=%s behav=%s)",
-		btn_floor,
-		common.ElevioButtonToString(btn_type),
-		e.floor,
-		common.ElevioDirnToString(e.dirn),
-		ebToString(e.behaviour),
-	)
+
 	switch e.behaviour {
 	case EB_DoorOpen:
 		if requests_shouldClearImmediately(*e, btn_floor, btn_type) != 0 {
@@ -64,12 +57,6 @@ func Fsm_onRequestButtonPress(e *Elevator, btn_floor int, btn_type common.Button
 }
 
 func Fsm_onFloorArrival(e *Elevator, newFloor int) {
-	log.Printf("FSM: floor arrival %d (before floor=%d dir=%s behav=%s)",
-		newFloor,
-		e.floor,
-		common.ElevioDirnToString(e.dirn),
-		ebToString(e.behaviour),
-	)
 
 	e.floor = newFloor
 	outputDevice.FloorIndicator(e.floor)
@@ -87,19 +74,10 @@ func Fsm_onFloorArrival(e *Elevator, newFloor int) {
 	default:
 		// do nothing
 	}
-	log.Printf("FSM: floor arrival handled (after floor=%d dir=%s behav=%s)",
-		e.floor,
-		common.ElevioDirnToString(e.dirn),
-		ebToString(e.behaviour),
-	)
+
 }
 
 func Fsm_onDoorTimeout(e *Elevator) {
-	log.Printf("FSM: door timeout (before floor=%d dir=%s behav=%s)",
-		e.floor,
-		common.ElevioDirnToString(e.dirn),
-		ebToString(e.behaviour),
-	)
 
 	switch e.behaviour {
 	case EB_DoorOpen:
@@ -120,11 +98,6 @@ func Fsm_onDoorTimeout(e *Elevator) {
 	default:
 		// do nothing
 	}
-	log.Printf("FSM: door timeout handled (after floor=%d dir=%s behav=%s)",
-		e.floor,
-		common.ElevioDirnToString(e.dirn),
-		ebToString(e.behaviour),
-	)
 }
 
 func CurrentBehaviour(e *Elevator) ElevatorBehaviour {

@@ -50,7 +50,7 @@ type WorldView struct {
 	ready bool
 
 	selfKey   string
-	SelfAlive bool
+	selfAlive bool
 
 	counter     uint64
 	latestCount map[string]uint64
@@ -72,8 +72,9 @@ func NewWorldView(pm *PeerManager, cfg common.Config) *WorldView {
 		peerTimeout:  WV_TIMEOUT_DURATION * time.Second,
 		startTime:    time.Now(),
 
-		ready:   false,
-		selfKey: cfg.SelfKey,
+		ready:     false,
+		selfKey:   cfg.SelfKey,
+		selfAlive: true,
 
 		counter:     0,
 		latestCount: make(map[string]uint64),
@@ -94,14 +95,22 @@ func (wv *WorldView) ForceReady() {
 	wv.mu.Unlock()
 }
 
-func (wv *WorldView) extractSnapshot() common.Snapshot {
+func (wv *WorldView) Snapshot() common.Snapshot {
 	wv.mu.Lock()
 	defer wv.mu.Unlock()
 	return common.DeepCopySnapshot(wv.snapshot)
 }
 
-func (wv *WorldView) SnapshotCopy() common.Snapshot {
-	return wv.extractSnapshot()
+func (wv *WorldView) SetSelfAlive(alive bool) {
+	wv.mu.Lock()
+	wv.selfAlive = alive
+	wv.mu.Unlock()
+}
+
+func (wv *WorldView) IsSelfAlive() bool {
+	wv.mu.Lock()
+	defer wv.mu.Unlock()
+	return wv.selfAlive
 }
 
 func (wv *WorldView) ShouldAcceptMsg(msg NetMsg) bool {
@@ -128,7 +137,7 @@ func (wv *WorldView) ShouldAcceptMsg(msg NetMsg) bool {
 	return true
 }
 
-func (wv *WorldView) ApplyUpdate(fromKey string, ns common.Snapshot, kind common.UpdateKind) (becameReady bool) {
+func (wv *WorldView) ApplyUpdate(fromKey string, ns common.Snapshot) (becameReady bool) {
 	wv.mu.Lock()
 	defer wv.mu.Unlock()
 
@@ -136,23 +145,12 @@ func (wv *WorldView) ApplyUpdate(fromKey string, ns common.Snapshot, kind common
 	wv.lastSnapshot[fromKey] = common.DeepCopySnapshot(ns)
 
 	// First contact: accept as "requests" snapshot and recover cab requests
-	DELETE := false
 	if !wv.ready && fromKey != wv.selfKey && ns.UpdateKind == common.UpdateRequests {
-		log.Printf("Suggested recovered cab BEFORE is: %v", wv.snapshot.States[wv.selfKey].CabRequests)
-		log.Printf("INBOUND cabs from peer is: %v", ns.States[wv.selfKey].CabRequests)
 		wv.recoverCabRequests(ns)
 		wv.ready = true
 		becameReady = true
-		DELETE = true
 	}
 	wv.mergeSnapshot(fromKey, ns)
-	if DELETE {
-		log.Printf("Suggested recovered cab AFTER is: %v", wv.snapshot.States[wv.selfKey].CabRequests)
-		DELETE = false
-	}
-	if fromKey != wv.selfKey && ns.UpdateKind == common.UpdateServiced {
-		log.Printf("APPLIED SERVICED ############")
-	}
 	return becameReady
 }
 
@@ -169,11 +167,8 @@ func (wv *WorldView) mergeSnapshot(fromKey string, ns common.Snapshot) {
 }
 
 func (wv *WorldView) recoverCabRequests(ns common.Snapshot) {
-	log.Printf("recoverCabRequests entered")
-	log.Printf("")
 	peerSelf, ok := ns.States[wv.selfKey]
 	if !ok {
-		log.Printf("skipped recoverCabRequests due to lack of external")
 		return
 	}
 
@@ -190,7 +185,6 @@ func (wv *WorldView) recoverCabRequests(ns common.Snapshot) {
 	}
 
 	wv.snapshot.States[wv.selfKey] = localSelf
-	log.Printf("sucessfully recoverCabRequests")
 }
 
 func (wv *WorldView) PublishWorld(channel chan<- common.Snapshot) {
@@ -198,7 +192,7 @@ func (wv *WorldView) PublishWorld(channel chan<- common.Snapshot) {
 
 	now := time.Now()
 	snapshotCopy := common.DeepCopySnapshot(wv.snapshot)
-	snapshotCopy.Alive = wv.computeAlive(now)
+	snapshotCopy.Alive = wv.aliveMapLocked(now)
 
 	wv.mu.Unlock()
 	select {
@@ -207,11 +201,15 @@ func (wv *WorldView) PublishWorld(channel chan<- common.Snapshot) {
 	}
 }
 
-func (wv *WorldView) computeAlive(now time.Time) map[string]bool {
+func (wv *WorldView) aliveMapLocked(now time.Time) map[string]bool {
 	alive := make(map[string]bool, len(wv.peers))
 	startupGrace := now.Sub(wv.startTime) <= wv.peerTimeout
 
 	for _, id := range wv.peers {
+		if id == wv.selfKey {
+			alive[id] = wv.selfAlive
+			continue
+		}
 		t, ok := wv.lastHeard[id]
 		if ok {
 			alive[id] = now.Sub(t) <= wv.peerTimeout
@@ -228,31 +226,29 @@ func (wv *WorldView) IsCoherent() bool {
 	defer wv.mu.Unlock()
 
 	now := time.Now()
-
-	alive := make([]string, 0, len(wv.peers))
-	for _, id := range wv.peers {
-		t, ok := wv.lastHeard[id]
-		if ok && now.Sub(t) <= wv.peerTimeout {
-			alive = append(alive, id)
-		}
-	}
-
-	if len(alive) <= 1 {
+	aliveIDs := wv.aliveIDsLocked(now)
+	if len(aliveIDs) <= 1 {
 		return true
 	}
 
 	refID := wv.selfKey
+	if !containsID(aliveIDs, refID) {
+		refID = aliveIDs[0]
+	}
 	refSnap, ok := wv.lastSnapshot[refID]
 	if !ok {
 		return false
 	}
 
-	for _, id := range alive[1:] {
+	for _, id := range aliveIDs {
+		if id == refID {
+			continue
+		}
 		snap, ok := wv.lastSnapshot[id]
 		if !ok {
 			return false
 		}
-		if !EqualWorldview(refSnap, snap) {
+		if !equalWorldview(refSnap, snap) {
 			return false
 		}
 	}
@@ -262,11 +258,11 @@ func (wv *WorldView) IsCoherent() bool {
 
 // Broadcast constructs a NetMsg from current snapshot and sends it on the correct net for the kind.
 func (wv *WorldView) Broadcast(kind common.UpdateKind) {
-	if wv.pm == nil || !wv.SelfAlive { //TODO: This boo thang has been changed, but it could have problem with sending
+	wv.mu.Lock()
+	if wv.pm == nil || !wv.selfAlive { // TODO: this could be part of send gating later
+		wv.mu.Unlock()
 		return
 	}
-
-	wv.mu.Lock()
 	wv.counter++
 	now := time.Now()
 
@@ -286,7 +282,7 @@ func (wv *WorldView) Broadcast(kind common.UpdateKind) {
 
 // Relay re-broadcasts an already-constructed msg on the SAME net it arrived on.
 func (wv *WorldView) Relay(msg NetMsg) { //TODO Combine Relay and sendMsg into same function bruhh. Also broadcast checks for alive as well as relay so what the FUCK is the difference and please make this more compact
-	if !wv.SelfAlive {
+	if !wv.IsSelfAlive() {
 		return
 	}
 	wv.sendMsg(msg)
@@ -317,21 +313,13 @@ func mergeHall(current, incomingHall [][2]bool, kind common.UpdateKind) [][2]boo
 	}
 	return mergedHall
 }
-
-// Ignore Alive; compare HallRequests + States.
-func EqualWorldview(a, b common.Snapshot) bool {
-	if len(a.HallRequests) != len(b.HallRequests) {
-		return false
-	}
+func equalWorldview(a, b common.Snapshot) bool {
 	for i := 0; i < len(a.HallRequests); i++ {
 		if a.HallRequests[i] != b.HallRequests[i] {
 			return false
 		}
 	}
 
-	if len(a.States) != len(b.States) {
-		return false
-	}
 	for k, aSt := range a.States {
 		bSt, ok := b.States[k]
 		if !ok {
@@ -342,4 +330,24 @@ func EqualWorldview(a, b common.Snapshot) bool {
 		}
 	}
 	return true
+}
+
+func (wv *WorldView) aliveIDsLocked(now time.Time) []string {
+	aliveMap := wv.aliveMapLocked(now)
+	alive := make([]string, 0, len(wv.peers))
+	for _, id := range wv.peers {
+		if aliveMap[id] {
+			alive = append(alive, id)
+		}
+	}
+	return alive
+}
+
+func containsID(ids []string, id string) bool {
+	for _, v := range ids {
+		if v == id {
+			return true
+		}
+	}
+	return false
 }

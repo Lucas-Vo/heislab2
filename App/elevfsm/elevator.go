@@ -3,7 +3,6 @@ package elevfsm
 //TODO: elevator.go fsm.go requests.go and timer.go is AALLLL soup. make that shit dissapear as most is implemented in fsmsync
 import (
 	"elevator/common"
-	"fmt"
 )
 
 // enums
@@ -32,52 +31,6 @@ type Elevator struct {
 
 // functions
 
-func ebToString(eb ElevatorBehaviour) string {
-	switch eb {
-	case EB_Idle:
-		return "EB_Idle"
-	case EB_DoorOpen:
-		return "EB_DoorOpen"
-	case EB_Moving:
-		return "EB_Moving"
-	default:
-		return "EB_UNDEFINED"
-	}
-}
-
-// TODO: consider removing
-func elevator_print(es Elevator) {
-	fmt.Println("  +--------------------+")
-	fmt.Printf(
-		"  |floor = %-2d          |\n"+
-			"  |dirn  = %-12.12s|\n"+
-			"  |behav = %-12.12s|\n",
-		es.floor,
-		common.ElevioDirnToString(es.dirn),
-		ebToString(es.behaviour),
-	)
-	fmt.Printf("  +--------------------+\n")
-	fmt.Printf("  |  | up  | dn  | cab |\n")
-
-	for f := common.N_FLOORS - 1; f >= 0; f-- {
-		fmt.Printf("  | %d", f)
-		for btn := common.ButtonType(0); btn < common.N_BUTTONS; btn++ {
-			if (f == common.N_FLOORS-1 && btn == common.BT_HallUp) ||
-				(f == 0 && btn == common.BT_HallDown) {
-				fmt.Printf("|     ")
-			} else {
-				if es.requests[f][btn] {
-					fmt.Printf("|  #  ")
-				} else {
-					fmt.Printf("|  -  ")
-				}
-			}
-		}
-		fmt.Printf("|\n")
-	}
-	fmt.Printf("  +--------------------+\n")
-}
-
 func elevator_uninitialized() Elevator {
 	var elevator Elevator
 	elevator.floor = -1
@@ -85,8 +38,4 @@ func elevator_uninitialized() Elevator {
 	elevator.behaviour = EB_Idle
 	elevator.config.doorOpenDuration_s = 3.0
 	return elevator
-}
-
-func (e *Elevator) GetBehaviour() ElevatorBehaviour {
-	return e.behaviour
 }
