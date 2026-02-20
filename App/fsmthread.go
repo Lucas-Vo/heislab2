@@ -39,7 +39,7 @@ func fsmThread(
 	// instead of package-level helper functions.
 	var doorTimerEnd time.Time
 	var doorTimerActive bool
-
+	var servicedCall elevfsm.ServicedAt
 	// Seed floor state if the sensor is already at a floor; otherwise start moving to find one.
 	prevFloor := -1
 	if f := elevInputDevice.FloorSensor(); f != -1 {
@@ -50,7 +50,7 @@ func fsmThread(
 	}
 	behavior, direction := elevfsm.CurrentMotionStrings(sync.Elevator)
 	prevBehaviour := elevfsm.CurrentBehaviour(sync.Elevator)
-	initialSnap := sync.BuildUpdateSnapshot(prevFloor, behavior, direction)
+	initialSnap := sync.BuildSnapshot(prevFloor, behavior, direction, common.UpdateRequests, servicedCall, false)
 
 	select {
 	case elevUpdateCh <- initialSnap:
@@ -88,8 +88,6 @@ func fsmThread(
 			online := !sync.Offline(now) //TODO: Change name of online
 
 			elevStateChange := false
-
-			var servicedCall elevfsm.ServicedAt
 
 			// Request buttons (edge-detected)
 			for f := range common.N_FLOORS {
@@ -169,14 +167,15 @@ func fsmThread(
 				continue
 			}
 			if servicedCall.HallUp || servicedCall.HallDown || servicedCall.Cab {
-				snapshot := sync.BuildSnapshot(prevFloor, behavior, direction, common.UpdateServiced, servicedCall,  online)
+				snapshot := sync.BuildSnapshot(prevFloor, behavior, direction, common.UpdateServiced, servicedCall, online)
+				servicedCall = elevfsm.ServicedAt{HallUp: false, HallDown: false, Cab: false}
 				select {
 				case elevUpdateCh <- snapshot:
 				default:
 				}
 			}
 			if elevStateChange {
-				snapshot := sync.BuildSnapshot(prevFloor, behavior, direction, common.UpdateRequests, servicedCall,  online)
+				snapshot := sync.BuildSnapshot(prevFloor, behavior, direction, common.UpdateRequests, servicedCall, online)
 				select {
 				case elevUpdateCh <- snapshot:
 				default:

@@ -90,34 +90,37 @@ func (s *FsmSync) ApplyAssigner(task common.ElevInput) {
 	if s.assignedHall == nil || len(s.assignedHall) != common.N_FLOORS {
 		s.assignedHall = make([][2]bool, common.N_FLOORS)
 	}
-	prev := cloneHallSlice(s.assignedHall)
+	previousAssignment := cloneHallSlice(s.assignedHall)
 	copyHall(s.assignedHall, task.HallTask)
 	s.hasAssigner = true
-	s.cancelUnassigned(prev)
+	s.cancelUnassigned(previousAssignment)
 }
 
 // cancelUnassigned clears local tracking for halls we no longer own after a new assignment.
 func (s *FsmSync) cancelUnassigned(prev [][2]bool) {
 	for f := range common.N_FLOORS {
 		if prev[f][0] && !s.assignedHall[f][0] {
-			s.cancelHall(f, common.BT_HallUp, "unassigned")
+			s.cancelHall(f, common.BT_HallUp)
 		}
 		if prev[f][1] && !s.assignedHall[f][1] {
-			s.cancelHall(f, common.BT_HallDown, "unassigned")
+			s.cancelHall(f, common.BT_HallDown)
 		}
 	}
 }
 
 // cancelHall clears a specific hall request from local state and the FSM's request table.
-func (s *FsmSync) cancelHall(f int, btn common.ButtonType, reason string) {
-	if btn != common.BT_HallUp && btn != common.BT_HallDown {
+func (s *FsmSync) cancelHall(f int, btn common.ButtonType) {
+	if btn == common.BT_Cab {
 		return
 	}
 	if f < 0 || f >= common.N_FLOORS {
 		return
 	}
+	if btn < 0 || btn >= common.N_BUTTONS {
+		return
+	}
 	if s.injected[f][btn] || !s.pendingAt[f][btn].IsZero() || s.localHall[f][btn] {
-		log.Printf("fsmThread: cancel hall f=%d b=%s (%s)", f, common.ElevioButtonToString(btn), reason)
+		log.Printf("fsmThread:  hall unassigned f=%d b=%s (%s)", f, common.ElevioButtonToString(btn))
 	}
 	s.pendingAt[f][btn] = time.Time{}
 	s.injected[f][btn] = false
@@ -127,12 +130,7 @@ func (s *FsmSync) cancelHall(f int, btn common.ButtonType, reason string) {
 	} else {
 		s.localHall[f][1] = false
 	}
-	if f < 0 || f >= common.N_FLOORS {
-		return
-	}
-	if btn < 0 || btn >= common.N_BUTTONS {
-		return
-	}
+	
 	s.Elevator.requests[f][btn] = false
 }
 
@@ -141,50 +139,36 @@ func (s *FsmSync) cancelHall(f int, btn common.ButtonType, reason string) {
 func (s *FsmSync) ApplyNetworkSnapshot(snap common.Snapshot, now time.Time) {
 	s.hasNet = true
 	s.lastNetSeen = now
-
 	copyHall(s.netHall, snap.HallRequests)
 	if s.copyCabFromSnapshot(snap) {
 		s.hasNetSelf = true
 	}
-
 	for f := range common.N_FLOORS {
-		// Hall up
-		wasConfirmed := s.confirmed[f][common.BT_HallUp]
-		if s.netHall[f][0] {
-			s.pendingAt[f][common.BT_HallUp] = time.Time{}
-			s.confirmed[f][common.BT_HallUp] = true
-		} else {
-			s.confirmed[f][common.BT_HallUp] = false
-			if wasConfirmed {
-				s.localHall[f][0] = false
-				s.injected[f][common.BT_HallUp] = false
+		for btn := range common.ButtonType(common.N_BUTTONS) {
+			wasConfirmed := s.confirmed[f][btn]
+			var netActive bool
+			if btn == common.BT_Cab {
+				netActive = s.netCab[f]
+			} else {
+				netActive = s.netHall[f][btn]
 			}
-		}
 
-		// Hall down
-		wasConfirmed = s.confirmed[f][common.BT_HallDown]
-		if s.netHall[f][1] {
-			s.pendingAt[f][common.BT_HallDown] = time.Time{}
-			s.confirmed[f][common.BT_HallDown] = true
-		} else {
-			s.confirmed[f][common.BT_HallDown] = false
-			if wasConfirmed {
-				s.localHall[f][1] = false
-				s.injected[f][common.BT_HallDown] = false
+			if netActive {
+				s.pendingAt[f][btn] = time.Time{}
+				s.confirmed[f][btn] = true
+				if btn == common.BT_Cab {
+					s.localCab[f] = true
+				}
+				return
 			}
-		}
-
-		// Cab
-		wasConfirmed = s.confirmed[f][common.BT_Cab]
-		if s.netCab[f] {
-			s.pendingAt[f][common.BT_Cab] = time.Time{}
-			s.confirmed[f][common.BT_Cab] = true
-			s.localCab[f] = true
-		} else {
-			s.confirmed[f][common.BT_Cab] = false
+			s.confirmed[f][btn] = false
 			if wasConfirmed {
-				s.localCab[f] = false
-				s.injected[f][common.BT_Cab] = false
+				if btn == common.BT_Cab {
+					s.localCab[f] = false
+				} else {
+					s.localHall[f][btn] = false
+				}
+				s.injected[f][btn] = false
 			}
 		}
 	}
@@ -211,7 +195,6 @@ func (s *FsmSync) copyCabFromSnapshot(snapshot common.Snapshot) bool {
 // OnLocalPress records a local button press and marks it pending confirmation/injection.
 func (s *FsmSync) OnLocalPress(f int, btn common.ButtonType, now time.Time) {
 	s.markPending(f, btn, now)
-
 	switch btn {
 	case common.BT_HallUp:
 		s.localHall[f][0] = true
@@ -342,53 +325,6 @@ func (s *FsmSync) ClearAtFloor(f int, online bool, arrivalDirn common.MotorDirec
 	return cleared
 }
 
-// BuildUpdateSnapshot builds a snapshot based on local requests and current motion state.
-func (s *FsmSync) BuildUpdateSnapshot(floor int, behavior string, direction string) common.Snapshot { //TODO: Make serviced and update snapshot the same shit
-	return common.Snapshot{
-		HallRequests: cloneHallSlice(s.localHall),
-		States: map[string]common.ElevState{
-			s.selfKey: {
-				Behavior:    behavior,
-				Floor:       floor,
-				Direction:   direction,
-				CabRequests: cloneBoolSlice(s.localCab),
-			},
-		},
-		UpdateKind: common.UpdateRequests,
-	}
-}
-
-// BuildServicedSnapshot builds a snapshot that clears serviced halls at a floor.
-// Online uses the net hall view as a base; offline uses the local hall view.
-func (s *FsmSync) BuildServicedSnapshot(floor int, behavior string, direction string, cleared ServicedAt, online bool) common.Snapshot {
-	baseHall := s.localHall
-	if online && s.hasNet {
-		baseHall = s.netHall
-	}
-
-	outHall := cloneHallSlice(baseHall)
-	if floor >= 0 && floor < len(outHall) {
-		if cleared.HallUp {
-			outHall[floor][0] = false
-		}
-		if cleared.HallDown {
-			outHall[floor][1] = false
-		}
-	}
-
-	return common.Snapshot{
-		HallRequests: outHall,
-		States: map[string]common.ElevState{
-			s.selfKey: {
-				Behavior:    behavior,
-				Floor:       floor,
-				Direction:   direction,
-				CabRequests: cloneBoolSlice(s.localCab),
-			},
-		},
-		UpdateKind: common.UpdateServiced,
-	}
-}
 func (s *FsmSync) BuildSnapshot(floor int, behavior string, direction string, kind common.UpdateKind, cleared ServicedAt, online bool) common.Snapshot {
 
 	// Choose base hall source
