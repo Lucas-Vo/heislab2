@@ -1,3 +1,7 @@
+// p2p.go
+// Purpose: Peer-to-peer management for network communication between elevators.
+// Includes: PeerManager, connection handling, readers/writers and frame-based
+// message handling using QUIC streams.
 package elevnetwork
 
 import (

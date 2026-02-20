@@ -1,4 +1,8 @@
-// elevnetwork/worldview.go
+// worldview.go
+// Purpose: Maintains a coherent world view of all elevators by merging
+// snapshots received from peers. Responsible for deciding readiness, recover
+// of cab requests on first contact, computing alive maps and publishing
+// merged snapshots to local consumers.
 package elevnetwork
 
 import (

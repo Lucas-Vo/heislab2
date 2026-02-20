@@ -1,3 +1,6 @@
+// quic.go
+// Purpose: QUIC helper utilities used by the elevnetwork package. Provides TLS
+// config generation, fixed-frame readers/writers and a small QUIC sender helper.
 package elevnetwork
 
 import (

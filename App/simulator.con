@@ -1,4 +1,7 @@
-simulator.con
+-- simulator.con
+-- Purpose: Simulator configuration for the elevator hardware simulator.
+-- Includes timing, key mappings and simulator flags. Lines prefixed with `--` are
+-- parsed by the simulator loader.
 
 --travelTimeBetweenFloors_ms    2000
 --travelTimePassingFloor_ms     500

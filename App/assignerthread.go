@@ -1,3 +1,9 @@
+// assignerthread.go
+// Purpose: Runs the external hall request assigner executable to decide which hall requests
+// this elevator should service.
+// Includes: JSON serialization of the network snapshot, removal of stale states,
+// invocation of the external HRA process, and conversion of its output into ElevInput
+// messages sent to the FSM thread.
 package main
 
 import (

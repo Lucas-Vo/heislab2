@@ -1,3 +1,7 @@
+// requests.go
+// Purpose: Request selection and clearing logic for the elevator FSM. Contains
+// algorithms to decide direction, whether to stop, and how to clear requests
+// at the current floor based on configuration.
 package elevfsm
 
 import (

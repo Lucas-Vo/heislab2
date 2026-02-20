@@ -1,3 +1,6 @@
+// types.go
+// Purpose: Shared data types and JSON-serializable structs used across threads.
+// Includes: UpdateKind enum, ElevState, Snapshot, ElevInput and HRAOutput types.
 package common
 
 type UpdateKind int

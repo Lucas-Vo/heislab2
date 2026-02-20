@@ -1,3 +1,7 @@
+// fsmsync.go
+// Purpose: Synchronization layer between local FSM state, network snapshots
+// and assigner outputs. Manages injection/confirmation of requests, pending
+// timings and the merged view of local vs global hall/cab requests.
 package elevfsm
 
 import (

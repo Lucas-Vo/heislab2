@@ -1,3 +1,6 @@
+// utils.go
+// Purpose: Small utility helpers used by the project (byte trimming, deep copy,
+// cloning helpers). Kept minimal and safe for concurrent usage.
 package common
 
 func TrimZeros(b []byte) []byte {

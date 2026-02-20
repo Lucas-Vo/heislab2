@@ -1,4 +1,7 @@
 // networkthread.go
+// Purpose: Manages peer-to-peer network exchange and world view of all elevators.
+// Includes: P2P startup, incoming packet handling, world view merging, periodic
+// broadcasts, and publishing snapshots to the assigner and FSM threads.
 package main
 
 import (

@@ -1,3 +1,6 @@
+// timer.go
+// Purpose: Simple wall-clock timer utilities used by the FSM for door timeouts
+// and other timing-based actions. Provides start/stop and timed-out query.
 package elevfsm
 
 import "time"

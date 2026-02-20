@@ -1,3 +1,8 @@
+// fsm.go
+// Purpose: Implementation of the elevator finite-state machine (FSM) public API.
+// Includes: initialization, event handlers (floor arrival, button press, door
+// timeout) and lamp application logic. This file interfaces with the lower-level
+// elevator driver via the common.ElevOutputDevice.
 package elevfsm
 
 import (
@@ -115,7 +120,7 @@ func Fsm_onRequestButtonPress(e *Elevator, btn_floor int, btn_type common.Button
 		}
 
 	case EB_Moving:
-		
+
 		e.requests[btn_floor][btn_type] = true
 
 	case EB_Idle:

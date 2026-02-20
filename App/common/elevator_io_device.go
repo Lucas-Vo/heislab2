@@ -1,3 +1,7 @@
+// elevator_io_device.go
+// Purpose: High-level adapter that exposes a device-like interface for elevator
+// inputs/outputs. Provides typed function wrappers to the lower-level driver API
+// and convenience helpers for initializing the driver with project defaults.
 package common
 
 // constants

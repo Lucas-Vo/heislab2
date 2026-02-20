@@ -1,4 +1,6 @@
-elevator.con
+-- elevator.con
+-- Purpose: Configuration file for the elevator FSM. Contains tunable constants
+-- used by elevfsm (loaded via ConLoad). Format: lines beginning with `--`.
 
 // Value: [CV_All, CV_InDirn]
 --clearRequestVariant       CV_InDirn

@@ -1,3 +1,8 @@
+// elevator.go
+// Purpose: Core elevator data structures and basic helpers for the FSM.
+// Includes: Elevator struct, behaviour enums and small helpers used by the FSM.
+// Note: Some parts are legacy and mirrored in other files; see fsmsync for
+// the newer synchronization logic.
 package elevfsm
 
 //TODO: elevator.go fsm.go requests.go and timer.go is AALLLL soup. make that shit dissapear as most is implemented in fsmsync

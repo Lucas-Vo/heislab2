@@ -1,10 +1,16 @@
+// elevator_io.go
+// Purpose: Low-level driver shim for the simulator/hardware connection. Implements
+// I/O primitives for motor, lamps, buttons and sensors and provides polling helpers.
+// Note: this file contains the TCP-based driver logic used by the simulator.
 package common
 
 // This file is SOUP, and is from the driver-go repository.
-import "time"
-import "sync"
-import "net"
-import "fmt"
+import (
+	"fmt"
+	"net"
+	"sync"
+	"time"
+)
 
 const _pollRate = 20 * time.Millisecond
 

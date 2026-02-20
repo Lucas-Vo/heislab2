@@ -1,3 +1,6 @@
+// con_load.go
+// Purpose: Lightweight parser for `.con` configuration files used by elevfsm.
+// Includes helpers to load key/value pairs and map them into provided destinations.
 package elevfsm
 
 import (

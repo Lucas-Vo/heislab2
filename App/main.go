@@ -1,3 +1,8 @@
+// main.go
+// Purpose: Application entry point. Initializes elevator I/O, configuration and
+// starts the network, assigner and FSM threads goroutines. Handles shutdown
+// on interrupt (Ctrl+C).
+// Includes: wiring channels between threads and bootstrap of subsystems.
 package main
 
 import (
@@ -31,7 +36,6 @@ func main() {
 
 	// filip til lucas
 	elevUpdateCh := make(chan Snapshot)
-
 
 	// lucas til filip
 	netSnap2Ch := make(chan Snapshot)

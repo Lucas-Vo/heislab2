@@ -1,3 +1,9 @@
+// fsmthread.go
+// Purpose: Main elevator FSM loop. Polls hardware inputs, applies local button events,
+// ingests assigner and network snapshots, runs elevator FSM logic and timers,
+// and publishes snapshots (updates/serviced) to the network thread.
+// Includes: configuration load, FSM initialization, input polling ticker, and
+// synchronization glue between local FSM state and network/assigner state.
 package main
 
 import (

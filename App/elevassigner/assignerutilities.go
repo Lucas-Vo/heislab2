@@ -1,3 +1,7 @@
+// assignerutilities.go
+// Purpose: Utilities used by the assigner component.
+// Includes: helper to remove stale elevator states from snapshots before running
+// the external hall request assigner.
 package elevassigner
 
 import (

@@ -1,4 +1,7 @@
-// common/config.go
+// config.go
+// Purpose: Configuration utilities for the application.
+// Includes: Config struct, default configuration, self-detection helpers and
+// helpers for building peer addresses and listening addresses.
 package common
 
 import (
