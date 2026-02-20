@@ -66,7 +66,7 @@ func fsmThread(
 
 			sync.ApplyNetworkSnapshot(snap, now)
 
-			sync.TryInject(now, confirmTimeout, online)
+			sync.TryInjectAll(now, confirmTimeout, online)
 			sync.ApplyLights(online)
 
 		case task := <-assignerOutputCh:
@@ -75,7 +75,7 @@ func fsmThread(
 
 			sync.ApplyAssigner(task)
 
-			sync.TryInject(now, confirmTimeout, online)
+			sync.TryInjectAll(now, confirmTimeout, online)
 			sync.ApplyLights(online)
 
 		case <-ticker.C:
@@ -142,7 +142,7 @@ func fsmThread(
 			}
 
 			// Inject confirmed requests
-			sync.TryInject(now, confirmTimeout, online)
+			sync.TryInjectAll(now, confirmTimeout, online)
 
 			sync.ApplyLights(online)
 

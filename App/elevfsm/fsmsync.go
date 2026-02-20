@@ -233,75 +233,58 @@ func (s *FsmSync) markPending(f int, btn common.ButtonType, now time.Time) {
 // inject forwards a request into the local FSM once it's confirmed or timed out.
 // This bridges net-confirmed requests or offline fallback into the elevator's request table.
 func (s *FsmSync) inject(f int, btn common.ButtonType) {
-	if s.injected[f][btn] {
-		return
-	}
 	log.Printf("fsmThread: inject request f=%d b=%s", f, common.ElevioButtonToString(btn))
+
 	Fsm_onRequestButtonPress(s.Elevator, f, btn)
+
 	s.injected[f][btn] = true
 	s.pendingAt[f][btn] = time.Time{}
 
-	switch btn {
-	case common.BT_HallUp:
-		s.localHall[f][0] = true
-	case common.BT_HallDown:
-		s.localHall[f][1] = true
-	case common.BT_Cab:
+	if btn == common.BT_Cab {
 		s.localCab[f] = true
+	} else {
+		s.localHall[f][btn] = true
 	}
 }
 
-// readyToInject returns true once a request is either unconfirmed or past the confirm timeout.
-func (s *FsmSync) readyToInject(f int, btn common.ButtonType, now time.Time, confirmTimeout time.Duration) bool {
-	if s.injected[f][btn] {
-		return false
-	}
-	if s.pendingAt[f][btn].IsZero() {
-		return true
-	}
-	return now.Sub(s.pendingAt[f][btn]) >= confirmTimeout
-}
-
-func (s *FsmSync) TryInject(now time.Time, confirmTimeout time.Duration,online bool){
-	hall := make([][2]bool, common.N_FLOORS)
-	cab := make([]bool, common.N_FLOORS)
+func (s *FsmSync) TryInjectAll(now time.Time, confirmTimeout time.Duration, online bool) {
+	var hall [][2]bool
+	var cab []bool
 	if online && s.hasNet {
 		hall = cloneHallSlice(s.netHall)
 		cab = cloneBoolSlice(s.netCab)
-	} else if !online {
+	} else {
 		hall = cloneHallSlice(s.localHall)
 		cab = cloneBoolSlice(s.localCab)
 	}
 
 	for f := range common.N_FLOORS {
-		if cab[f] && online{
-			s.inject(f, common.BT_Cab)
-		}
+		for btn := range common.ButtonType(common.N_BUTTONS) {
 
-		if s.hasAssigner && online {
-			if hall[f][0] && s.assignedHall[f][0] {
-				s.inject(f, common.BT_HallUp)
+			// Skip if no request exists
+			hasRequest := (btn == common.BT_Cab && cab[f]) ||
+				(btn != common.BT_Cab && hall[f][btn])
+
+			if !hasRequest || s.injected[f][btn] {
+				continue
 			}
-			if hall[f][1] && s.assignedHall[f][1] {
-				s.inject(f, common.BT_HallDown)
-			}
-			if hall[f][0] && !s.assignedHall[f][0] && !s.pendingAt[f][common.BT_HallUp].IsZero() {
-				log.Printf("fsmThread: hall up f=%d assigned elsewhere", f)
-				s.pendingAt[f][common.BT_HallUp] = time.Time{}
-			}
-			if hall[f][1] && !s.assignedHall[f][1] && !s.pendingAt[f][common.BT_HallDown].IsZero() {
-				log.Printf("fsmThread: hall down f=%d assigned elsewhere", f)
-				s.pendingAt[f][common.BT_HallDown] = time.Time{}
-			}
-		} else if !online {
-			if hall[f][0] && s.readyToInject(f, common.BT_HallUp, now, confirmTimeout) {
-					s.inject(f, common.BT_HallUp)
-			}
-			if hall[f][1] && s.readyToInject(f, common.BT_HallDown, now, confirmTimeout){
-					s.inject(f, common.BT_HallDown)
-			}
-			if cab[f] && s.readyToInject(f, common.BT_Cab, now, confirmTimeout){
-					s.inject(f, common.BT_Cab)
+
+			pending := s.pendingAt[f][btn]
+			timedOut := pending.IsZero() ||
+				now.Sub(pending) >= confirmTimeout
+
+			shouldInject :=
+				(!online && timedOut) || (online && (btn == common.BT_Cab || (s.hasAssigner && s.assignedHall[f][btn]))) //TODO: Make these logical statements look human
+
+			if shouldInject {
+				s.inject(f, btn)
+			} else if online && s.hasAssigner &&
+				btn != common.BT_Cab &&
+				!s.assignedHall[f][btn] &&
+				!pending.IsZero() {
+
+				log.Printf("fsmThread: hall f=%d btn=%v assigned elsewhere", f, btn)
+				s.pendingAt[f][btn] = time.Time{}
 			}
 		}
 	}
