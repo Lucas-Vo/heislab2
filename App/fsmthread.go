@@ -149,7 +149,7 @@ func fsmThread(
 
 			sync.ApplyLights(online)
 
-			behavior, direction = elevfsm.CurrentMotionStrings(sync.Elevator)
+			behavior, direction = elevfsm.CurrentMotionStrings(sync.Elevator) //TODO: We have elevator as a member of sync, so this is so not needed.
 			newBehaviour := elevfsm.CurrentBehaviour(sync.Elevator)
 			if prevBehaviour != newBehaviour && newBehaviour == elevfsm.EB_DoorOpen {
 				// start door timer when entering DoorOpen
@@ -181,7 +181,6 @@ func fsmThread(
 				default:
 				}
 			}
-
 		}
 	}
 }
