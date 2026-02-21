@@ -222,7 +222,8 @@ func (wv *WorldView) mergeWorldView(fromKey string, ns common.Snapshot) (becameR
 	}
 	wv.snapshot.HallRequests = mergeHall(wv.snapshot.HallRequests, ns.HallRequests, ns.UpdateKind)
 	for k, st := range ns.States {
-		if k == wv.selfKey && fromKey != wv.selfKey {
+		if k == wv.selfKey && fromKey != wv.selfKey && wv.ready {
+			wv.ready = true
 			continue
 		}
 		wv.snapshot.States[k] = common.CopyElevState(st)
