@@ -158,10 +158,8 @@ func (wv *WorldView) MergeRemote(frame []byte) (common.UpdateKind, bool) {
 }
 
 func (wv *WorldView) BroadcastRequests() {
-	wv.mu.Lock()
-	ready, alive := wv.ready, wv.selfAlive
-	wv.mu.Unlock()
-	if ready && alive {
+	alive := wv.selfAlive
+	if alive {
 		snap := common.DeepCopySnapshot(wv.snapshot)
 		snap.UpdateKind = common.UpdateRequests
 		wv.sendOverNetwork(snap)
