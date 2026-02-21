@@ -21,8 +21,7 @@ func networkThread(
 ) {
 	selfKey := cfg.SelfKey
 
-	wv, incoming := elevnetwork.Start(ctx, cfg, 4242)
-	wv.Poke()
+	wv, incoming := elevnetwork.NewWorldView(ctx, cfg, 4242)
 
 	ticker := time.NewTicker(300 * time.Millisecond)
 	defer ticker.Stop()
@@ -33,21 +32,6 @@ func networkThread(
 	elevatorErrorTimer := time.NewTimer(4 * time.Second)
 	defer elevatorErrorTimer.Stop()
 
-	publish := func(ch chan<- common.Snapshot, snap common.Snapshot) {
-		select {
-		case ch <- snap:
-		default:
-		}
-	}
-
-	publishAll := func() {
-		snap := wv.Snapshot()
-		if wv.Ready() && wv.Coherent() {
-			publish(netSnap1Ch, snap)
-		}
-		publish(netSnap2Ch, snap)
-	}
-
 	for {
 		select {
 		case <-ctx.Done():
@@ -56,39 +40,36 @@ func networkThread(
 		case ns := <-elevUpdateCh:
 			wv.SetSelfAlive(true)
 			elevatorErrorTimer.Reset(4 * time.Second)
-			wv.HandleLocal(ns)
+			wv.MergeLocal(ns)
 
 		case frame := <-incoming:
-			kind, becameReady, ok := wv.HandleRemoteFrame(frame)
-			if !ok {
-				continue
-			}
-			if kind == common.UpdateRequests && becameReady {
-				publishAll()
+			kind, becameReady := wv.MergeRemote(frame)
+			if kind == common.UpdateRequests && becameReady { // todo, will cab recovery work without these lines?
+				wv.PublishAll(netSnap1Ch, netSnap2Ch)
 			}
 
 		case <-contactTimer.C:
-			log.Printf("networkThread: initial contact timeout; forcing ready")
+			log.Printf("networkThread: forcing ready")
 			wv.ForceReady()
 
 		case <-ticker.C:
-			wv.Tick()
+			wv.BroadcastRequests()
 			if wv.Ready() {
-				publishAll()
+				wv.PublishAll(netSnap1Ch, netSnap2Ch)
 			}
 
 		case <-elevatorErrorTimer.C:
-			snap := wv.Snapshot()
+			snap := wv.GetSnapshot()
 			if snap.States[selfKey].Behavior != "idle" {
 				if wv.SelfAlive() {
 					wv.SetSelfAlive(false)
 					log.Printf("No behavior change detected for 4 seconds, marking Elevator as stale")
-					publishAll()
+					wv.PublishAll(netSnap1Ch, netSnap2Ch)
 				}
 			} else {
 				if !wv.SelfAlive() {
 					wv.SetSelfAlive(true)
-					publishAll()
+					wv.PublishAll(netSnap1Ch, netSnap2Ch)
 				}
 				elevatorErrorTimer.Reset(4 * time.Second)
 			}
