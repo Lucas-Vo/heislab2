@@ -3,8 +3,9 @@ package common
 
 import (
 	"fmt"
-	"net"
+	"os/exec"
 	"sort"
+	"strings"
 )
 
 type Config struct {
@@ -65,37 +66,21 @@ func (c Config) AddrByIDForPort(port int) map[int]string {
 }
 
 func (c Config) DetectSelfID() (int, error) {
-	localIPs, err := localInterfaceIPs()
+	out, err := exec.Command("hostname", "-I").Output()
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("hostname -I failed: %w", err)
 	}
-
-	ids := make([]int, 0, len(c.HostByID))
-	for elevID := range c.HostByID {
-		ids = append(ids, elevID)
+	fields := strings.Fields(string(out))
+	if len(fields) == 0 {
+		return 0, fmt.Errorf("hostname -I returned no IPs")
 	}
-	sort.Ints(ids)
-
-	matches := make([]int, 0, 1)
-	for _, elevID := range ids {
-		ip := net.ParseIP(c.HostByID[elevID])
-		if ip == nil {
-			return 0, fmt.Errorf("host for id %d is not an IP: %q", elevID, c.HostByID[elevID])
-		}
-		if v4 := ip.To4(); v4 != nil {
-			if localIPs[v4.String()] {
-				matches = append(matches, elevID)
-			}
+	ip := fields[0]
+	for elevID, host := range c.HostByID {
+		if host == ip {
+			return elevID, nil
 		}
 	}
-
-	if len(matches) == 0 {
-		return 0, fmt.Errorf("could not detect self: none of the configured IPs match local interfaces")
-	}
-	if len(matches) > 1 {
-		return 0, fmt.Errorf("could not detect self uniquely: multiple configured IPs match local interfaces: %v", matches)
-	}
-	return matches[0], nil
+	return 0, fmt.Errorf("host IP %q not found in config", ip)
 }
 
 // PeerAddrsForPort returns all peers excluding self for a given port.
@@ -133,57 +118,4 @@ func (c Config) ExpectedKeys() []string {
 		keyStrings = append(keyStrings, fmt.Sprintf("%d", elevID))
 	}
 	return keyStrings
-}
-
-// NOTE: hostIPFromAddr is no longer needed for self-detect since HostByID is already IPs,
-// but keep it if other code still uses it.
-func hostIPFromAddr(addr string) (net.IP, error) {
-	host, _, err := net.SplitHostPort(addr)
-	if err != nil {
-		return nil, err
-	}
-	ip := net.ParseIP(host)
-	if ip == nil {
-		return nil, fmt.Errorf("host is not an IP: %q", host)
-	}
-	if v4 := ip.To4(); v4 != nil {
-		return v4, nil
-	}
-	return ip, nil
-}
-
-func localInterfaceIPs() (map[string]bool, error) {
-	ifaces, err := net.Interfaces()
-	if err != nil {
-		return nil, err
-	}
-
-	ips := make(map[string]bool)
-	for _, iface := range ifaces {
-		if iface.Flags&net.FlagUp == 0 {
-			continue
-		}
-		addrs, err := iface.Addrs()
-		if err != nil {
-			continue
-		}
-		for _, a := range addrs {
-			var ip net.IP
-			switch v := a.(type) {
-			case *net.IPNet:
-				ip = v.IP
-			case *net.IPAddr:
-				ip = v.IP
-			default:
-				continue
-			}
-			if ip == nil || ip.IsLoopback() {
-				continue
-			}
-			if v4 := ip.To4(); v4 != nil {
-				ips[v4.String()] = true
-			}
-		}
-	}
-	return ips, nil
 }
