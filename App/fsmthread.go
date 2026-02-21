@@ -22,9 +22,6 @@ func fsmThread(
 	// Initialize FSM state and output device before any events are handled.
 
 	inputPollRateMs := 25
-	elevfsm.ConLoad("elevator.con",
-		elevfsm.ConVal("inputPollRate_ms", &inputPollRateMs, "%d"),
-	)
 
 	sync := elevfsm.NewFsmSync(cfg)
 	sync.Elevator = elevfsm.Fsm_init()
