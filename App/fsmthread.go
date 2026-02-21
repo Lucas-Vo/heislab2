@@ -102,10 +102,19 @@ func fsmThread(
 			}
 
 			// Floor sensor
+			// f := elevInputDevice.FloorSensor()
+			// if f != -1 && f != prevFloor {
+			// 	elevfsm.Fsm_onFloorArrival(sync.Elevator, f)
+			// 	prevFloor = f
+			// 	elevStateChange = true
+			// }
+			// Floor sensor
 			f := elevInputDevice.FloorSensor()
-			if f != -1 && f != prevFloor {
-				elevfsm.Fsm_onFloorArrival(sync.Elevator, f)
-				prevFloor = f
+			if f != -1 {
+				if f != prevFloor {
+					elevfsm.Fsm_onFloorArrival(sync.Elevator, f)
+					prevFloor = f
+				}
 				elevStateChange = true
 			}
 
