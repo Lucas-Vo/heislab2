@@ -130,7 +130,7 @@ func (s *FsmSync) cancelHall(f int, btn common.ButtonType) {
 	} else {
 		s.localHall[f][1] = false
 	}
-	
+
 	s.Elevator.requests[f][btn] = false
 }
 
@@ -159,7 +159,7 @@ func (s *FsmSync) ApplyNetworkSnapshot(snap common.Snapshot, now time.Time) {
 				if btn == common.BT_Cab {
 					s.localCab[f] = true
 				}
-				return
+				continue
 			}
 			s.confirmed[f][btn] = false
 			if wasConfirmed {
@@ -360,6 +360,7 @@ func (s *FsmSync) BuildSnapshot(floor int, behavior string, direction string, ki
 		UpdateKind: kind,
 	}
 }
+
 // ApplyLights drives the physical lamps from a snapshot's hall and cab requests.
 func (s *FsmSync) ApplyLights(online bool) {
 	hall := make([][2]bool, common.N_FLOORS)
