@@ -42,7 +42,9 @@ func networkThread(
 
 	publishAll := func() {
 		snap := wv.Snapshot()
-		publish(netSnap1Ch, snap)
+		if wv.Ready() && wv.Coherent() {
+			publish(netSnap1Ch, snap)
+		}
 		publish(netSnap2Ch, snap)
 	}
 
@@ -62,7 +64,7 @@ func networkThread(
 				continue
 			}
 			if kind == common.UpdateRequests && becameReady {
-				publish(netSnap2Ch, wv.Snapshot())
+				publishAll()
 			}
 
 		case <-contactTimer.C:
@@ -71,6 +73,9 @@ func networkThread(
 
 		case <-ticker.C:
 			wv.Tick()
+			if wv.Ready() {
+				publishAll()
+			}
 
 		case <-elevatorErrorTimer.C:
 			snap := wv.Snapshot()

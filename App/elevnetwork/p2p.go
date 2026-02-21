@@ -3,10 +3,6 @@ package elevnetwork
 import (
 	"context"
 	"elevator/common"
-	"encoding/binary"
-	"fmt"
-	"io"
-	"log"
 	"sync"
 	"time"
 
@@ -14,23 +10,20 @@ import (
 )
 
 const (
-	helloMagic           uint32 = 0x48454C4F // "HELO"
-	helloTimeout                = 2 * time.Second
-	openStreamTimeout           = 2 * time.Second
-	dialTimeout                 = 4 * time.Second
-	writeTimeout                = 150 * time.Millisecond
-	incomingBufSize             = 128
-	KeepAlivePeriod             = 2 * time.Second
-	HandshakeIdleTimeout        = 3 * time.Second
-	MaxIdleTimeout              = 6 * time.Second
+	openStreamTimeout    = 2 * time.Second
+	dialTimeout          = 4 * time.Second
+	writeTimeout         = 150 * time.Millisecond
+	incomingBufSize      = 128
+	KeepAlivePeriod      = 2 * time.Second
+	HandshakeIdleTimeout = 3 * time.Second
+	MaxIdleTimeout       = 6 * time.Second
 )
 
 type Manager struct {
-	selfID    int
 	frameSize int
 	quicConf  *quic.Config
 	mu        sync.RWMutex
-	peers     map[int]*peer
+	peers     map[string]*peer
 	incoming  chan []byte
 }
 
@@ -47,7 +40,7 @@ func NewPeerManager() *Manager {
 			HandshakeIdleTimeout: HandshakeIdleTimeout,
 			MaxIdleTimeout:       MaxIdleTimeout,
 		},
-		peers:    make(map[int]*peer),
+		peers:    make(map[string]*peer),
 		incoming: make(chan []byte, incomingBufSize),
 	}
 }
@@ -55,16 +48,14 @@ func NewPeerManager() *Manager {
 func (m *Manager) Start(ctx context.Context, cfg common.Config, port int) <-chan []byte {
 	peers, selfID, err := cfg.PeerAddrsForPort(port)
 	if err != nil {
-		log.Fatal(err)
+		panic(err)
 	}
-	m.selfID = selfID
 	listenAddr := cfg.ListenAddrForPort(port)
-	log.Printf("[p2p port=%d] self=%d peers=%v listen=%s", port, selfID, peers, listenAddr)
 
 	go m.listen(ctx, listenAddr)
 	for peerID, peerAddr := range peers {
 		if selfID < peerID {
-			go m.dialLoop(ctx, peerID, peerAddr)
+			go m.dialLoop(ctx, peerAddr)
 		}
 	}
 	return m.incoming
@@ -85,32 +76,23 @@ func (m *Manager) Broadcast(payload []byte) {
 }
 
 func (m *Manager) listen(ctx context.Context, addr string) {
-	err := Listen(ctx, addr, m.quicConf, func(conn *quic.Conn) {
+	_ = Listen(ctx, addr, m.quicConf, func(conn *quic.Conn) {
 		m.handleIncoming(ctx, conn)
 	})
-	if err != nil && ctx.Err() == nil {
-		log.Printf("p2p listen error: %v", err)
-	}
 }
 
-func (m *Manager) dialLoop(ctx context.Context, id int, addr string) {
-	backoff := 200 * time.Millisecond
+func (m *Manager) dialLoop(ctx context.Context, addr string) {
 	for ctx.Err() == nil {
-		if m.hasPeer(id) {
+		if m.hasPeer(addr) {
 			time.Sleep(500 * time.Millisecond)
 			continue
 		}
-		peerID, conn, st, err := m.dialOnce(ctx, addr)
+		conn, st, err := m.dialOnce(ctx, addr)
 		if err != nil {
-			log.Printf("dial to %d (%s) failed: %v", id, addr, err)
-			time.Sleep(backoff)
-			if backoff < 2*time.Second {
-				backoff *= 2
-			}
+			time.Sleep(500 * time.Millisecond)
 			continue
 		}
-		backoff = 200 * time.Millisecond
-		if !m.register(peerID, conn, st) {
+		if !m.addPeer(addr, conn, st) {
 			Close(conn, st, "duplicate")
 			continue
 		}
@@ -128,19 +110,10 @@ func (m *Manager) dialLoop(ctx context.Context, id int, addr string) {
 	}
 }
 
-func (m *Manager) dialOnce(ctx context.Context, addr string) (int, *quic.Conn, *quic.Stream, error) {
+func (m *Manager) dialOnce(ctx context.Context, addr string) (*quic.Conn, *quic.Stream, error) {
 	attemptCtx, cancel := context.WithTimeout(ctx, dialTimeout)
 	defer cancel()
-	conn, st, err := Dial(attemptCtx, addr, m.quicConf, openStreamTimeout)
-	if err != nil {
-		return 0, nil, nil, err
-	}
-	peerID, err := m.exchangeHello(st, true)
-	if err != nil {
-		Close(conn, st, "hello failed")
-		return 0, nil, nil, err
-	}
-	return peerID, conn, st, nil
+	return Dial(attemptCtx, addr, m.quicConf, openStreamTimeout)
 }
 
 func (m *Manager) handleIncoming(ctx context.Context, conn *quic.Conn) {
@@ -148,12 +121,8 @@ func (m *Manager) handleIncoming(ctx context.Context, conn *quic.Conn) {
 	if err != nil {
 		return
 	}
-	peerID, err := m.exchangeHello(st, false)
-	if err != nil {
-		Close(conn, st, "hello failed")
-		return
-	}
-	if !m.register(peerID, conn, st) {
+	addr := conn.RemoteAddr().String()
+	if !m.addPeer(addr, conn, st) {
 		Close(conn, st, "duplicate")
 		return
 	}
@@ -176,27 +145,24 @@ func (m *Manager) startReader(ctx context.Context, conn *quic.Conn, st *quic.Str
 	}()
 }
 
-func (m *Manager) register(id int, conn *quic.Conn, st *quic.Stream) bool {
-	if id <= 0 || id == m.selfID {
-		return false
-	}
+func (m *Manager) addPeer(addr string, conn *quic.Conn, st *quic.Stream) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if existing, ok := m.peers[id]; ok && existing != nil && existing.conn != nil {
+	if existing, ok := m.peers[addr]; ok && existing != nil && existing.conn != nil {
 		select {
 		case <-existing.conn.Context().Done():
 		default:
 			return false
 		}
 	}
-	m.peers[id] = &peer{conn: conn, stream: st}
+	m.peers[addr] = &peer{conn: conn, stream: st}
 	return true
 }
 
-func (m *Manager) hasPeer(id int) bool {
+func (m *Manager) hasPeer(addr string) bool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	p := m.peers[id]
+	p := m.peers[addr]
 	if p == nil || p.conn == nil {
 		return false
 	}
@@ -214,63 +180,10 @@ func (m *Manager) removeByConn(conn *quic.Conn) {
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	for id, p := range m.peers {
+	for addr, p := range m.peers {
 		if p != nil && p.conn == conn {
-			delete(m.peers, id)
+			delete(m.peers, addr)
 			return
 		}
 	}
-}
-
-func (m *Manager) exchangeHello(st *quic.Stream, outbound bool) (int, error) {
-	if st == nil {
-		return 0, fmt.Errorf("stream is nil")
-	}
-	if outbound {
-		if err := writeHello(st, m.selfID, m.frameSize); err != nil {
-			return 0, err
-		}
-		return readHello(st, m.frameSize)
-	}
-	peerID, err := readHello(st, m.frameSize)
-	if err != nil {
-		return 0, err
-	}
-	if err := writeHello(st, m.selfID, m.frameSize); err != nil {
-		return 0, err
-	}
-	return peerID, nil
-}
-
-func readHello(st *quic.Stream, frameSize int) (int, error) {
-	if frameSize <= 0 {
-		frameSize = FrameSize
-	}
-	if d, ok := interface{}(st).(interface{ SetReadDeadline(time.Time) error }); ok {
-		_ = d.SetReadDeadline(time.Now().Add(helloTimeout))
-		defer d.SetReadDeadline(time.Time{})
-	}
-	buf := make([]byte, frameSize)
-	if _, err := io.ReadFull(st, buf); err != nil {
-		return 0, err
-	}
-	if len(buf) < 8 || binary.BigEndian.Uint32(buf[0:4]) != helloMagic {
-		return 0, fmt.Errorf("invalid hello")
-	}
-	peerID := int(binary.BigEndian.Uint32(buf[4:8]))
-	if peerID <= 0 {
-		return 0, fmt.Errorf("invalid hello")
-	}
-	return peerID, nil
-}
-
-func writeHello(st *quic.Stream, selfID int, frameSize int) error {
-	if frameSize <= 0 {
-		frameSize = FrameSize
-	}
-	frame := make([]byte, 8)
-	binary.BigEndian.PutUint32(frame[0:4], helloMagic)
-	binary.BigEndian.PutUint32(frame[4:8], uint32(selfID))
-	_, err := WriteFixedFrame(st, frame, frameSize, helloTimeout)
-	return err
 }

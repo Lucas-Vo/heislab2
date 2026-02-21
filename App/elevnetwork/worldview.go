@@ -23,6 +23,7 @@ type WorldView struct {
 	peers       []string
 	snapshot    common.Snapshot
 	lastHeard   map[string]time.Time
+	lastDigest  map[string]uint64
 	peerTimeout time.Duration
 	startTime   time.Time
 	ready       bool
@@ -48,6 +49,7 @@ func newWorldView(s sender, cfg common.Config) *WorldView {
 			States:       make(map[string]common.ElevState),
 		},
 		lastHeard:   make(map[string]time.Time),
+		lastDigest:  make(map[string]uint64),
 		peerTimeout: wvTimeout,
 		startTime:   time.Now(),
 		selfKey:     cfg.SelfKey,
@@ -57,17 +59,9 @@ func newWorldView(s sender, cfg common.Config) *WorldView {
 	}
 }
 
-func (wv *WorldView) Ready() bool {
-	wv.mu.Lock()
-	defer wv.mu.Unlock()
-	return wv.ready
-}
+func (wv *WorldView) Ready() bool { wv.mu.Lock(); defer wv.mu.Unlock(); return wv.ready }
 
-func (wv *WorldView) ForceReady() {
-	wv.mu.Lock()
-	wv.ready = true
-	wv.mu.Unlock()
-}
+func (wv *WorldView) ForceReady() { wv.mu.Lock(); wv.ready = true; wv.mu.Unlock() }
 
 func (wv *WorldView) Snapshot() common.Snapshot {
 	wv.mu.Lock()
@@ -77,17 +71,15 @@ func (wv *WorldView) Snapshot() common.Snapshot {
 	return snap
 }
 
-func (wv *WorldView) SetSelfAlive(alive bool) {
-	wv.mu.Lock()
-	wv.selfAlive = alive
-	wv.mu.Unlock()
-}
-
-func (wv *WorldView) SelfAlive() bool {
+func (wv *WorldView) Coherent() bool {
 	wv.mu.Lock()
 	defer wv.mu.Unlock()
-	return wv.selfAlive
+	return wv.snapshotsAgreeLocked()
 }
+
+func (wv *WorldView) SetSelfAlive(alive bool) { wv.mu.Lock(); wv.selfAlive = alive; wv.mu.Unlock() }
+
+func (wv *WorldView) SelfAlive() bool { wv.mu.Lock(); defer wv.mu.Unlock(); return wv.selfAlive }
 
 func (wv *WorldView) HandleLocal(ns common.Snapshot) {
 	wv.mu.Lock()
@@ -130,8 +122,9 @@ func (wv *WorldView) Tick() {
 
 func (wv *WorldView) Poke() {
 	wv.sendSnapshot(common.Snapshot{
-		UpdateKind: common.UpdateRequests,
-		States:     make(map[string]common.ElevState),
+		UpdateKind:   common.UpdateRequests,
+		HallRequests: make([][2]bool, common.N_FLOORS),
+		States:       map[string]common.ElevState{},
 	})
 }
 
@@ -150,16 +143,15 @@ func (wv *WorldView) sendSnapshot(snap common.Snapshot) {
 	wv.counter++
 	msg := netMsg{Origin: wv.selfKey, Counter: wv.counter, Snapshot: snap}
 	wv.lastHeard[wv.selfKey] = time.Now()
+	wv.lastDigest[wv.selfKey] = wv.snapshotDigest(snap)
 	wv.mu.Unlock()
 	wv.send(msg)
 }
 
 func (wv *WorldView) send(msg netMsg) {
-	b, err := json.Marshal(msg)
-	if err != nil {
-		return
+	if b, err := json.Marshal(msg); err == nil {
+		wv.sender.Broadcast(b)
 	}
-	wv.sender.Broadcast(b)
 }
 
 func decodeNetMsg(frame []byte) (netMsg, bool) {
@@ -187,6 +179,9 @@ func (wv *WorldView) acceptLocked(msg netMsg) bool {
 
 func (wv *WorldView) applyLocked(fromKey string, ns common.Snapshot) (becameReady bool) {
 	wv.lastHeard[fromKey] = time.Now()
+	if fromKey != wv.selfKey {
+		wv.lastDigest[fromKey] = wv.snapshotDigest(ns)
+	}
 	if !wv.ready && fromKey != wv.selfKey && ns.UpdateKind == common.UpdateRequests {
 		wv.recoverCabRequests(ns)
 		wv.ready = true
@@ -212,12 +207,10 @@ func (wv *WorldView) recoverCabRequests(ns common.Snapshot) {
 		return
 	}
 	localSelf := wv.snapshot.States[wv.selfKey]
-	if len(localSelf.CabRequests) < len(peerSelf.CabRequests) {
-		cabCopy := make([]bool, len(peerSelf.CabRequests))
-		copy(cabCopy, localSelf.CabRequests)
-		localSelf.CabRequests = cabCopy
+	if len(localSelf.CabRequests) != common.N_FLOORS {
+		localSelf.CabRequests = make([]bool, common.N_FLOORS)
 	}
-	for i := range peerSelf.CabRequests {
+	for i := 0; i < common.N_FLOORS; i++ {
 		localSelf.CabRequests[i] = localSelf.CabRequests[i] || peerSelf.CabRequests[i]
 	}
 	wv.snapshot.States[wv.selfKey] = localSelf
@@ -238,6 +231,68 @@ func (wv *WorldView) aliveMapLocked(now time.Time) map[string]bool {
 		alive[id] = startupGrace
 	}
 	return alive
+}
+
+func (wv *WorldView) snapshotsAgreeLocked() bool {
+	alive := wv.aliveMapLocked(time.Now())
+	for _, id := range wv.peers {
+		if !alive[id] {
+			continue
+		}
+		ref, ok := wv.lastDigest[id]
+		if !ok {
+			return false
+		}
+		for _, other := range wv.peers {
+			if !alive[other] || other == id {
+				continue
+			}
+			d, ok := wv.lastDigest[other]
+			if !ok || d != ref {
+				return false
+			}
+		}
+		return true
+	}
+	return true
+}
+
+const (
+	digestOffset = 1469598103934665603
+	digestPrime  = 1099511628211
+)
+
+func (wv *WorldView) snapshotDigest(s common.Snapshot) uint64 {
+	h := uint64(digestOffset)
+	for i := 0; i < common.N_FLOORS; i++ {
+		if s.HallRequests[i][0] {
+			h ^= 1
+		}
+		h *= digestPrime
+		if s.HallRequests[i][1] {
+			h ^= 1
+		}
+		h *= digestPrime
+	}
+	for _, id := range wv.peers {
+		st, ok := s.States[id]
+		if !ok {
+			h ^= 0xff
+			h *= digestPrime
+			continue
+		}
+		for i := 0; i < len(st.Behavior); i++ {
+			h ^= uint64(st.Behavior[i])
+			h *= digestPrime
+		}
+		for i := 0; i < len(st.Direction); i++ {
+			h ^= uint64(st.Direction[i])
+			h *= digestPrime
+		}
+		h ^= uint64(st.Floor + 1000)
+		h *= digestPrime
+	}
+	return h
 }
 
 func mergeHall(current, incoming [][2]bool, kind common.UpdateKind) [][2]bool {
