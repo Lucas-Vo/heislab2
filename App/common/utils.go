@@ -31,3 +31,37 @@ func DeepCopySnapshot(ns Snapshot) Snapshot {
 	}
 	return snapshotCopy
 }
+
+// copyHall copies hall request slices, defaulting missing values to false.
+func CopyHall(dst [][2]bool, src [][2]bool) {
+	if dst == nil {
+		return
+	}
+	for i := range dst {
+		if src != nil && i < len(src) {
+			dst[i] = src[i]
+		} else {
+			dst[i] = [2]bool{false, false}
+		}
+	}
+}
+
+// cloneHallSlice deep-copies a hall request matrix to a fixed-size slice.
+func CloneHallSlice(in [][2]bool) [][2]bool {
+	copiedHall := make([][2]bool, N_FLOORS)
+	CopyHall(copiedHall, in)
+	return copiedHall
+}
+
+// cloneBoolSlice deep-copies a cab request slice to a fixed-size slice.
+func CloneBoolSlice(in []bool) []bool {
+	copiedCab := make([]bool, N_FLOORS)
+	for i := range N_FLOORS {
+		if in != nil && i < len(in) {
+			copiedCab[i] = in[i]
+		} else {
+			copiedCab[i] = false
+		}
+	}
+	return copiedCab
+}

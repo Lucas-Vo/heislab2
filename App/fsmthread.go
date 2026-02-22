@@ -24,7 +24,6 @@ func fsmThread(
 	inputPollRateMs := 25
 
 	sync := elevfsm.NewFsmSync(cfg)
-	sync.Elevator = elevfsm.Fsm_init()
 
 	var previousRequests [common.N_FLOORS][common.N_BUTTONS]int
 
@@ -40,14 +39,14 @@ func fsmThread(
 	// Seed floor state if the sensor is already at a floor; otherwise start moving to find one.
 	prevFloor := -1
 	if f := elevInputDevice.FloorSensor(); f != -1 {
-		elevfsm.Fsm_onFloorArrival(sync.Elevator, f)
+		sync.Elevator.OnFloorArrival(f)
 		prevFloor = f
 	} else {
-		elevfsm.Fsm_onInitBetweenFloors(sync.Elevator)
+		sync.Elevator.OnInitBetweenFloors()
 	}
-	behavior, direction := elevfsm.CurrentMotionStrings(sync.Elevator)
-	prevBehaviour := elevfsm.CurrentBehaviour(sync.Elevator)
-	initialSnap := sync.BuildSnapshot(prevFloor, behavior, direction, common.UpdateRequests, servicedCall, false)
+	behavior, direction := sync.Elevator.GetMotionStrings()
+	prevBehaviour := sync.Elevator.GetBehaviour()
+	initialSnap := sync.BuildSnapshot(prevFloor, common.UpdateRequests, servicedCall, false)
 
 	select {
 	case elevUpdateCh <- initialSnap:
@@ -94,7 +93,7 @@ func fsmThread(
 						sync.OnLocalPress(f, common.ButtonType(b), now)
 						elevStateChange = true
 						if elevInputDevice.FloorSensor() == f {
-							elevfsm.Fsm_onRequestButtonPress(sync.Elevator, f, common.ButtonType(b))
+							sync.Elevator.OnRequestButtonPress(f, common.ButtonType(b))
 						}
 					}
 					previousRequests[f][b] = v
@@ -103,14 +102,14 @@ func fsmThread(
 
 			f := elevInputDevice.FloorSensor()
 			if f != -1 && f != prevFloor {
-				elevfsm.Fsm_onFloorArrival(sync.Elevator, f)
+				sync.Elevator.OnFloorArrival(f)
 				prevFloor = f
 				elevStateChange = true
 			}
 
 			// Obstruction handling: keep door open while obstructed; restart timer when cleared.
 			obstructed := elevInputDevice.Obstruction() != 0
-			if elevfsm.CurrentBehaviour(sync.Elevator) == elevfsm.EB_DoorOpen {
+			if sync.Elevator.GetBehaviour() == elevfsm.EB_DoorOpen {
 				if obstructed {
 					if !timerPaused {
 						// stop local timer
@@ -134,10 +133,10 @@ func fsmThread(
 				// stop timer
 				doorTimerActive = false
 				timerPaused = false
-				arrivalDirn := elevfsm.CurrentDirection(sync.Elevator)
-				elevfsm.Fsm_onDoorTimeout(sync.Elevator)
+				arrivalDirn := sync.Elevator.GetDirection()
+				sync.Elevator.OnDoorTimeout()
 
-				servicedCall = sync.ClearAtFloor(prevFloor, online, arrivalDirn)
+				servicedCall = sync.ClearAtFloor(sync.Elevator, prevFloor, arrivalDirn, online)
 			}
 
 			// Inject confirmed requests
@@ -145,8 +144,8 @@ func fsmThread(
 
 			sync.ApplyLights(online)
 
-			behavior, direction = elevfsm.CurrentMotionStrings(sync.Elevator) //TODO: We have elevator as a member of sync, so this is so not needed.
-			newBehaviour := elevfsm.CurrentBehaviour(sync.Elevator)
+			behavior, direction = sync.Elevator.GetMotionStrings()
+			newBehaviour := sync.Elevator.GetBehaviour()
 			if prevBehaviour != newBehaviour && newBehaviour == elevfsm.EB_DoorOpen {
 				// start door timer when entering DoorOpen
 				d := time.Duration(3 * time.Second)
@@ -163,7 +162,7 @@ func fsmThread(
 				continue
 			}
 			if servicedCall.HallUp || servicedCall.HallDown || servicedCall.Cab {
-				snapshot := sync.BuildSnapshot(prevFloor, behavior, direction, common.UpdateServiced, servicedCall, online)
+				snapshot := sync.BuildSnapshot(prevFloor, common.UpdateServiced, servicedCall, online)
 				servicedCall = elevfsm.ServicedAt{HallUp: false, HallDown: false, Cab: false}
 				select {
 				case elevUpdateCh <- snapshot:
@@ -171,7 +170,7 @@ func fsmThread(
 				}
 			}
 			if elevStateChange {
-				snapshot := sync.BuildSnapshot(prevFloor, behavior, direction, common.UpdateRequests, servicedCall, online)
+				snapshot := sync.BuildSnapshot(prevFloor, common.UpdateRequests, servicedCall, online)
 				select {
 				case elevUpdateCh <- snapshot:
 				default:

@@ -117,26 +117,32 @@ func requests_shouldClearImmediately(e Elevator, btn_floor int, btn_type common.
 	return 0
 }
 
-func requests_clearAtCurrentFloor(e Elevator) Elevator { // TODO: this code is implemented twice
-	e.requests[e.floor][common.BT_Cab] = false
+func requests_clearAtCurrentFloor(e Elevator) Elevator {
+
+	f := e.floor
+
+	// Always clear cab call
+	e.requests[f][common.BT_Cab] = false
+
 	switch e.dirn {
+
 	case common.MD_Up:
-		if requests_above(e) == 0 && !e.requests[e.floor][common.BT_HallUp] {
-			e.requests[e.floor][common.BT_HallDown] = false
+		e.requests[f][common.BT_HallUp] = false
+		if requests_above(e) == 0 && !e.requests[f][common.BT_HallUp] {
+			e.requests[f][common.BT_HallDown] = false
 		}
-		e.requests[e.floor][common.BT_HallUp] = false
 
 	case common.MD_Down:
-		if requests_below(e) == 0 && !e.requests[e.floor][common.BT_HallDown] {
-			e.requests[e.floor][common.BT_HallUp] = false
+		e.requests[f][common.BT_HallDown] = false
+		if requests_below(e) == 0 && !e.requests[f][common.BT_HallDown] {
+			e.requests[f][common.BT_HallUp] = false
 		}
-		e.requests[e.floor][common.BT_HallDown] = false
 
 	case common.MD_Stop:
 		fallthrough
 	default:
-		e.requests[e.floor][common.BT_HallUp] = false
-		e.requests[e.floor][common.BT_HallDown] = false
+		e.requests[f][common.BT_HallUp] = false
+		e.requests[f][common.BT_HallDown] = false
 	}
 
 	return e
