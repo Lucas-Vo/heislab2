@@ -116,10 +116,13 @@ func fsmThread(
 						doorTimerActive = false
 						timerPaused = true
 					}
-				} else if timerPaused || prevObstructed {
+				} else if timerPaused || prevObstructed ||
+					(previousRequests[prevFloor][common.BT_HallUp] != 0 && sync.Elevator.GetDirection() != common.MD_Stop) ||
+					(previousRequests[prevFloor][common.BT_HallDown] != 0 && sync.Elevator.GetDirection() != common.MD_Stop) ||
+					previousRequests[prevFloor][common.BT_Cab] != 0 {
 					// start local timer using doorOpenDuration (seconds)
 					d := time.Duration(3 * time.Second)
-					doorTimerEnd = time.Now().Add(d)
+					doorTimerEnd = now.Add(d)
 					doorTimerActive = true
 					timerPaused = false
 				}
@@ -127,17 +130,6 @@ func fsmThread(
 				timerPaused = false
 			}
 			prevObstructed = obstructed
-
-			// Timer (use local time-based timer instead of elevfsm helpers)
-			if doorTimerActive && time.Now().After(doorTimerEnd) {
-				// stop timer
-				doorTimerActive = false
-				timerPaused = false
-				arrivalDirn := sync.Elevator.GetDirection()
-				sync.Elevator.OnDoorTimeout()
-
-				servicedCall = sync.ClearAtFloor(sync.Elevator, prevFloor, arrivalDirn, online)
-			}
 
 			// Inject confirmed requests
 			sync.TryInjectAll(now, confirmTimeout, online)
@@ -149,15 +141,24 @@ func fsmThread(
 			if prevBehaviour != newBehaviour && newBehaviour == elevfsm.EB_DoorOpen {
 				// start door timer when entering DoorOpen
 				d := time.Duration(3 * time.Second)
-				doorTimerEnd = time.Now().Add(d)
+				doorTimerEnd = now.Add(d)
 				doorTimerActive = true
 				timerPaused = false
 			}
+			if doorTimerActive && now.After(doorTimerEnd) {
+				// stop timer
+				doorTimerActive = false
+				timerPaused = false
+				arrivalDirn := sync.Elevator.GetDirection()
+				sync.Elevator.OnDoorTimeout()
+
+				servicedCall = sync.ClearAtFloor(sync.Elevator, prevFloor, arrivalDirn, online)
+			} //TODO: Maybe this door functionality can be put in a helper function to help readability for the fsmthread
+
 			if sync.MotionChanged(prevFloor, behavior, direction) {
 				elevStateChange = true
 			}
 			prevBehaviour = newBehaviour
-
 			if !sync.HasNetSelf() {
 				continue
 			}

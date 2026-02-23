@@ -9,7 +9,7 @@ import (
 // Allow a few missed snapshots before declaring offline.
 const netOfflineTimeout = 5 * time.Second
 
-type ServicedAt struct {
+type ServicedAt struct { //TODO: maybe use the BTuttonType here instead of bools, but this is more explicit and easier to read
 	HallUp   bool
 	HallDown bool
 	Cab      bool
@@ -175,7 +175,7 @@ func (s *FsmSync) ApplyNetworkSnapshot(snap common.Snapshot, now time.Time) {
 }
 
 // copyCabFromSnapshot extracts our own cab requests from a snapshot (per-elevator state).
-func (s *FsmSync) copyCabFromSnapshot(snapshot common.Snapshot) bool {
+func (s *FsmSync) copyCabFromSnapshot(snapshot common.Snapshot) bool { //TODO: should not use copy name for mutating internal attributes as we use copy for actual copying, making this not descriptive
 	for floor := range common.N_FLOORS {
 		s.netCab[floor] = false
 	}
@@ -207,10 +207,8 @@ func (s *FsmSync) OnLocalPress(f int, btn common.ButtonType, now time.Time) {
 
 // markPending starts the confirmation timer for a locally pressed request.
 func (s *FsmSync) markPending(f int, btn common.ButtonType, now time.Time) {
-	if s.pendingAt[f][btn].IsZero() {
-		s.pendingAt[f][btn] = now
-		log.Printf("fsmThread: pending request f=%d b=%s (local press)", f, common.ElevioButtonToString(btn))
-	}
+	s.pendingAt[f][btn] = now
+	log.Printf("fsmThread: pending request f=%d b=%s (local press)", f, common.ElevioButtonToString(btn))
 }
 
 // inject forwards a request into the local FSM once it's confirmed or timed out.
@@ -276,72 +274,50 @@ func (s *FsmSync) TryInjectAll(now time.Time, confirmTimeout time.Duration, onli
 // ClearAtFloor clears injected requests serviced at a floor and returns which types were cleared.
 // When online, keep injected flags until the network snapshot removes the requests.
 // When offline, clear injected flags immediately.
-func (s *FsmSync) ClearAtFloor(e *Elevator, floor int, arrivalDir common.MotorDirection, online bool) ServicedAt {
-	// Save old state
-	before := *e
-	// Apply FSM clearing logic
-	tmp := *e
-	tmp.floor = floor
-	tmp.dirn = arrivalDir
-	*e = requests_clearAtCurrentFloor(tmp)
+func (s *FsmSync) ClearAtFloor(e *Elevator, floor int, arrivalDir common.MotorDirection, online bool) (servicedAt ServicedAt) {
+	*e, servicedAt = requests_clearAtCurrentFloor(*e)
 
-	// Let sync observe what changed and update network bookkeeping
-	return s.syncClearFromDiff(before, *e, floor, online)
-}
-
-func (s *FsmSync) syncClearFromDiff(
-	before Elevator,
-	after Elevator,
-	floor int,
-	online bool,
-) ServicedAt {
-	var cleared ServicedAt
-	for btn := range common.N_BUTTONS {
-		if s.injected[floor][btn] &&
-			before.requests[floor][btn] &&
-			!after.requests[floor][btn] {
-			switch common.ButtonType(btn) {
-			case common.BT_Cab:
-				cleared.Cab = true
-				s.localCab[floor] = false
-
-			case common.BT_HallUp:
-				cleared.HallUp = true
-				s.localHall[floor][0] = false
-
-			case common.BT_HallDown:
-				cleared.HallDown = true
-				s.localHall[floor][1] = false
-			}
-			if !online {
-				s.injected[floor][btn] = false
-			}
+	if servicedAt.Cab && s.injected[floor][common.BT_Cab] {
+		s.localCab[floor] = false
+		if !online {
+			s.injected[floor][common.BT_Cab] = false
 		}
 	}
-	return cleared
+	if servicedAt.HallUp && s.injected[floor][common.BT_HallUp] {
+		s.localHall[floor][0] = false
+		if !online {
+			s.injected[floor][common.BT_HallUp] = false
+		}
+	}
+	if servicedAt.HallDown && s.injected[floor][common.BT_HallDown] {
+		s.localHall[floor][1] = false
+		if !online {
+			s.injected[floor][common.BT_HallDown] = false
+		}
+	}
+	// Let sync observe what changed and update network bookkeeping
+	return servicedAt
 }
 
-func (s *FsmSync) BuildSnapshot(floor int, kind common.UpdateKind, cleared ServicedAt, online bool) common.Snapshot {
+func (s *FsmSync) BuildSnapshot(floor int, kind common.UpdateKind, callsCleared ServicedAt, online bool) common.Snapshot {
 	// Choose base hall source
-	behavior, direction := s.Elevator.GetMotionStrings()
 	baseHall := s.localHall
 	if kind == common.UpdateServiced && online && s.hasNet {
 		baseHall = s.netHall
 	}
 
 	outHall := common.CloneHallSlice(baseHall)
-
 	// Apply servicing modification only when relevant
 	if kind == common.UpdateServiced &&
 		floor >= 0 && floor < len(outHall) {
-
-		if cleared.HallUp {
+		if callsCleared.HallUp {
 			outHall[floor][0] = false
 		}
-		if cleared.HallDown {
+		if callsCleared.HallDown {
 			outHall[floor][1] = false
 		}
 	}
+	behavior, direction := s.Elevator.GetMotionStrings()
 	return common.Snapshot{
 		HallRequests: outHall,
 		States: map[string]common.ElevState{
@@ -369,7 +345,7 @@ func (s *FsmSync) ApplyLights(online bool) {
 	}
 
 	for floor := range common.N_FLOORS {
-		s.Elevator.SwitchLight(floor, common.BT_HallUp, hall[floor][0])
+		s.Elevator.SwitchLight(floor, common.BT_HallUp, hall[floor][0]) //TODO: my friends friend is not supposed to use my methods
 		s.Elevator.SwitchLight(floor, common.BT_HallDown, hall[floor][1])
 		s.Elevator.SwitchLight(floor, common.BT_Cab, cab[floor])
 	}

@@ -65,7 +65,7 @@ func (e *Elevator) OnRequestButtonPress(btn_floor int, btn_type common.ButtonTyp
 		switch pair.behaviour {
 		case EB_DoorOpen:
 			e.outputDevice.DoorLight(true)
-			*e = requests_clearAtCurrentFloor(*e)
+			*e, _ = requests_clearAtCurrentFloor(*e)
 
 		case EB_Moving:
 			e.outputDevice.MotorDirection(e.dirn)
@@ -87,7 +87,7 @@ func (e *Elevator) OnFloorArrival(newFloor int) {
 			e.outputDevice.MotorDirection(common.MD_Stop)
 			e.outputDevice.DoorLight(true)
 
-			*e = requests_clearAtCurrentFloor(*e)
+			*e, _ = requests_clearAtCurrentFloor(*e)
 			e.behaviour = EB_DoorOpen
 		}
 	default:
@@ -106,7 +106,7 @@ func (e *Elevator) OnDoorTimeout() {
 
 		switch e.behaviour {
 		case EB_DoorOpen:
-			*e = requests_clearAtCurrentFloor(*e)
+			*e, _ = requests_clearAtCurrentFloor(*e)
 
 		case EB_Moving, EB_Idle:
 			e.outputDevice.DoorLight(false)
