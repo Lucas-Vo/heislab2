@@ -120,7 +120,7 @@ func (s *FsmSync) cancelHall(f int, btn common.ButtonType) {
 		return
 	}
 	if s.injected[f][btn] || !s.pendingAt[f][btn].IsZero() || s.localHall[f][btn] {
-		log.Printf("fsmThread:  hall unassigned f=%d b=%s (%s)", f, common.ElevioButtonToString(btn))
+		log.Printf("fsmThread:  hall unassigned f=%d b=%s", f, common.ElevioButtonToString(btn))
 	}
 	s.pendingAt[f][btn] = time.Time{}
 	s.injected[f][btn] = false
