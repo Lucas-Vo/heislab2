@@ -77,10 +77,8 @@ func (e *Elevator) OnRequestButtonPress(btn_floor int, btn_type common.ButtonTyp
 }
 
 func (e *Elevator) OnFloorArrival(newFloor int) {
-
 	e.floor = newFloor
 	e.outputDevice.FloorIndicator(e.floor)
-
 	switch e.behaviour {
 	case EB_Moving:
 		if requests_shouldStop(*e) != 0 {
@@ -90,13 +88,11 @@ func (e *Elevator) OnFloorArrival(newFloor int) {
 			*e, _ = requests_clearAtCurrentFloor(*e)
 			e.behaviour = EB_DoorOpen
 		}
-	default:
-		// no-op
+	default: // no-op
 	}
 }
 
 func (e *Elevator) OnDoorTimeout() {
-
 	switch e.behaviour {
 	case EB_DoorOpen:
 		pair := requests_chooseDirection(*e)

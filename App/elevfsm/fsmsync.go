@@ -292,14 +292,3 @@ func (s *FsmSync) ApplyLights(online bool) {
 		}
 	}
 }
-
-// MotionChanged reports whether motion state changed since the last report, and updates the last reported state if so.
-func (s *FsmSync) MotionChanged(floor int, behavior string, direction string) bool {
-	if s.reportedFloor != floor || s.reportedBehavior != behavior || s.reportedDirection != direction {
-		s.reportedFloor = floor
-		s.reportedBehavior = behavior
-		s.reportedDirection = direction
-		return true
-	}
-	return false
-} // TODO: needs a new name

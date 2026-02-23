@@ -38,13 +38,13 @@ func fsmThread(
 	var servicedCall elevfsm.ServicedAt
 	// Seed floor state if the sensor is already at a floor; otherwise start moving to find one.
 	prevFloor := -1
-	if f := elevInputDevice.FloorSensor(); f != -1 {
-		sync.Elevator.OnFloorArrival(f)
-		prevFloor = f
+	if newFloor := elevInputDevice.FloorSensor(); newFloor != -1 {
+		sync.Elevator.OnFloorArrival(newFloor)
+		prevFloor = newFloor
 	} else {
 		sync.Elevator.OnInitBetweenFloors()
 	}
-	behavior, direction := sync.Elevator.GetMotionStrings()
+	prevDirection := sync.Elevator.GetDirection()
 	prevBehaviour := sync.Elevator.GetBehaviour()
 	initialSnap := sync.BuildSnapshot(prevFloor, common.UpdateRequests, servicedCall, false)
 
@@ -99,12 +99,15 @@ func fsmThread(
 					previousRequests[f][b] = v
 				}
 			}
-
-			f := elevInputDevice.FloorSensor()
-			if f != -1 && f != prevFloor {
-				sync.Elevator.OnFloorArrival(f)
-				prevFloor = f
+			newBehaviour := sync.Elevator.GetBehaviour()
+			newDirection := sync.Elevator.GetDirection()
+			newFloor := elevInputDevice.FloorSensor()
+			if newFloor != prevFloor || newBehaviour != prevBehaviour || newDirection != prevDirection {
 				elevStateChange = true
+			}
+			if newFloor != -1 && newFloor != prevFloor {
+				sync.Elevator.OnFloorArrival(newFloor)
+				prevFloor = newFloor
 			}
 
 			// Obstruction handling: keep door open while obstructed; restart timer when cleared.
@@ -136,8 +139,6 @@ func fsmThread(
 
 			sync.ApplyLights(online)
 
-			behavior, direction = sync.Elevator.GetMotionStrings()
-			newBehaviour := sync.Elevator.GetBehaviour()
 			if prevBehaviour != newBehaviour && newBehaviour == elevfsm.EB_DoorOpen {
 				// start door timer when entering DoorOpen
 				d := time.Duration(3 * time.Second)
@@ -155,10 +156,8 @@ func fsmThread(
 				servicedCall = sync.ClearAtFloor(sync.Elevator, prevFloor, arrivalDirn, online)
 			} //TODO: Maybe this door functionality can be put in a helper function to help readability for the fsmthread
 
-			if sync.MotionChanged(prevFloor, behavior, direction) {
-				elevStateChange = true
-			}
 			prevBehaviour = newBehaviour
+			prevDirection = newDirection
 			if !sync.HasNetSelf() {
 				continue
 			}
