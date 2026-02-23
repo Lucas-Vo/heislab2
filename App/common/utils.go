@@ -1,5 +1,7 @@
 package common
 
+import "maps"
+
 func TrimZeros(b []byte) []byte {
 	i := len(b)
 	for i > 0 && b[i-1] == 0 {
@@ -8,60 +10,27 @@ func TrimZeros(b []byte) []byte {
 	return b[:i]
 }
 
-func CopyElevState(st ElevState) ElevState {
-	cp := st
-	if st.CabRequests != nil {
-		cp.CabRequests = make([]bool, len(st.CabRequests))
-		copy(cp.CabRequests, st.CabRequests)
-	}
-	return cp
-}
-
 func DeepCopySnapshot(ns Snapshot) Snapshot {
 	snapshotCopy := Snapshot{
-		HallRequests: nil,
+		HallRequests: ns.HallRequests,
 		States:       make(map[string]ElevState, len(ns.States)),
 	}
-	if ns.HallRequests != nil {
-		snapshotCopy.HallRequests = make([][2]bool, len(ns.HallRequests))
-		copy(snapshotCopy.HallRequests, ns.HallRequests)
-	}
-	for k, st := range ns.States {
-		snapshotCopy.States[k] = CopyElevState(st)
-	}
+	maps.Copy(snapshotCopy.States, ns.States)
 	return snapshotCopy
 }
 
-// copyHall copies hall request slices, defaulting missing values to false.
-func CopyHall(dst [][2]bool, src [][2]bool) {
-	if dst == nil {
-		return
+func GetHallSlice(in [N_FLOORS][N_BUTTONS]bool) [N_FLOORS][2]bool {
+	var out [N_FLOORS][2]bool
+	for i, row := range in {
+		out[i] = [2]bool{row[0], row[1]}
 	}
-	for i := range dst {
-		if src != nil && i < len(src) {
-			dst[i] = src[i]
-		} else {
-			dst[i] = [2]bool{false, false}
-		}
-	}
+	return out
 }
 
-// cloneHallSlice deep-copies a hall request matrix to a fixed-size slice.
-func CloneHallSlice(in [][2]bool) [][2]bool {
-	copiedHall := make([][2]bool, N_FLOORS)
-	CopyHall(copiedHall, in)
-	return copiedHall
-}
-
-// cloneBoolSlice deep-copies a cab request slice to a fixed-size slice.
-func CloneBoolSlice(in []bool) []bool {
-	copiedCab := make([]bool, N_FLOORS)
-	for i := range N_FLOORS {
-		if in != nil && i < len(in) {
-			copiedCab[i] = in[i]
-		} else {
-			copiedCab[i] = false
-		}
+func GetCabSlice(in [N_FLOORS][N_BUTTONS]bool) [N_FLOORS]bool {
+	var out [N_FLOORS]bool
+	for i, row := range in {
+		out[i] = row[2]
 	}
-	return copiedCab
+	return out
 }

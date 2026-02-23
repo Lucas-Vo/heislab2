@@ -32,7 +32,7 @@ func assignerThread(
 	}
 
 	// state variables
-	currentElevInput := ElevInput{HallTask: make([][2]bool, 0)}
+	currentElevInput := ElevInput{HallTask: [N_FLOORS][2]bool{}} // TODO: needs a new name
 
 	for {
 		select {
@@ -64,7 +64,7 @@ func assignerThread(
 			}
 
 			// parse assigner output
-			var output map[string][][2]bool
+			var output map[string][N_FLOORS][2]bool
 			if err := json.Unmarshal(ret, &output); err != nil {
 				fmt.Println("json.Unmarshal error:", err)
 				break

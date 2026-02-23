@@ -39,7 +39,7 @@ func NewWorldView(ctx context.Context, cfg common.Config, port int) (*WorldView,
 	wv := &WorldView{
 		peers: cfg.ExpectedKeys(),
 		snapshot: common.Snapshot{
-			HallRequests: make([][2]bool, common.N_FLOORS),
+			HallRequests: [common.N_FLOORS][2]bool{},
 			States:       make(map[string]common.ElevState),
 		},
 		lastHeard:    make(map[string]time.Time),
@@ -54,7 +54,7 @@ func NewWorldView(ctx context.Context, cfg common.Config, port int) (*WorldView,
 	// populate snapshot TODO: does this work if this line is removed?
 	wv.sendOverNetwork(common.Snapshot{
 		UpdateKind:   common.UpdateRequests,
-		HallRequests: make([][2]bool, common.N_FLOORS),
+		HallRequests: [common.N_FLOORS][2]bool{},
 		States:       map[string]common.ElevState{},
 	})
 	return wv, incoming
@@ -224,7 +224,7 @@ func (wv *WorldView) mergeWorldView(fromKey string, ns common.Snapshot) (becameR
 			wv.ready = true
 			continue
 		}
-		wv.snapshot.States[k] = common.CopyElevState(st)
+		wv.snapshot.States[k] = st
 	}
 	return becameReady
 }
@@ -236,7 +236,7 @@ func (wv *WorldView) recoverCabRequests(ns common.Snapshot) {
 	}
 	localSelf := wv.snapshot.States[wv.selfKey]
 	if len(localSelf.CabRequests) != common.N_FLOORS {
-		localSelf.CabRequests = make([]bool, common.N_FLOORS)
+		localSelf.CabRequests = [common.N_FLOORS]bool{}
 	}
 	for i := 0; i < common.N_FLOORS; i++ {
 		localSelf.CabRequests[i] = localSelf.CabRequests[i] || peerSelf.CabRequests[i]
@@ -276,9 +276,9 @@ func hallAt(s common.Snapshot, floor int, btn int) bool {
 	return s.HallRequests[floor][btn]
 }
 
-func mergeHall(current, incoming [][2]bool, kind common.UpdateKind) [][2]bool {
-	merged := make([][2]bool, common.N_FLOORS)
-	for i := 0; i < common.N_FLOORS; i++ {
+func mergeHall(current, incoming [common.N_FLOORS][2]bool, kind common.UpdateKind) [common.N_FLOORS][2]bool {
+	merged := [common.N_FLOORS][2]bool{}
+	for i := range common.N_FLOORS {
 		if kind == common.UpdateServiced {
 			merged[i][0] = current[i][0] && incoming[i][0]
 			merged[i][1] = current[i][1] && incoming[i][1]
