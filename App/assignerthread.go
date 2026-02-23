@@ -46,7 +46,6 @@ func assignerThread(
 				fmt.Println("removing stale states error: ", err)
 				break
 			}
-
 			// serialize snapshot to JSON
 			jsonBytes, err := json.Marshal(networkSnapshot)
 			if err != nil {
@@ -54,7 +53,6 @@ func assignerThread(
 				break
 
 			}
-
 			// Run external hall request assigner executable
 			ret, err := exec.Command("./elevassigner/"+HRA_EXECUTABLE, "-i", string(jsonBytes)).CombinedOutput()
 			if err != nil {
@@ -62,15 +60,13 @@ func assignerThread(
 				fmt.Println(string(ret))
 				break
 			}
-
 			// parse assigner output
 			var output map[string][N_FLOORS][2]bool
 			if err := json.Unmarshal(ret, &output); err != nil {
 				fmt.Println("json.Unmarshal error:", err)
 				break
 			}
-
-			// pick tasks for THIS elevator to send to fsmthread
+			// pick tasks for THIS elevator to send to elevator controller
 			currentElevInput = ElevInput{HallTask: output[selfKey]}
 			elevatorTasksCh <- currentElevInput
 

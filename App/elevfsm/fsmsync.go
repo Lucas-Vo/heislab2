@@ -122,7 +122,7 @@ func (s *FsmSync) ApplyNetworkSnapshot(snap common.Snapshot, now time.Time) {
 		s.netCalls[f][0] = snap.HallRequests[f][0]
 		s.netCalls[f][1] = snap.HallRequests[f][1]
 	}
-	if s.copyCabFromSnapshot(snap) { //TODO: Does not explain shit
+	if s.copyCabFromSnapshot(&snap) { //TODO: Does not explain shit
 		s.hasNetSelf = true
 	}
 	for f := range common.N_FLOORS {
@@ -148,7 +148,7 @@ func (s *FsmSync) ApplyNetworkSnapshot(snap common.Snapshot, now time.Time) {
 }
 
 // copyCabFromSnapshot extracts our own cab requests from a snapshot (per-elevator state).
-func (s *FsmSync) copyCabFromSnapshot(snapshot common.Snapshot) bool { //TODO: should not use copy name for mutating internal attributes as we use copy for actual copying, making this not descriptive
+func (s *FsmSync) copyCabFromSnapshot(snapshot *common.Snapshot) bool { //TODO: should not use copy name for mutating internal attributes as we use copy for actual copying, making this not descriptive
 	for floor := range common.N_FLOORS {
 		s.netCalls[floor][common.BT_Cab] = false
 	}
@@ -225,7 +225,7 @@ func (s *FsmSync) TryInjectAll(now time.Time, confirmTimeout time.Duration, onli
 // When online, keep injected flags until the network snapshot removes the requests.
 // When offline, clear injected flags immediately.
 func (s *FsmSync) ClearAtFloor(e *Elevator, floor int, arrivalDir common.MotorDirection, online bool) (servicedAt ServicedAt) {
-	*e, servicedAt = requests_clearAtCurrentFloor(*e)
+	*e, servicedAt = requests_clearAtCurrentFloor(*e) //TODO: This is called quite weirdly and it sometimes skips floors and it is not clear why
 	if servicedAt.Cab && s.injected[floor][common.BT_Cab] {
 		s.localCalls[floor][common.BT_Cab] = false
 		if !online {

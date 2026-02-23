@@ -2,6 +2,7 @@ package elevfsm
 
 import (
 	"elevator/common"
+	"fmt"
 )
 
 type DirnBehaviourPair struct {
@@ -128,16 +129,20 @@ func requests_clearAtCurrentFloor(e Elevator) (_ Elevator, servicedCall Serviced
 		if requests_above(e) == 0 && !e.requests[f][common.BT_HallUp] {
 			e.requests[f][common.BT_HallDown] = false
 			servicedCall.HallDown = true
+			fmt.Println("Serviced: HallDown at floor", f)
 		}
 		e.requests[f][common.BT_HallUp] = false
+		fmt.Println("Serviced: HallUp at floor", f)
 		servicedCall.HallUp = true
 	case common.MD_Down:
 		if requests_below(e) == 0 && !e.requests[f][common.BT_HallDown] {
 			e.requests[f][common.BT_HallUp] = false
 			servicedCall.HallUp = true
+			fmt.Println("Serviced: HallUp at floor", f)
 		}
 		e.requests[f][common.BT_HallDown] = false
 		servicedCall.HallDown = true
+		fmt.Println("Serviced: HallDown at floor", f)
 	case common.MD_Stop:
 		fallthrough
 	default:
@@ -145,6 +150,7 @@ func requests_clearAtCurrentFloor(e Elevator) (_ Elevator, servicedCall Serviced
 		e.requests[f][common.BT_HallDown] = false
 		servicedCall.HallDown = true
 		servicedCall.HallUp = true
+		fmt.Println("Serviced: BOFA these at floor", f)
 	}
 	return e, servicedCall
 }
