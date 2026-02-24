@@ -156,7 +156,7 @@ func (s *FsmSync) copyCabFromSnapshot(snapshot *common.Snapshot) bool { //TODO: 
 	if snapshot.States == nil {
 		return false
 	}
-	state, found := snapshot.States[s.selfKey]
+	state, found := snapshot.States[s.selfKey] //TODO: This shit is causing some concurrency issues
 	if !found {
 		return false
 	}
