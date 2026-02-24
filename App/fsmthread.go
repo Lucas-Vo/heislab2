@@ -103,6 +103,7 @@ func fsmThread(
 			newBehaviour := sync.Elevator.GetBehaviour()
 			newDirection := sync.Elevator.GetDirection()
 			newFloor := elevInputDevice.FloorSensor()
+			doorJustClosed := prevBehaviour == elevfsm.EB_DoorOpen && newBehaviour != elevfsm.EB_DoorOpen
 			if newFloor != prevFloor || newBehaviour != prevBehaviour || newDirection != prevDirection {
 				elevStateChange = true
 			}
@@ -135,11 +136,10 @@ func fsmThread(
 			}
 			prevObstructed = obstructed
 
-			//// Entering DoorOpen: announce direction, clear one hall call, start timer
+			//// Entering DoorOpen: announce direction, start timer
 			if prevBehaviour != newBehaviour && newBehaviour == elevfsm.EB_DoorOpen {
 				arrivalDirn := sync.Elevator.GetDirection()
 				announceDir = sync.ChooseAnnounceDir(prevFloor, arrivalDirn)
-				servicedCall = sync.ClearAtFloor(sync.Elevator, prevFloor, announceDir, true, online)
 				// start door timer when entering DoorOpen
 				d := time.Duration(3 * time.Second)
 				doorTimerEnd = now.Add(d)
@@ -149,41 +149,65 @@ func fsmThread(
 			prevBehaviour = newBehaviour
 			prevDirection = newDirection
 
-			//// Door timer expiry: second announcement/clear or close door
+			//// Door timer expiry: clear announced hall call or close door
 			if doorTimerActive && now.After(doorTimerEnd) {
 				// stop timer
 				doorTimerActive = false
 				timerPaused = false
 				upReq, downReq := sync.HallRequestsAtFloor(prevFloor)
-				if announceDir == common.MD_Up && downReq {
-					servicedCall = sync.ClearAtFloor(sync.Elevator, prevFloor, common.MD_Down, false, online)
-					announceDir = common.MD_Down
-					d := time.Duration(3 * time.Second)
-					doorTimerEnd = now.Add(d)
-					doorTimerActive = true
-					timerPaused = false
-				} else if announceDir == common.MD_Down && upReq {
-					servicedCall = sync.ClearAtFloor(sync.Elevator, prevFloor, common.MD_Up, false, online)
-					announceDir = common.MD_Up
-					d := time.Duration(3 * time.Second)
-					doorTimerEnd = now.Add(d)
-					doorTimerActive = true
-					timerPaused = false
+				if announceDir == common.MD_Up && upReq {
+					servicedCall = sync.ClearAtFloor(sync.Elevator, prevFloor, common.MD_Up, true, online)
+					if downReq {
+						announceDir = common.MD_Down
+						d := time.Duration(3 * time.Second)
+						doorTimerEnd = now.Add(d)
+						doorTimerActive = true
+						timerPaused = false
+					} else {
+						sync.Elevator.OnDoorTimeout()
+					}
+				} else if announceDir == common.MD_Down && downReq {
+					servicedCall = sync.ClearAtFloor(sync.Elevator, prevFloor, common.MD_Down, true, online)
+					if upReq {
+						announceDir = common.MD_Up
+						d := time.Duration(3 * time.Second)
+						doorTimerEnd = now.Add(d)
+						doorTimerActive = true
+						timerPaused = false
+					} else {
+						sync.Elevator.OnDoorTimeout()
+					}
 				} else if upReq || downReq {
 					arrivalDirn := sync.Elevator.GetDirection()
 					announceDir = sync.ChooseAnnounceDir(prevFloor, arrivalDirn)
 					servicedCall = sync.ClearAtFloor(sync.Elevator, prevFloor, announceDir, true, online)
-					d := time.Duration(3 * time.Second)
-					doorTimerEnd = now.Add(d)
-					doorTimerActive = true
-					timerPaused = false
+					if announceDir == common.MD_Up && downReq {
+						announceDir = common.MD_Down
+						d := time.Duration(3 * time.Second)
+						doorTimerEnd = now.Add(d)
+						doorTimerActive = true
+						timerPaused = false
+					} else if announceDir == common.MD_Down && upReq {
+						announceDir = common.MD_Up
+						d := time.Duration(3 * time.Second)
+						doorTimerEnd = now.Add(d)
+						doorTimerActive = true
+						timerPaused = false
+					} else {
+						sync.Elevator.OnDoorTimeout()
+					}
 				} else {
+					servicedCall = sync.ClearAtFloor(sync.Elevator, prevFloor, common.MD_Stop, true, online)
 					sync.Elevator.OnDoorTimeout()
 				}
 			} //TODO: Maybe this door functionality can be put in a helper function to help readability for the fsmthread
 
 			//// Inject confirmed requests, update lights, and publish snapshots
-			// Inject confirmed requests
+			if doorJustClosed && prevFloor != -1 {
+				staleServiced := sync.StaleServicedHallAtFloor(prevFloor, online)
+				servicedCall.HallUp = servicedCall.HallUp || staleServiced.HallUp
+				servicedCall.HallDown = servicedCall.HallDown || staleServiced.HallDown
+			}
 			sync.TryInjectAll(now, confirmTimeout, online)
 			sync.ApplyLights(online)
 

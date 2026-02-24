@@ -276,6 +276,36 @@ func (s *FsmSync) ClearAtFloor(e *Elevator, floor int, announceDir common.MotorD
 	return servicedAt
 }
 
+func (s *FsmSync) StaleServicedHallAtFloor(floor int, online bool) (servicedAt ServicedAt) {
+	if floor < 0 || floor >= common.N_FLOORS {
+		return servicedAt
+	}
+	calls := s.localCalls
+	if online && s.hasNet {
+		calls = s.netCalls
+	}
+
+	if calls[floor][common.BT_HallUp] &&
+		s.injected[floor][common.BT_HallUp] &&
+		!s.Elevator.requests[floor][common.BT_HallUp] {
+		servicedAt.HallUp = true
+		s.localCalls[floor][common.BT_HallUp] = false
+		if !online {
+			s.injected[floor][common.BT_HallUp] = false
+		}
+	}
+	if calls[floor][common.BT_HallDown] &&
+		s.injected[floor][common.BT_HallDown] &&
+		!s.Elevator.requests[floor][common.BT_HallDown] {
+		servicedAt.HallDown = true
+		s.localCalls[floor][common.BT_HallDown] = false
+		if !online {
+			s.injected[floor][common.BT_HallDown] = false
+		}
+	}
+	return servicedAt
+}
+
 func (s *FsmSync) BuildSnapshot(floor int, kind common.UpdateKind, callsCleared ServicedAt, online bool) common.Snapshot {
 	// Choose base hall source
 	baseCalls := s.localCalls
