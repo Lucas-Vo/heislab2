@@ -47,11 +47,7 @@ func (e *Elevator) OnRequestButtonPress(btn_floor int, btn_type common.ButtonTyp
 	switch e.behaviour {
 
 	case EB_DoorOpen:
-		if requests_shouldClearImmediately(*e, btn_floor, btn_type) != 0 {
-			// timer handled by FSM thread
-		} else {
-			e.requests[btn_floor][btn_type] = true
-		}
+		e.requests[btn_floor][btn_type] = true
 
 	case EB_Moving:
 		e.requests[btn_floor][btn_type] = true
@@ -66,7 +62,6 @@ func (e *Elevator) OnRequestButtonPress(btn_floor int, btn_type common.ButtonTyp
 		switch pair.behaviour {
 		case EB_DoorOpen:
 			e.outputDevice.DoorLight(true)
-			*e, _ = requests_clearAtCurrentFloor(*e)
 
 		case EB_Moving:
 			e.outputDevice.MotorDirection(e.dirn)
@@ -87,7 +82,6 @@ func (e *Elevator) OnFloorArrival(newFloor int) {
 			e.outputDevice.MotorDirection(common.MD_Stop)
 			e.outputDevice.DoorLight(true)
 
-			*e, _ = requests_clearAtCurrentFloor(*e)
 			e.behaviour = EB_DoorOpen
 		}
 	default: // no-op

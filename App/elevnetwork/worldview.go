@@ -71,13 +71,15 @@ func (wv *WorldView) SelfAlive() bool { return wv.selfAlive }
 func (wv *WorldView) PublishAll(netSnap1Ch, netSnap2Ch chan<- common.Snapshot) {
 	snap := wv.GetSnapshot()
 	if wv.Ready() && wv.SnapshotsAreCoherent() {
+		snap1 := common.DeepCopySnapshot(snap)
 		select {
-		case netSnap1Ch <- snap:
+		case netSnap1Ch <- snap1:
 		default:
 		}
 	}
+	snap2 := common.DeepCopySnapshot(snap)
 	select {
-	case netSnap2Ch <- snap:
+	case netSnap2Ch <- snap2:
 	default:
 	}
 }

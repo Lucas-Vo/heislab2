@@ -118,39 +118,32 @@ func requests_shouldClearImmediately(e Elevator, btn_floor int, btn_type common.
 	return 0
 }
 
-func requests_clearAtCurrentFloor(e Elevator) (_ Elevator, servicedCall ServicedAt) {
+func requests_clearAtCurrentFloorDir(e Elevator, announceDir common.MotorDirection, clearCab bool) (_ Elevator, servicedCall ServicedAt) {
 	f := e.floor
-	// Always clear cab call
-	e.requests[f][common.BT_Cab] = false
-	servicedCall.Cab = true
-
-	switch e.dirn {
-	case common.MD_Up:
-		if requests_above(e) == 0 && !e.requests[f][common.BT_HallUp] {
-			e.requests[f][common.BT_HallDown] = false
-			servicedCall.HallDown = true
-			fmt.Println("Serviced: HallDown at floor", f)
+	if clearCab {
+		if e.requests[f][common.BT_Cab] {
+			servicedCall.Cab = true
 		}
-		e.requests[f][common.BT_HallUp] = false
-		fmt.Println("Serviced: HallUp at floor", f)
-		servicedCall.HallUp = true
-	case common.MD_Down:
-		if requests_below(e) == 0 && !e.requests[f][common.BT_HallDown] {
+		e.requests[f][common.BT_Cab] = false
+	}
+
+	switch announceDir {
+	case common.MD_Up:
+		if e.requests[f][common.BT_HallUp] {
 			e.requests[f][common.BT_HallUp] = false
 			servicedCall.HallUp = true
 			fmt.Println("Serviced: HallUp at floor", f)
 		}
-		e.requests[f][common.BT_HallDown] = false
-		servicedCall.HallDown = true
-		fmt.Println("Serviced: HallDown at floor", f)
+	case common.MD_Down:
+		if e.requests[f][common.BT_HallDown] {
+			e.requests[f][common.BT_HallDown] = false
+			servicedCall.HallDown = true
+			fmt.Println("Serviced: HallDown at floor", f)
+		}
 	case common.MD_Stop:
 		fallthrough
 	default:
-		e.requests[f][common.BT_HallUp] = false
-		e.requests[f][common.BT_HallDown] = false
-		servicedCall.HallDown = true
-		servicedCall.HallUp = true
-		fmt.Println("Serviced: BOFA these at floor", f)
+		// no hall clearing when direction isn't announced
 	}
 	return e, servicedCall
 }

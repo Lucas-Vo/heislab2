@@ -101,9 +101,7 @@ func (s *FsmSync) cancelHall(f int, btn common.ButtonType) {
 	if btn < 0 || btn >= common.N_BUTTONS {
 		return
 	}
-	if s.injected[f][btn] || !s.callTimestamp[f][btn].IsZero() || s.localCalls[f][btn] {
-		log.Printf("fsmThread:  hall unassigned f=%d b=%s", f, common.ElevioButtonToString(btn))
-	}
+
 	s.callTimestamp[f][btn] = time.Time{}
 	s.injected[f][btn] = false
 	s.confirmed[f][btn] = false
@@ -167,22 +165,49 @@ func (s *FsmSync) copyCabFromSnapshot(snapshot *common.Snapshot) bool { //TODO: 
 }
 
 // OnLocalPress records a local button press and marks it pending confirmation/injection.
-func (s *FsmSync) OnLocalPress(f int, btn common.ButtonType, now time.Time) {
+// If the press is at the current floor, it immediately forwards to the local FSM.
+func (s *FsmSync) OnLocalPress(f int, btn common.ButtonType, now time.Time, atFloor bool) {
 	s.markPending(f, btn, now)
 	s.localCalls[f][btn] = true
+	if atFloor {
+		s.Elevator.OnRequestButtonPress(f, btn)
+	}
+}
+
+// HallRequestsAtFloor reports which hall requests are currently active in the local FSM.
+func (s *FsmSync) HallRequestsAtFloor(floor int) (up bool, down bool) {
+	if floor < 0 || floor >= common.N_FLOORS {
+		return false, false
+	}
+	return s.Elevator.requests[floor][common.BT_HallUp], s.Elevator.requests[floor][common.BT_HallDown]
+}
+
+// ChooseAnnounceDir picks an announcement direction based on active hall requests at the floor.
+func (s *FsmSync) ChooseAnnounceDir(floor int, fallback common.MotorDirection) common.MotorDirection {
+	up, down := s.HallRequestsAtFloor(floor)
+	if up && !down {
+		return common.MD_Up
+	}
+	if down && !up {
+		return common.MD_Down
+	}
+	if up && down {
+		if fallback == common.MD_Up || fallback == common.MD_Down {
+			return fallback
+		}
+		return common.MD_Up
+	}
+	return fallback
 }
 
 // markPending starts the confirmation timer for a locally pressed request.
 func (s *FsmSync) markPending(f int, btn common.ButtonType, now time.Time) {
 	s.callTimestamp[f][btn] = now
-	log.Printf("fsmThread: pending request f=%d b=%s (local press)", f, common.ElevioButtonToString(btn))
 }
 
 // inject forwards a request into the local FSM once it's confirmed or timed out.
 // This bridges net-confirmed requests or offline fallback into the elevator's request table.
 func (s *FsmSync) inject(f int, btn common.ButtonType) {
-	log.Printf("fsmThread: inject request f=%d b=%s", f, common.ElevioButtonToString(btn))
-
 	s.Elevator.OnRequestButtonPress(f, btn)
 
 	s.injected[f][btn] = true
@@ -225,10 +250,10 @@ func (s *FsmSync) TryInjectAll(now time.Time, confirmTimeout time.Duration, onli
 // ClearAtFloor clears injected requests serviced at a floor and returns which types were cleared.
 // When online, keep injected flags until the network snapshot removes the requests.
 // When offline, clear injected flags immediately.
-func (s *FsmSync) ClearAtFloor(e *Elevator, floor int, arrivalDir common.MotorDirection, online bool) (servicedAt ServicedAt) {
+func (s *FsmSync) ClearAtFloor(e *Elevator, floor int, announceDir common.MotorDirection, clearCab bool, online bool) (servicedAt ServicedAt) {
 	e.floor = floor
 	fmt.Println("floor: ", floor)
-	*e, servicedAt = requests_clearAtCurrentFloor(*e) //TODO: This is called quite weirdly and it sometimes skips floors and it is not clear why
+	*e, servicedAt = requests_clearAtCurrentFloorDir(*e, announceDir, clearCab)
 	if servicedAt.Cab && s.injected[floor][common.BT_Cab] {
 		s.localCalls[floor][common.BT_Cab] = false
 		if !online {

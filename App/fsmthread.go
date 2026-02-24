@@ -35,6 +35,7 @@ func fsmThread(
 	// instead of package-level helper functions.
 	var doorTimerEnd time.Time
 	var doorTimerActive bool
+	var announceDir common.MotorDirection
 	var servicedCall elevfsm.ServicedAt
 	// Seed floor state if the sensor is already at a floor; otherwise start moving to find one.
 	prevFloor := -1
@@ -85,20 +86,20 @@ func fsmThread(
 
 			elevStateChange := false
 
-			// Request buttons (edge-detected)
+			//// Edge-detected button presses -> local sync + immediate FSM inject at current floor
 			for f := range common.N_FLOORS {
 				for b := range common.N_BUTTONS {
 					v := elevInputDevice.RequestButton(f, common.ButtonType(b))
 					if v != 0 && v != previousRequests[f][b] {
-						sync.OnLocalPress(f, common.ButtonType(b), now)
+						atFloor := elevInputDevice.FloorSensor() == f
+						sync.OnLocalPress(f, common.ButtonType(b), now, atFloor)
 						elevStateChange = true
-						if elevInputDevice.FloorSensor() == f {
-							sync.Elevator.OnRequestButtonPress(f, common.ButtonType(b))
-						}
 					}
 					previousRequests[f][b] = v
 				}
 			}
+
+			//// Poll sensors and update FSM on floor/behaviour/direction changes
 			newBehaviour := sync.Elevator.GetBehaviour()
 			newDirection := sync.Elevator.GetDirection()
 			newFloor := elevInputDevice.FloorSensor()
@@ -110,7 +111,7 @@ func fsmThread(
 				prevFloor = newFloor
 			}
 
-			// Obstruction handling: keep door open while obstructed; restart timer when cleared.
+			//// Door timer pause/resume for obstruction and at-floor activity
 			obstructed := elevInputDevice.Obstruction() != 0
 			if sync.Elevator.GetBehaviour() == elevfsm.EB_DoorOpen {
 				if obstructed {
@@ -134,29 +135,58 @@ func fsmThread(
 			}
 			prevObstructed = obstructed
 
-			if doorTimerActive && now.After(doorTimerEnd) {
-				// stop timer
-				doorTimerActive = false
-				timerPaused = false
-				arrivalDirn := sync.Elevator.GetDirection()
-				sync.Elevator.OnDoorTimeout()
-				servicedCall = sync.ClearAtFloor(sync.Elevator, prevFloor, arrivalDirn, online)
-			} //TODO: Maybe this door functionality can be put in a helper function to help readability for the fsmthread
-
+			//// Entering DoorOpen: announce direction, clear one hall call, start timer
 			if prevBehaviour != newBehaviour && newBehaviour == elevfsm.EB_DoorOpen {
+				arrivalDirn := sync.Elevator.GetDirection()
+				announceDir = sync.ChooseAnnounceDir(prevFloor, arrivalDirn)
+				servicedCall = sync.ClearAtFloor(sync.Elevator, prevFloor, announceDir, true, online)
 				// start door timer when entering DoorOpen
 				d := time.Duration(3 * time.Second)
 				doorTimerEnd = now.Add(d)
 				doorTimerActive = true
 				timerPaused = false
 			}
+			prevBehaviour = newBehaviour
+			prevDirection = newDirection
 
+			//// Door timer expiry: second announcement/clear or close door
+			if doorTimerActive && now.After(doorTimerEnd) {
+				// stop timer
+				doorTimerActive = false
+				timerPaused = false
+				upReq, downReq := sync.HallRequestsAtFloor(prevFloor)
+				if announceDir == common.MD_Up && downReq {
+					servicedCall = sync.ClearAtFloor(sync.Elevator, prevFloor, common.MD_Down, false, online)
+					announceDir = common.MD_Down
+					d := time.Duration(3 * time.Second)
+					doorTimerEnd = now.Add(d)
+					doorTimerActive = true
+					timerPaused = false
+				} else if announceDir == common.MD_Down && upReq {
+					servicedCall = sync.ClearAtFloor(sync.Elevator, prevFloor, common.MD_Up, false, online)
+					announceDir = common.MD_Up
+					d := time.Duration(3 * time.Second)
+					doorTimerEnd = now.Add(d)
+					doorTimerActive = true
+					timerPaused = false
+				} else if upReq || downReq {
+					arrivalDirn := sync.Elevator.GetDirection()
+					announceDir = sync.ChooseAnnounceDir(prevFloor, arrivalDirn)
+					servicedCall = sync.ClearAtFloor(sync.Elevator, prevFloor, announceDir, true, online)
+					d := time.Duration(3 * time.Second)
+					doorTimerEnd = now.Add(d)
+					doorTimerActive = true
+					timerPaused = false
+				} else {
+					sync.Elevator.OnDoorTimeout()
+				}
+			} //TODO: Maybe this door functionality can be put in a helper function to help readability for the fsmthread
+
+			//// Inject confirmed requests, update lights, and publish snapshots
 			// Inject confirmed requests
 			sync.TryInjectAll(now, confirmTimeout, online)
 			sync.ApplyLights(online)
 
-			prevBehaviour = newBehaviour
-			prevDirection = newDirection
 			if !sync.HasNetSelf() {
 				continue
 			}
