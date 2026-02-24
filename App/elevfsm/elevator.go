@@ -3,6 +3,7 @@ package elevfsm
 //TODO: elevator.go fsm.go requests.go and timer.go is AALLLL soup. make that shit dissapear as most is implemented in fsmsync
 import (
 	"elevator/common"
+	"fmt"
 )
 
 // enums
@@ -77,6 +78,7 @@ func (e *Elevator) OnRequestButtonPress(btn_floor int, btn_type common.ButtonTyp
 }
 
 func (e *Elevator) OnFloorArrival(newFloor int) {
+	fmt.Println("landed on floor: ", newFloor)
 	e.floor = newFloor
 	e.outputDevice.FloorIndicator(e.floor)
 	switch e.behaviour {
@@ -101,9 +103,6 @@ func (e *Elevator) OnDoorTimeout() {
 		e.behaviour = pair.behaviour
 
 		switch e.behaviour {
-		case EB_DoorOpen:
-			*e, _ = requests_clearAtCurrentFloor(*e)
-
 		case EB_Moving, EB_Idle:
 			e.outputDevice.DoorLight(false)
 			e.outputDevice.MotorDirection(e.dirn)

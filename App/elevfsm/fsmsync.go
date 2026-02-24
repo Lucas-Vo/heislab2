@@ -2,6 +2,7 @@ package elevfsm
 
 import (
 	"elevator/common"
+	"fmt"
 	"log"
 	"time"
 )
@@ -225,6 +226,8 @@ func (s *FsmSync) TryInjectAll(now time.Time, confirmTimeout time.Duration, onli
 // When online, keep injected flags until the network snapshot removes the requests.
 // When offline, clear injected flags immediately.
 func (s *FsmSync) ClearAtFloor(e *Elevator, floor int, arrivalDir common.MotorDirection, online bool) (servicedAt ServicedAt) {
+	e.floor = floor
+	fmt.Println("floor: ", floor)
 	*e, servicedAt = requests_clearAtCurrentFloor(*e) //TODO: This is called quite weirdly and it sometimes skips floors and it is not clear why
 	if servicedAt.Cab && s.injected[floor][common.BT_Cab] {
 		s.localCalls[floor][common.BT_Cab] = false

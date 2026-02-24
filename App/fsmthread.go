@@ -152,7 +152,6 @@ func fsmThread(
 				timerPaused = false
 				arrivalDirn := sync.Elevator.GetDirection()
 				sync.Elevator.OnDoorTimeout()
-
 				servicedCall = sync.ClearAtFloor(sync.Elevator, prevFloor, arrivalDirn, online)
 			} //TODO: Maybe this door functionality can be put in a helper function to help readability for the fsmthread
 
