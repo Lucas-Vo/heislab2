@@ -85,16 +85,3 @@ func ElevioGetOutputDevice() ElevOutputDevice {
 		},
 	}
 }
-
-func ElevioButtonToString(b ButtonType) string { //TODO: Same here, there is nothing using this for except printing
-	switch b {
-	case BT_HallUp:
-		return "BT_HallUp"
-	case BT_HallDown:
-		return "BT_HallDown"
-	case BT_Cab:
-		return "BT_Cab"
-	default:
-		return "BT_UNDEFINED"
-	}
-}
