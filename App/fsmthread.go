@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"log"
 	"time"
 
@@ -10,7 +9,6 @@ import (
 )
 
 func fsmThread(
-	ctx context.Context,
 	cfg common.Config,
 	elevInputDevice common.ElevInputDevice,
 	assignerOutputCh <-chan common.ElevInput,
@@ -59,9 +57,6 @@ func fsmThread(
 
 	for {
 		select {
-		case <-ctx.Done():
-			return
-
 		case snap := <-netWorldView2Ch:
 			now := time.Now()
 

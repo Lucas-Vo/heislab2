@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	. "elevator/common"
 	"elevator/elevassigner"
 	"encoding/json"
@@ -18,7 +17,6 @@ const (
 )
 
 func assignerThread(
-	context context.Context,
 	config Config,
 	networkSnapshotCh <-chan Snapshot,
 	elevatorTasksCh chan<- ElevInput,
@@ -36,9 +34,6 @@ func assignerThread(
 
 	for {
 		select {
-		case <-context.Done():
-			return
-
 		case networkSnapshot := <-networkSnapshotCh:
 			//delete elevators marked stale
 			err := elevassigner.RemoveStaleStates(&networkSnapshot, selfKey)
