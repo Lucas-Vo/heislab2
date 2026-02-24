@@ -154,7 +154,7 @@ func fsmThread(
 				upReq, downReq := sync.HallRequestsAtFloor(prevFloor)
 				if announceDir == common.MD_Up && upReq {
 					servicedCall = sync.ClearAtFloor(sync.Elevator, prevFloor, common.MD_Up, true, now)
-					if downReq {
+					if downReq && sync.ShouldChainOppositeHallAtCurrentStop() {
 						announceDir = common.MD_Down
 						d := time.Duration(3 * time.Second)
 						doorTimerEnd = now.Add(d)
@@ -165,7 +165,7 @@ func fsmThread(
 					}
 				} else if announceDir == common.MD_Down && downReq {
 					servicedCall = sync.ClearAtFloor(sync.Elevator, prevFloor, common.MD_Down, true, now)
-					if upReq {
+					if upReq && sync.ShouldChainOppositeHallAtCurrentStop() {
 						announceDir = common.MD_Up
 						d := time.Duration(3 * time.Second)
 						doorTimerEnd = now.Add(d)
@@ -178,13 +178,13 @@ func fsmThread(
 					arrivalDirn := sync.Elevator.GetDirection()
 					announceDir = sync.ChooseAnnounceDir(prevFloor, arrivalDirn)
 					servicedCall = sync.ClearAtFloor(sync.Elevator, prevFloor, announceDir, true, now)
-					if announceDir == common.MD_Up && downReq {
+					if announceDir == common.MD_Up && downReq && sync.ShouldChainOppositeHallAtCurrentStop() {
 						announceDir = common.MD_Down
 						d := time.Duration(3 * time.Second)
 						doorTimerEnd = now.Add(d)
 						doorTimerActive = true
 						timerPaused = false
-					} else if announceDir == common.MD_Down && upReq {
+					} else if announceDir == common.MD_Down && upReq && sync.ShouldChainOppositeHallAtCurrentStop() {
 						announceDir = common.MD_Up
 						d := time.Duration(3 * time.Second)
 						doorTimerEnd = now.Add(d)

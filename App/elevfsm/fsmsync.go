@@ -199,6 +199,22 @@ func (s *FsmSync) ChooseAnnounceDir(floor int, fallback common.MotorDirection) c
 	return fallback
 }
 
+// ShouldChainOppositeHallAtCurrentStop reports whether it is safe/desired to clear the
+// opposite hall side during the same door-open cycle. We only do this at the end of the
+// current sweep direction; otherwise we leave the opposite hall call for the return sweep.
+func (s *FsmSync) ShouldChainOppositeHallAtCurrentStop() bool {
+	switch s.Elevator.GetDirection() {
+	case common.MD_Up:
+		return requests_above(*s.Elevator) == 0
+	case common.MD_Down:
+		return requests_below(*s.Elevator) == 0
+	case common.MD_Stop:
+		return true
+	default:
+		return true
+	}
+}
+
 // markPending starts the confirmation timer for a locally pressed request.
 func (s *FsmSync) markPending(f int, btn common.ButtonType, now time.Time) {
 	s.callTimestamp[f][btn] = now
