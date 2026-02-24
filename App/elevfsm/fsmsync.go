@@ -55,9 +55,8 @@ func NewFsmSync(cfg common.Config) *FsmSync {
 	return s
 }
 
-// Offline reports whether the network has been silent long enough to treat us as offline.
-func (s *FsmSync) Offline(now time.Time) bool {
-	return now.Sub(s.lastNetSeen) > netOfflineTimeout
+func (s *FsmSync) isOnline(now time.Time) bool {
+	return now.Sub(s.lastNetSeen) < netOfflineTimeout
 }
 
 // LastNetSeen returns the timestamp of the most recent network snapshot.
@@ -216,7 +215,8 @@ func (s *FsmSync) inject(f int, btn common.ButtonType) {
 	s.localCalls[f][btn] = true
 }
 
-func (s *FsmSync) TryInjectAll(now time.Time, confirmTimeout time.Duration, online bool) {
+func (s *FsmSync) TryInjectAll(now time.Time, confirmTimeout time.Duration) {
+	online := s.isOnline(now)
 	calls := s.localCalls
 	if online && s.hasNet {
 		calls = s.netCalls
@@ -250,7 +250,8 @@ func (s *FsmSync) TryInjectAll(now time.Time, confirmTimeout time.Duration, onli
 // ClearAtFloor clears injected requests serviced at a floor and returns which types were cleared.
 // When online, keep injected flags until the network snapshot removes the requests.
 // When offline, clear injected flags immediately.
-func (s *FsmSync) ClearAtFloor(e *Elevator, floor int, announceDir common.MotorDirection, clearCab bool, online bool) (servicedAt ServicedAt) {
+func (s *FsmSync) ClearAtFloor(e *Elevator, floor int, announceDir common.MotorDirection, clearCab bool, now time.Time) (servicedAt ServicedAt) {
+	online := s.isOnline(now)
 	e.floor = floor
 	fmt.Println("floor: ", floor)
 	*e, servicedAt = requests_clearAtCurrentFloorDir(*e, announceDir, clearCab)
@@ -276,7 +277,8 @@ func (s *FsmSync) ClearAtFloor(e *Elevator, floor int, announceDir common.MotorD
 	return servicedAt
 }
 
-func (s *FsmSync) StaleServicedHallAtFloor(floor int, online bool) (servicedAt ServicedAt) {
+func (s *FsmSync) StaleServicedHallAtFloor(floor int, now time.Time) (servicedAt ServicedAt) {
+	online := s.isOnline(now)
 	if floor < 0 || floor >= common.N_FLOORS {
 		return servicedAt
 	}
@@ -306,7 +308,8 @@ func (s *FsmSync) StaleServicedHallAtFloor(floor int, online bool) (servicedAt S
 	return servicedAt
 }
 
-func (s *FsmSync) BuildSnapshot(floor int, kind common.UpdateKind, callsCleared ServicedAt, online bool) common.Snapshot {
+func (s *FsmSync) BuildSnapshot(floor int, kind common.UpdateKind, callsCleared ServicedAt, now time.Time) common.Snapshot {
+	online := s.isOnline(now)
 	// Choose base hall source
 	baseCalls := s.localCalls
 	if kind == common.UpdateServiced && online && s.hasNet {
@@ -339,7 +342,8 @@ func (s *FsmSync) BuildSnapshot(floor int, kind common.UpdateKind, callsCleared 
 }
 
 // ApplyLights drives the physical lamps from a snapshot's hall and cab requests.
-func (s *FsmSync) ApplyLights(online bool) {
+func (s *FsmSync) ApplyLights(now time.Time) {
+	online := s.isOnline(now)
 	calls := s.localCalls
 	if online && s.hasNet {
 		calls = s.netCalls

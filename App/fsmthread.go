@@ -47,7 +47,7 @@ func fsmThread(
 	}
 	prevDirection := sync.Elevator.GetDirection()
 	prevBehaviour := sync.Elevator.GetBehaviour()
-	initialSnap := sync.BuildSnapshot(prevFloor, common.UpdateRequests, servicedCall, false)
+	initialSnap := sync.BuildSnapshot(prevFloor, common.UpdateRequests, servicedCall, time.Now())
 
 	select {
 	case elevUpdateCh <- initialSnap:
@@ -64,25 +64,22 @@ func fsmThread(
 
 		case snap := <-netWorldView2Ch:
 			now := time.Now()
-			online := !sync.Offline(now)
 
 			sync.ApplyNetworkSnapshot(snap, now)
 
-			sync.TryInjectAll(now, confirmTimeout, online)
-			sync.ApplyLights(online)
+			sync.TryInjectAll(now, confirmTimeout)
+			sync.ApplyLights(now)
 
 		case task := <-assignerOutputCh:
 			now := time.Now()
-			online := !sync.Offline(now)
 
 			sync.ApplyAssigner(task)
 
-			sync.TryInjectAll(now, confirmTimeout, online)
-			sync.ApplyLights(online)
+			sync.TryInjectAll(now, confirmTimeout)
+			sync.ApplyLights(now)
 
 		case <-ticker.C:
 			now := time.Now()
-			online := !sync.Offline(now) //TODO: Change name of online
 
 			elevStateChange := false
 
@@ -156,7 +153,7 @@ func fsmThread(
 				timerPaused = false
 				upReq, downReq := sync.HallRequestsAtFloor(prevFloor)
 				if announceDir == common.MD_Up && upReq {
-					servicedCall = sync.ClearAtFloor(sync.Elevator, prevFloor, common.MD_Up, true, online)
+					servicedCall = sync.ClearAtFloor(sync.Elevator, prevFloor, common.MD_Up, true, now)
 					if downReq {
 						announceDir = common.MD_Down
 						d := time.Duration(3 * time.Second)
@@ -167,7 +164,7 @@ func fsmThread(
 						sync.Elevator.OnDoorTimeout()
 					}
 				} else if announceDir == common.MD_Down && downReq {
-					servicedCall = sync.ClearAtFloor(sync.Elevator, prevFloor, common.MD_Down, true, online)
+					servicedCall = sync.ClearAtFloor(sync.Elevator, prevFloor, common.MD_Down, true, now)
 					if upReq {
 						announceDir = common.MD_Up
 						d := time.Duration(3 * time.Second)
@@ -180,7 +177,7 @@ func fsmThread(
 				} else if upReq || downReq {
 					arrivalDirn := sync.Elevator.GetDirection()
 					announceDir = sync.ChooseAnnounceDir(prevFloor, arrivalDirn)
-					servicedCall = sync.ClearAtFloor(sync.Elevator, prevFloor, announceDir, true, online)
+					servicedCall = sync.ClearAtFloor(sync.Elevator, prevFloor, announceDir, true, now)
 					if announceDir == common.MD_Up && downReq {
 						announceDir = common.MD_Down
 						d := time.Duration(3 * time.Second)
@@ -197,25 +194,25 @@ func fsmThread(
 						sync.Elevator.OnDoorTimeout()
 					}
 				} else {
-					servicedCall = sync.ClearAtFloor(sync.Elevator, prevFloor, common.MD_Stop, true, online)
+					servicedCall = sync.ClearAtFloor(sync.Elevator, prevFloor, common.MD_Stop, true, now)
 					sync.Elevator.OnDoorTimeout()
 				}
 			} //TODO: Maybe this door functionality can be put in a helper function to help readability for the fsmthread
 
 			//// Inject confirmed requests, update lights, and publish snapshots
 			if doorJustClosed && prevFloor != -1 {
-				staleServiced := sync.StaleServicedHallAtFloor(prevFloor, online)
+				staleServiced := sync.StaleServicedHallAtFloor(prevFloor, now)
 				servicedCall.HallUp = servicedCall.HallUp || staleServiced.HallUp
 				servicedCall.HallDown = servicedCall.HallDown || staleServiced.HallDown
 			}
-			sync.TryInjectAll(now, confirmTimeout, online)
-			sync.ApplyLights(online)
+			sync.TryInjectAll(now, confirmTimeout)
+			sync.ApplyLights(now)
 
 			if !sync.HasNetSelf() {
 				continue
 			}
 			if servicedCall.HallUp || servicedCall.HallDown || servicedCall.Cab {
-				snapshot := sync.BuildSnapshot(prevFloor, common.UpdateServiced, servicedCall, online)
+				snapshot := sync.BuildSnapshot(prevFloor, common.UpdateServiced, servicedCall, now)
 				servicedCall = elevfsm.ServicedAt{HallUp: false, HallDown: false, Cab: false}
 				select {
 				case elevUpdateCh <- snapshot:
@@ -223,7 +220,7 @@ func fsmThread(
 				}
 			}
 			if elevStateChange {
-				snapshot := sync.BuildSnapshot(prevFloor, common.UpdateRequests, servicedCall, online)
+				snapshot := sync.BuildSnapshot(prevFloor, common.UpdateRequests, servicedCall, now)
 				select {
 				case elevUpdateCh <- snapshot:
 				default:
