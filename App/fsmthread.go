@@ -134,18 +134,6 @@ func fsmThread(
 			}
 			prevObstructed = obstructed
 
-			// Inject confirmed requests
-			sync.TryInjectAll(now, confirmTimeout, online)
-
-			sync.ApplyLights(online)
-
-			if prevBehaviour != newBehaviour && newBehaviour == elevfsm.EB_DoorOpen {
-				// start door timer when entering DoorOpen
-				d := time.Duration(3 * time.Second)
-				doorTimerEnd = now.Add(d)
-				doorTimerActive = true
-				timerPaused = false
-			}
 			if doorTimerActive && now.After(doorTimerEnd) {
 				// stop timer
 				doorTimerActive = false
@@ -154,6 +142,18 @@ func fsmThread(
 				sync.Elevator.OnDoorTimeout()
 				servicedCall = sync.ClearAtFloor(sync.Elevator, prevFloor, arrivalDirn, online)
 			} //TODO: Maybe this door functionality can be put in a helper function to help readability for the fsmthread
+
+			if prevBehaviour != newBehaviour && newBehaviour == elevfsm.EB_DoorOpen {
+				// start door timer when entering DoorOpen
+				d := time.Duration(3 * time.Second)
+				doorTimerEnd = now.Add(d)
+				doorTimerActive = true
+				timerPaused = false
+			}
+
+			// Inject confirmed requests
+			sync.TryInjectAll(now, confirmTimeout, online)
+			sync.ApplyLights(online)
 
 			prevBehaviour = newBehaviour
 			prevDirection = newDirection
