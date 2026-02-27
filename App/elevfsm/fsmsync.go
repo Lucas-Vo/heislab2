@@ -232,7 +232,7 @@ func (s *FsmSync) localButtonPresses(now time.Time) (bool, bool) {
 			if !edgePresses[f][btn] {
 				continue
 			}
-			s.markPending(f, btn, now)
+			s.callTimestamp[f][btn] = now
 			s.localCalls[f][btn] = true
 			if currentFloor == f {
 				s.elevator.onRequestButtonPress(f, btn)
@@ -370,10 +370,6 @@ func (s *FsmSync) copyCabFromSnapshot(snapshot *common.Snapshot) bool {
 		s.netCalls[floor][common.BT_Cab] = state.CabRequests[floor]
 	}
 	return true
-}
-
-func (s *FsmSync) markPending(f int, btn common.ButtonType, now time.Time) {
-	s.callTimestamp[f][btn] = now
 }
 
 func (s *FsmSync) inject(f int, btn common.ButtonType) {
