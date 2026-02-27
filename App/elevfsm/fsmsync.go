@@ -2,7 +2,6 @@ package elevfsm
 
 import (
 	"elevator/common"
-	"fmt"
 	"log"
 	"time"
 )
@@ -10,11 +9,7 @@ import (
 // Allow a few missed snapshots before declaring offline.
 const netOfflineTimeout = 5 * time.Second
 
-type ServicedAt struct { //TODO: maybe use the BTuttonType here instead of bools, but this is more explicit and easier to read
-	HallUp   bool
-	HallDown bool
-	Cab      bool
-}
+const doorOpenDuration = 3 * time.Second
 
 type FsmSync struct {
 	cfg     common.Config
@@ -27,31 +22,56 @@ type FsmSync struct {
 	assignedHall [common.N_FLOORS][2]bool
 	hasAssigner  bool
 
-	netCalls   [common.N_FLOORS][common.N_BUTTONS]bool
-	localCalls [common.N_FLOORS][common.N_BUTTONS]bool
+	netCalls   Requests
+	localCalls Requests
 
 	callTimestamp [common.N_FLOORS][common.N_BUTTONS]time.Time
-	injected      [common.N_FLOORS][common.N_BUTTONS]bool
-	confirmed     [common.N_FLOORS][common.N_BUTTONS]bool
+	injected      Requests
+	confirmed     Requests
 
 	reportedFloor     int
 	reportedBehavior  string
 	reportedDirection string
 
-	Elevator *Elevator
+	elevator *Elevator
+
+	prevFloor      int
+	prevBehaviour  ElevatorBehaviour
+	prevDirection  common.MotorDirection
+	prevObstructed bool
+
+	timerPaused     bool
+	doorTimerEnd    time.Time
+	doorTimerActive bool
+	announceDir     common.MotorDirection
 }
 
-// NewFsmSync initializes a sync helper with empty local/net request state and a startup grace period.
-func NewFsmSync(cfg common.Config) *FsmSync {
+// NewFsmSyncAndInit initializes sync, elevator IO and publishes an initial snapshot.
+func NewFsmSyncAndInit(cfg common.Config, elevUpdateCh chan<- common.Snapshot) *FsmSync {
 	s := &FsmSync{
 		cfg:           cfg,
 		selfKey:       cfg.SelfKey,
 		assignedHall:  [common.N_FLOORS][2]bool{},
 		reportedFloor: -1,
+		prevFloor:     -1,
 	}
-	s.Elevator = ElevatorInit()
-	// Start a short grace period before declaring offline.
+	s.elevator = elevatorInit("localhost:15657")
 	s.lastNetSeen = time.Now()
+
+	if newFloor := s.elevator.floorSensor(); newFloor != -1 {
+		s.elevator.onFloorArrival(newFloor)
+		s.prevFloor = newFloor
+	} else {
+		s.elevator.onInitBetweenFloors()
+	}
+	s.prevDirection = s.elevator.getDirection()
+	s.prevBehaviour = s.elevator.getBehaviour()
+
+	initialSnap := s.BuildSnapshot(s.prevFloor, common.UpdateRequests, Requests{}, time.Now())
+	select {
+	case elevUpdateCh <- initialSnap:
+	default:
+	}
 	return s
 }
 
@@ -59,60 +79,16 @@ func (s *FsmSync) isOnline(now time.Time) bool {
 	return now.Sub(s.lastNetSeen) < netOfflineTimeout
 }
 
-// LastNetSeen returns the timestamp of the most recent network snapshot.
-func (s *FsmSync) LastNetSeen() time.Time {
-	return s.lastNetSeen
-}
-
 // HasNetSelf reports whether the latest snapshot included our own cab requests.
 func (s *FsmSync) HasNetSelf() bool {
 	return s.hasNetSelf
 }
 
-// ApplyAssigner stores hall assignments and cancels any previously assigned halls that were removed.
-func (s *FsmSync) ApplyAssigner(task common.ElevInput) {
-	previousAssignment := s.assignedHall
-	s.assignedHall = task.HallTask
-	s.hasAssigner = true
-	s.cancelUnassigned(previousAssignment)
+func (s *FsmSync) CurrentFloor() int {
+	return s.prevFloor
 }
 
-// cancelUnassigned clears local tracking for halls we no longer own after a new assignment.
-func (s *FsmSync) cancelUnassigned(prev [common.N_FLOORS][2]bool) {
-	for f := range prev {
-		if prev[f][0] && !s.assignedHall[f][0] {
-			s.cancelHall(f, common.BT_HallUp)
-		}
-		if prev[f][1] && !s.assignedHall[f][1] {
-			s.cancelHall(f, common.BT_HallDown)
-		}
-	}
-}
-
-// cancelHall clears a specific hall request from local state and the FSM's request table.
-func (s *FsmSync) cancelHall(f int, btn common.ButtonType) {
-	if btn == common.BT_Cab {
-		return
-	}
-	if f < 0 || f >= common.N_FLOORS {
-		return
-	}
-	if btn < 0 || btn >= common.N_BUTTONS {
-		return
-	}
-
-	s.callTimestamp[f][btn] = time.Time{}
-	s.injected[f][btn] = false
-	s.confirmed[f][btn] = false
-
-	s.localCalls[f][btn] = false
-
-	s.Elevator.requests[f][btn] = false
-}
-
-// ApplyNetworkSnapshot ingests a network snapshot and reconciles net vs local request state.
-// Net hall/cab reflect the shared/global view, while local hall/cab reflect what we pressed or injected.
-func (s *FsmSync) ApplyNetworkSnapshot(snap common.Snapshot, now time.Time) {
+func (s *FsmSync) HandleNetworkSnapshot(snap common.Snapshot, now time.Time, confirmTimeout time.Duration) {
 	s.hasNet = true
 	s.lastNetSeen = now
 
@@ -120,197 +96,82 @@ func (s *FsmSync) ApplyNetworkSnapshot(snap common.Snapshot, now time.Time) {
 		s.netCalls[f][0] = snap.HallRequests[f][0]
 		s.netCalls[f][1] = snap.HallRequests[f][1]
 	}
-	if s.copyCabFromSnapshot(&snap) { //TODO: Does not explain shit
+	if s.copyCabFromSnapshot(&snap) {
 		s.hasNetSelf = true
 	}
 	for f := range common.N_FLOORS {
 		for btn := range common.ButtonType(common.N_BUTTONS) {
-			wasConfirmed := s.confirmed[f][btn]
-			netCallActive := s.netCalls[f][btn]
-
-			if netCallActive {
-				s.callTimestamp[f][btn] = time.Time{}
-				s.confirmed[f][btn] = true
-				if btn == common.BT_Cab {
-					s.localCalls[f][btn] = true
-				}
-				continue
-			}
-			s.confirmed[f][btn] = false
-			if wasConfirmed {
-				s.localCalls[f][btn] = false
-				s.injected[f][btn] = false
-			}
+			s.syncRequestStateFromNetwork(f, btn)
 		}
+
 	}
+	s.injectReadyRequests(now, confirmTimeout)
+	s.updateButtonLights(now)
 }
 
-// copyCabFromSnapshot extracts our own cab requests from a snapshot (per-elevator state).
-func (s *FsmSync) copyCabFromSnapshot(snapshot *common.Snapshot) bool { //TODO: should not use copy name for mutating internal attributes as we use copy for actual copying, making this not descriptive
-	for floor := range common.N_FLOORS {
-		s.netCalls[floor][common.BT_Cab] = false
-	}
-	if snapshot.States == nil {
-		return false
-	}
-	state, found := snapshot.States[s.selfKey] //TODO: This shit is causing some concurrency issues
-	if !found {
-		return false
-	}
-	for floor := 0; floor < common.N_FLOORS && floor < len(state.CabRequests); floor++ {
-		s.netCalls[floor][common.BT_Cab] = state.CabRequests[floor]
-	}
-	return true
+func (s *FsmSync) HandleAssignerTask(task common.ElevInput, now time.Time, confirmTimeout time.Duration) {
+	previousAssignment := s.assignedHall
+	s.assignedHall = task.HallTask
+	s.hasAssigner = true
+	s.cancelUnassignedHall(previousAssignment)
+	s.injectReadyRequests(now, confirmTimeout)
+	s.updateButtonLights(now)
 }
 
-// OnLocalPress records a local button press and marks it pending confirmation/injection.
-// If the press is at the current floor, it immediately forwards to the local FSM.
-func (s *FsmSync) OnLocalPress(f int, btn common.ButtonType, now time.Time, atFloor bool) {
-	s.markPending(f, btn, now)
-	s.localCalls[f][btn] = true
-	if atFloor {
-		s.Elevator.OnRequestButtonPress(f, btn)
+func (s *FsmSync) Synchronize(now time.Time, confirmTimeout time.Duration) (elevStateChange bool, servicedFloor int, servicedCalls Requests) {
+	servicedFloor = -1
+
+	hadButtonPress, atFloorActivity := s.localButtonPresses(now)
+	if hadButtonPress {
+		elevStateChange = true
 	}
+
+	newFloor, newBehaviour, newDirection, stateChanged := s.elevator.updateFromSensors(s.prevFloor, s.prevBehaviour, s.prevDirection)
+	if stateChanged {
+		elevStateChange = true
+	}
+	if newFloor != -1 && newFloor != s.prevFloor {
+		s.prevFloor = newFloor
+	}
+
+	s.updateDoorTimerPauseResume(now, atFloorActivity)
+
+	if s.prevBehaviour != newBehaviour && newBehaviour == EB_DoorOpen {
+		arrivalDirn := s.elevator.getDirection()
+		s.announceDir = s.elevator.chooseAnnounceDirAtFloor(s.prevFloor, arrivalDirn)
+		s.startDoorTimer(now)
+	}
+	s.prevBehaviour = newBehaviour
+	s.prevDirection = newDirection
+
+	if s.doorTimerActive && now.After(s.doorTimerEnd) {
+		servicedFloor, servicedCalls = s.processDoorTimerExpiry(now)
+	}
+
+	s.injectReadyRequests(now, confirmTimeout)
+	s.updateButtonLights(now)
+	return elevStateChange, servicedFloor, servicedCalls
 }
 
-// HallRequestsAtFloor reports which hall requests are currently active in the local FSM.
-func (s *FsmSync) HallRequestsAtFloor(floor int) (up bool, down bool) {
-	if floor < 0 || floor >= common.N_FLOORS {
-		return false, false
-	}
-	return s.Elevator.requests[floor][common.BT_HallUp], s.Elevator.requests[floor][common.BT_HallDown]
-}
-
-// ChooseAnnounceDir picks an announcement direction based on active hall requests at the floor.
-func (s *FsmSync) ChooseAnnounceDir(floor int, fallback common.MotorDirection) common.MotorDirection {
-	up, down := s.HallRequestsAtFloor(floor)
-	if up && !down {
-		return common.MD_Up
-	}
-	if down && !up {
-		return common.MD_Down
-	}
-	if up && down {
-		if fallback == common.MD_Up || fallback == common.MD_Down {
-			return fallback
-		}
-		return common.MD_Up
-	}
-	return fallback
-}
-
-// ShouldChainOppositeHallAtCurrentStop reports whether it is safe/desired to clear the
-// opposite hall side during the same door-open cycle. We only do this at the end of the
-// current sweep direction; otherwise we leave the opposite hall call for the return sweep.
-func (s *FsmSync) ShouldChainOppositeHallAtCurrentStop() bool {
-	switch s.Elevator.GetDirection() {
-	case common.MD_Up:
-		return requests_above(*s.Elevator) == 0
-	case common.MD_Down:
-		return requests_below(*s.Elevator) == 0
-	case common.MD_Stop:
-		return true
-	default:
-		return true
-	}
-}
-
-// markPending starts the confirmation timer for a locally pressed request.
-func (s *FsmSync) markPending(f int, btn common.ButtonType, now time.Time) {
-	s.callTimestamp[f][btn] = now
-}
-
-// inject forwards a request into the local FSM once it's confirmed or timed out.
-// This bridges net-confirmed requests or offline fallback into the elevator's request table.
-func (s *FsmSync) inject(f int, btn common.ButtonType) {
-	s.Elevator.OnRequestButtonPress(f, btn)
-
-	s.injected[f][btn] = true
-	s.callTimestamp[f][btn] = time.Time{}
-
-	s.localCalls[f][btn] = true
-}
-
-func (s *FsmSync) TryInjectAll(now time.Time, confirmTimeout time.Duration) {
+func (s *FsmSync) BuildSnapshot(floor int, kind common.UpdateKind, callsCleared Requests, now time.Time) common.Snapshot {
 	online := s.isOnline(now)
-	calls := s.localCalls
-	if online && s.hasNet {
-		calls = s.netCalls
-	}
-
-	for f := range common.N_FLOORS {
-		for btn := range common.ButtonType(common.N_BUTTONS) {
-			// Skip if no request exists or if already injected (whether from net or local).
-			if !calls[f][btn] || s.injected[f][btn] {
-				continue
-			}
-			callTimestamp := s.callTimestamp[f][btn]
-			timedOut := callTimestamp.IsZero() || now.Sub(callTimestamp) >= confirmTimeout
-
-			shouldInject :=
-				(!online && timedOut) || (online && (btn == common.BT_Cab || (s.hasAssigner && s.assignedHall[f][btn]))) //TODO: Make these logical statements look human
-			if shouldInject {
-				s.inject(f, btn)
-			} else if online && s.hasAssigner &&
-				btn != common.BT_Cab &&
-				!s.assignedHall[f][btn] &&
-				!callTimestamp.IsZero() {
-
-				log.Printf("fsmThread: hall f=%d btn=%v assigned elsewhere", f, btn)
-				s.callTimestamp[f][btn] = time.Time{}
-			}
-		}
-	}
-}
-
-// ClearAtFloor clears injected requests serviced at a floor and returns which types were cleared.
-// When online, keep injected flags until the network snapshot removes the requests.
-// When offline, clear injected flags immediately.
-func (s *FsmSync) ClearAtFloor(e *Elevator, floor int, announceDir common.MotorDirection, clearCab bool, now time.Time) (servicedAt ServicedAt) {
-	online := s.isOnline(now)
-	e.floor = floor
-	fmt.Println("floor: ", floor)
-	*e, servicedAt = requests_clearAtCurrentFloorDir(*e, announceDir, clearCab)
-	if servicedAt.Cab && s.injected[floor][common.BT_Cab] {
-		s.localCalls[floor][common.BT_Cab] = false
-		if !online {
-			s.injected[floor][common.BT_Cab] = false
-		}
-	}
-	if servicedAt.HallUp && s.injected[floor][common.BT_HallUp] {
-		s.localCalls[floor][common.BT_HallUp] = false
-		if !online {
-			s.injected[floor][common.BT_HallUp] = false
-		}
-	}
-	if servicedAt.HallDown && s.injected[floor][common.BT_HallDown] {
-		s.localCalls[floor][common.BT_HallDown] = false
-		if !online {
-			s.injected[floor][common.BT_HallDown] = false
-		}
-	}
-	return servicedAt
-}
-
-func (s *FsmSync) BuildSnapshot(floor int, kind common.UpdateKind, callsCleared ServicedAt, now time.Time) common.Snapshot {
-	online := s.isOnline(now)
-	// Choose base hall source
 	baseCalls := s.localCalls
 	if kind == common.UpdateServiced && online && s.hasNet {
 		baseCalls = s.netCalls
 	}
 
 	outCalls := baseCalls
-	// Apply servicing modification only when relevant
-	if kind == common.UpdateServiced && floor >= 0 && floor < len(outCalls) {
-		if callsCleared.HallUp {
-			outCalls[floor][common.BT_HallUp] = false
-		}
-		if callsCleared.HallDown {
-			outCalls[floor][common.BT_HallDown] = false
+	if kind == common.UpdateServiced {
+		for f := range common.N_FLOORS {
+			if callsCleared[f][common.BT_HallUp] {
+				outCalls[f][common.BT_HallUp] = false
+			}
+			if callsCleared[f][common.BT_HallDown] {
+				outCalls[f][common.BT_HallDown] = false
+			}
 		}
 	}
-	behavior, direction := s.Elevator.GetMotionStrings()
+	behavior, direction := s.elevator.getMotionStrings()
 	return common.Snapshot{
 		HallRequests: common.GetHallSlice(outCalls),
 		States: map[string]common.ElevState{
@@ -325,16 +186,199 @@ func (s *FsmSync) BuildSnapshot(floor int, kind common.UpdateKind, callsCleared 
 	}
 }
 
-// ApplyLights drives the physical lamps from a snapshot's hall and cab requests.
-func (s *FsmSync) ApplyLights(now time.Time) {
+func (s *FsmSync) cancelUnassignedHall(prev [common.N_FLOORS][2]bool) {
+	for f := range prev {
+		if prev[f][0] && !s.assignedHall[f][0] {
+			s.callTimestamp[f][common.BT_HallUp] = time.Time{}
+			s.injected[f][common.BT_HallUp] = false
+			s.confirmed[f][common.BT_HallUp] = false
+			s.localCalls[f][common.BT_HallUp] = false
+			s.elevator.clearRequest(f, common.BT_HallUp)
+		}
+		if prev[f][1] && !s.assignedHall[f][1] {
+			s.callTimestamp[f][common.BT_HallDown] = time.Time{}
+			s.injected[f][common.BT_HallDown] = false
+			s.confirmed[f][common.BT_HallDown] = false
+			s.localCalls[f][common.BT_HallDown] = false
+			s.elevator.clearRequest(f, common.BT_HallDown)
+		}
+	}
+}
+
+func (s *FsmSync) syncRequestStateFromNetwork(floor int, btn common.ButtonType) {
+	wasConfirmed := s.confirmed[floor][btn]
+	netCallActive := s.netCalls[floor][btn]
+
+	if netCallActive {
+		s.callTimestamp[floor][btn] = time.Time{}
+		s.confirmed[floor][btn] = true
+		if btn == common.BT_Cab {
+			s.localCalls[floor][btn] = true
+		}
+		return
+	}
+	s.confirmed[floor][btn] = false
+	if wasConfirmed {
+		s.localCalls[floor][btn] = false
+		s.injected[floor][btn] = false
+	}
+}
+
+func (s *FsmSync) localButtonPresses(now time.Time) (bool, bool) {
+	edgePresses, hadButtonPress, atFloorActivity := s.elevator.pollButtonPressEdges(s.prevFloor)
+	currentFloor := s.elevator.floorSensor()
+	for f := range common.N_FLOORS {
+		for btn := range common.ButtonType(common.N_BUTTONS) {
+			if !edgePresses[f][btn] {
+				continue
+			}
+			s.markPending(f, btn, now)
+			s.localCalls[f][btn] = true
+			if currentFloor == f {
+				s.elevator.onRequestButtonPress(f, btn)
+			}
+		}
+	}
+	return hadButtonPress, atFloorActivity
+}
+
+func (s *FsmSync) injectReadyRequests(now time.Time, confirmTimeout time.Duration) {
 	online := s.isOnline(now)
 	calls := s.localCalls
 	if online && s.hasNet {
 		calls = s.netCalls
 	}
-	for floor := range common.N_FLOORS {
+
+	for f := range common.N_FLOORS {
 		for btn := range common.ButtonType(common.N_BUTTONS) {
-			s.Elevator.SwitchLight(floor, btn, calls[floor][btn]) //TODO: my friends friend is not supposed to use my methods
+			if !calls[f][btn] || s.injected[f][btn] {
+				continue
+			}
+			callTimestamp := s.callTimestamp[f][btn]
+			timedOut := callTimestamp.IsZero() || now.Sub(callTimestamp) >= confirmTimeout
+			shouldInject :=
+				(!online && timedOut) ||
+					(online && (btn == common.BT_Cab || (s.hasAssigner && s.assignedHall[f][btn])))
+
+			if shouldInject {
+				s.inject(f, btn)
+				continue
+			}
+			if online && s.hasAssigner &&
+				btn != common.BT_Cab &&
+				!s.assignedHall[f][btn] &&
+				!callTimestamp.IsZero() {
+
+				log.Printf("fsmThread: hall f=%d btn=%v assigned elsewhere", f, btn)
+				s.callTimestamp[f][btn] = time.Time{}
+			}
 		}
 	}
+}
+
+func (s *FsmSync) clearServicedRequests(floor int, serviced Requests, now time.Time) {
+	if floor < 0 || floor >= common.N_FLOORS {
+		return
+	}
+	online := s.isOnline(now)
+
+	if serviced[floor][common.BT_HallUp] && s.injected[floor][common.BT_HallUp] {
+		s.localCalls[floor][common.BT_HallUp] = false
+		if !online {
+			s.injected[floor][common.BT_HallUp] = false
+		}
+	}
+
+	if serviced[floor][common.BT_HallDown] && s.injected[floor][common.BT_HallDown] {
+		s.localCalls[floor][common.BT_HallDown] = false
+		if !online {
+			s.injected[floor][common.BT_HallDown] = false
+		}
+	}
+
+	if serviced[floor][common.BT_Cab] && s.injected[floor][common.BT_Cab] {
+		s.localCalls[floor][common.BT_Cab] = false
+		if !online {
+			s.injected[floor][common.BT_Cab] = false
+		}
+	}
+}
+
+func (s *FsmSync) startDoorTimer(now time.Time) {
+	s.doorTimerEnd = now.Add(doorOpenDuration)
+	s.doorTimerActive = true
+	s.timerPaused = false
+}
+
+func (s *FsmSync) updateDoorTimerPauseResume(now time.Time, atFloorActivity bool) {
+	obstructed := s.elevator.obstruction()
+	if s.elevator.getBehaviour() == EB_DoorOpen {
+		if obstructed {
+			if !s.timerPaused {
+				s.doorTimerActive = false
+				s.timerPaused = true
+			}
+		} else if s.timerPaused || s.prevObstructed || atFloorActivity {
+			s.startDoorTimer(now)
+		}
+	} else {
+		s.timerPaused = false
+	}
+	s.prevObstructed = obstructed
+}
+
+func (s *FsmSync) processDoorTimerExpiry(now time.Time) (servicedFloor int, servicedCalls Requests) {
+	servicedFloor = -1
+	s.doorTimerActive = false
+	s.timerPaused = false
+	if s.prevFloor < 0 || s.prevFloor >= common.N_FLOORS {
+		return servicedFloor, servicedCalls
+	}
+
+	servicedFloor = s.prevFloor
+	cleared, nextAnnounceDir, restartDoorTimer := s.elevator.handleDoorTimerExpiryAtFloor(s.prevFloor, s.announceDir, true)
+	s.announceDir = nextAnnounceDir
+	servicedCalls = cleared
+	s.clearServicedRequests(s.prevFloor, servicedCalls, now)
+	if restartDoorTimer {
+		s.startDoorTimer(now)
+	}
+	return servicedFloor, servicedCalls
+}
+
+func (s *FsmSync) updateButtonLights(now time.Time) {
+	online := s.isOnline(now)
+	calls := s.localCalls
+	if online && s.hasNet {
+		calls = s.netCalls
+	}
+	s.elevator.setRequestLights(calls)
+}
+
+func (s *FsmSync) copyCabFromSnapshot(snapshot *common.Snapshot) bool {
+	for floor := range common.N_FLOORS {
+		s.netCalls[floor][common.BT_Cab] = false
+	}
+	if snapshot.States == nil {
+		return false
+	}
+	state, found := snapshot.States[s.selfKey]
+	if !found {
+		return false
+	}
+	for floor := 0; floor < common.N_FLOORS && floor < len(state.CabRequests); floor++ {
+		s.netCalls[floor][common.BT_Cab] = state.CabRequests[floor]
+	}
+	return true
+}
+
+func (s *FsmSync) markPending(f int, btn common.ButtonType, now time.Time) {
+	s.callTimestamp[f][btn] = now
+}
+
+func (s *FsmSync) inject(f int, btn common.ButtonType) {
+	s.elevator.onRequestButtonPress(f, btn)
+	s.injected[f][btn] = true
+	s.callTimestamp[f][btn] = time.Time{}
+	s.localCalls[f][btn] = true
 }

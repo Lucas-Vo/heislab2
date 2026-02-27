@@ -14,10 +14,6 @@ import (
 )
 
 func main() {
-	// start elevator
-	common.ElevioInit("localhost:15657")
-	input := common.ElevioGetInputDevice()
-
 	// ctrl + c handling
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -49,7 +45,7 @@ func main() {
 
 	go networkThread(ctx, cfg, elevUpdateCh, netSnap1Ch, netSnap2Ch)
 	go assignerThread(cfg, netSnap1Ch, assignerOutCh)
-	go fsmThread(cfg, input, assignerOutCh, elevUpdateCh, netSnap2Ch)
+	go fsmThread(cfg, assignerOutCh, elevUpdateCh, netSnap2Ch)
 	<-ctx.Done()
 	fmt.Println("Shutting down")
 

@@ -2,7 +2,6 @@ package elevfsm
 
 import (
 	"elevator/common"
-	"fmt"
 )
 
 type DirnBehaviourPair struct {
@@ -107,22 +106,11 @@ func requests_shouldStop(e Elevator) int {
 	}
 }
 
-func requests_shouldClearImmediately(e Elevator, btn_floor int, btn_type common.ButtonType) int {
-	if e.floor == btn_floor &&
-		((e.dirn == common.MD_Up && btn_type == common.BT_HallUp) ||
-			(e.dirn == common.MD_Down && btn_type == common.BT_HallDown) ||
-			e.dirn == common.MD_Stop ||
-			btn_type == common.BT_Cab) {
-		return 1
-	}
-	return 0
-}
-
-func requests_clearAtCurrentFloorDir(e Elevator, announceDir common.MotorDirection, clearCab bool) (_ Elevator, servicedCall ServicedAt) {
+func requests_clearAtCurrentFloorDir(e Elevator, announceDir common.MotorDirection, clearCab bool) (_ Elevator, cleared Requests) {
 	f := e.floor
 	if clearCab {
 		if e.requests[f][common.BT_Cab] {
-			servicedCall.Cab = true
+			cleared[f][common.BT_Cab] = true
 		}
 		e.requests[f][common.BT_Cab] = false
 	}
@@ -131,19 +119,17 @@ func requests_clearAtCurrentFloorDir(e Elevator, announceDir common.MotorDirecti
 	case common.MD_Up:
 		if e.requests[f][common.BT_HallUp] {
 			e.requests[f][common.BT_HallUp] = false
-			servicedCall.HallUp = true
-			fmt.Println("Serviced: HallUp at floor", f)
+			cleared[f][common.BT_HallUp] = true
 		}
 	case common.MD_Down:
 		if e.requests[f][common.BT_HallDown] {
 			e.requests[f][common.BT_HallDown] = false
-			servicedCall.HallDown = true
-			fmt.Println("Serviced: HallDown at floor", f)
+			cleared[f][common.BT_HallDown] = true
 		}
 	case common.MD_Stop:
 		fallthrough
 	default:
 		// no hall clearing when direction isn't announced
 	}
-	return e, servicedCall
+	return e, cleared
 }
