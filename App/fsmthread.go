@@ -38,7 +38,7 @@ func fsmThread(
 			now := time.Now()
 			elevStateChange, servicedFloor, servicedCalls := sync.Synchronize(now, confirmTimeout)
 
-			if !sync.HasNetSelf() {
+			if !sync.IsInitFromNetwork() {
 				continue
 			}
 
@@ -54,7 +54,7 @@ func fsmThread(
 				}
 			}
 			if elevStateChange {
-				snapshot := sync.BuildSnapshot(sync.CurrentFloor(), common.UpdateRequests, elevfsm.Requests{}, now)
+				snapshot := sync.BuildSnapshot(sync.GetCurrentFloor(), common.UpdateRequests, elevfsm.Requests{}, now)
 				select {
 				case elevUpdateCh <- snapshot:
 				default:

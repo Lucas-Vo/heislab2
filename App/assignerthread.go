@@ -11,7 +11,7 @@ import (
 
 // constants (seconds)
 const (
-	NETWORK_PACKET_TIMEOUT = 2
+	NETWORK_PACKET_TIMEOUT = 2 * time.Second
 
 	HRA_EXECUTABLE = "hall_request_assigner"
 )
@@ -30,17 +30,22 @@ func assignerThread(
 	}
 
 	// state variables
-	currentElevInput := ElevInput{HallTask: [N_FLOORS][2]bool{}} // TODO: needs a new name
+	elevAssignment := ElevInput{HallTask: [N_FLOORS][2]bool{}} // TODO: needs a new name
+
+	networkWatchdog := time.NewTimer(NETWORK_PACKET_TIMEOUT)
+	defer networkWatchdog.Stop()
 
 	for {
 		select {
 		case networkSnapshot := <-networkSnapshotCh:
-			//delete elevators marked stale
+			networkWatchdog.Reset(NETWORK_PACKET_TIMEOUT)
+
 			err := elevassigner.RemoveStaleStates(&networkSnapshot, selfKey)
 			if err != nil {
 				fmt.Println("removing stale states error: ", err)
 				break
 			}
+
 			// serialize snapshot to JSON
 			jsonBytes, err := json.Marshal(networkSnapshot)
 			if err != nil {
@@ -61,11 +66,11 @@ func assignerThread(
 				fmt.Println("json.Unmarshal error:", err)
 				break
 			}
-			// pick tasks for THIS elevator to send to elevator controller
-			currentElevInput = ElevInput{HallTask: output[selfKey]}
-			elevatorTasksCh <- currentElevInput
 
-		case <-time.After(NETWORK_PACKET_TIMEOUT * time.Second):
+			elevAssignment = ElevInput{HallTask: output[selfKey]}
+			elevatorTasksCh <- elevAssignment
+
+		case <-networkWatchdog.C:
 			fmt.Println("Snapshot from network update timeout, withholding updates until next network ack")
 		}
 	}

@@ -147,7 +147,7 @@ func (e *Elevator) hallRequestsAtFloor(floor int) (up bool, down bool) {
 	return e.requestAt(floor, common.BT_HallUp), e.requestAt(floor, common.BT_HallDown)
 }
 
-func (e *Elevator) chooseAnnounceDirAtFloor(floor int, fallback common.MotorDirection) common.MotorDirection {
+func (e *Elevator) chooseNewDirAtFloor(floor int, fallback common.MotorDirection) common.MotorDirection {
 	up, down := e.hallRequestsAtFloor(floor)
 	if up && !down {
 		return common.MD_Up
@@ -174,12 +174,9 @@ func (e *Elevator) clearRequest(floor int, btn common.ButtonType) {
 	e.requests[floor][btn] = false
 }
 
-func (e *Elevator) pollButtonPressEdges(trackedFloor int) (Requests, bool, bool) {
-	edgePresses := Requests{}
-	hadPress := false
-	var hallUpAtTracked bool
-	var hallDownAtTracked bool
-	var cabAtTracked bool
+func (e *Elevator) pollButtonPresses(trackedFloor int) (buttonPresses Requests, hadPress bool, atFloorActivity bool) {
+	buttonPresses, hadPress = Requests{}, false
+	direction := e.getDirection()
 
 	for f := range common.N_FLOORS {
 		for btn := range common.N_BUTTONS {
@@ -188,38 +185,28 @@ func (e *Elevator) pollButtonPressEdges(trackedFloor int) (Requests, bool, bool)
 			if isEdge {
 				hadPress = true
 				buttonType := common.ButtonType(btn)
-				edgePresses[f][buttonType] = true
+				buttonPresses[f][buttonType] = true
 				if f == trackedFloor {
 					switch buttonType {
 					case common.BT_HallUp:
-						hallUpAtTracked = true
+						atFloorActivity = direction != common.MD_Stop || atFloorActivity
 					case common.BT_HallDown:
-						hallDownAtTracked = true
+						atFloorActivity = direction != common.MD_Stop || atFloorActivity //TODO: Maybe changeable
 					case common.BT_Cab:
-						cabAtTracked = true
+						atFloorActivity = true
 					}
 				}
 			}
 			e.buttonLevels[f][btn] = value
 		}
 	}
-
-	direction := e.getDirection()
-	atFloorActivity := cabAtTracked ||
-		(hallUpAtTracked && direction != common.MD_Stop) ||
-		(hallDownAtTracked && direction != common.MD_Stop)
-	return edgePresses, hadPress, atFloorActivity
+	return buttonPresses, hadPress, atFloorActivity
 }
 
-func (e *Elevator) updateFromSensors(prevFloor int, prevBehaviour ElevatorBehaviour, prevDirection common.MotorDirection) (newFloor int, newBehaviour ElevatorBehaviour, newDirection common.MotorDirection, stateChanged bool) {
+func (e *Elevator) PollSensors() (newFloor int, newBehaviour ElevatorBehaviour, newDirection common.MotorDirection) {
 	newFloor = e.inputDevice.FloorSensor()
-	if newFloor != -1 && newFloor != prevFloor {
-		e.onFloorArrival(newFloor)
-	}
-
 	newBehaviour = e.getBehaviour()
 	newDirection = e.getDirection()
-	stateChanged = newFloor != prevFloor || newBehaviour != prevBehaviour || newDirection != prevDirection
 	return
 }
 
@@ -240,7 +227,7 @@ func (e *Elevator) getBehaviour() ElevatorBehaviour { return e.behaviour }
 
 func (e *Elevator) getDirection() common.MotorDirection { return e.dirn }
 
-func (e *Elevator) shouldChainOppositeHallAtCurrentStop() bool {
+func (e *Elevator) shouldSwitchDirection() bool {
 	switch e.getDirection() {
 	case common.MD_Up:
 		return requests_above(*e) == 0
@@ -253,16 +240,16 @@ func (e *Elevator) shouldChainOppositeHallAtCurrentStop() bool {
 	}
 }
 
-// handleDoorTimerExpiryAtFloor decides local door-expiry behaviour and applies local FSM transitions.
+// OnDoorClose decides local door-expiry behaviour and applies local FSM transitions.
 // Returns cleared requests at floor, the next announce direction, and whether to restart the door timer.
-func (e *Elevator) handleDoorTimerExpiryAtFloor(floor int, announceDir common.MotorDirection, clearCab bool) (cleared Requests, nextAnnounceDir common.MotorDirection, restartDoorTimer bool) {
+func (e *Elevator) OnDoorClose(floor int, announceDir common.MotorDirection, clearCab bool) (cleared Requests, nextAnnounceDir common.MotorDirection, restartDoorTimer bool) {
 	e.setFloor(floor)
 	upReq, downReq := e.hallRequestsAtFloor(floor)
 	nextAnnounceDir = announceDir
 
 	if announceDir == common.MD_Up && upReq {
 		cleared = e.clearAtCurrentFloorDir(common.MD_Up, clearCab)
-		if downReq && e.shouldChainOppositeHallAtCurrentStop() {
+		if downReq && e.shouldSwitchDirection() {
 			return cleared, common.MD_Down, true
 		}
 		e.onDoorTimeout()
@@ -271,7 +258,7 @@ func (e *Elevator) handleDoorTimerExpiryAtFloor(floor int, announceDir common.Mo
 
 	if announceDir == common.MD_Down && downReq {
 		cleared = e.clearAtCurrentFloorDir(common.MD_Down, clearCab)
-		if upReq && e.shouldChainOppositeHallAtCurrentStop() {
+		if upReq && e.shouldSwitchDirection() {
 			return cleared, common.MD_Up, true
 		}
 		e.onDoorTimeout()
@@ -280,13 +267,13 @@ func (e *Elevator) handleDoorTimerExpiryAtFloor(floor int, announceDir common.Mo
 
 	if upReq || downReq {
 		arrivalDir := e.getDirection()
-		nextAnnounceDir = e.chooseAnnounceDirAtFloor(floor, arrivalDir)
+		nextAnnounceDir = e.chooseNewDirAtFloor(floor, arrivalDir)
 		cleared = e.clearAtCurrentFloorDir(nextAnnounceDir, clearCab)
 
-		if nextAnnounceDir == common.MD_Up && downReq && e.shouldChainOppositeHallAtCurrentStop() {
+		if nextAnnounceDir == common.MD_Up && downReq && e.shouldSwitchDirection() {
 			return cleared, common.MD_Down, true
 		}
-		if nextAnnounceDir == common.MD_Down && upReq && e.shouldChainOppositeHallAtCurrentStop() {
+		if nextAnnounceDir == common.MD_Down && upReq && e.shouldSwitchDirection() {
 			return cleared, common.MD_Up, true
 		}
 		e.onDoorTimeout()

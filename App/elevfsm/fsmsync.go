@@ -15,9 +15,8 @@ type FsmSync struct {
 	config  common.Config
 	selfKey string
 
-	hasNet      bool
-	hasNetSelf  bool
-	lastNetSeen time.Time
+	initFromNetwork bool
+	lastNetSeen     time.Time
 
 	assignedHall [common.N_FLOORS][2]bool
 	hasAssigner  bool
@@ -40,10 +39,9 @@ type FsmSync struct {
 	prevDirection  common.MotorDirection
 	prevObstructed bool
 
-	timerPaused     bool
-	doorTimerEnd    time.Time
-	doorTimerActive bool
-	announceDir     common.MotorDirection
+	doorTimerEnd   time.Time
+	doorTimerState common.DoorTimerState
+	announceDir    common.MotorDirection
 }
 
 // NewFsmSyncAndInit initializes sync, elevator IO and publishes an initial snapshot.
@@ -75,29 +73,15 @@ func NewFsmSyncAndInit(config common.Config, elevUpdateCh chan<- common.Snapshot
 	return s
 }
 
-func (s *FsmSync) isOnline(now time.Time) bool {
-	return now.Sub(s.lastNetSeen) < netOfflineTimeout
-}
-
-// HasNetSelf reports whether the latest snapshot included our own cab requests.
-func (s *FsmSync) HasNetSelf() bool {
-	return s.hasNetSelf
-}
-
-func (s *FsmSync) CurrentFloor() int {
-	return s.prevFloor
-}
-
 func (s *FsmSync) HandleNetworkSnapshot(snap common.Snapshot, now time.Time, confirmTimeout time.Duration) {
-	s.hasNet = true
 	s.lastNetSeen = now
 
 	for f := range common.N_FLOORS {
 		s.netCalls[f][0] = snap.HallRequests[f][0]
 		s.netCalls[f][1] = snap.HallRequests[f][1]
 	}
-	if s.copyCabFromSnapshot(&snap) {
-		s.hasNetSelf = true
+	if s.fetchCabFromSnapshot(&snap) {
+		s.initFromNetwork = true
 	}
 	for f := range common.N_FLOORS {
 		for btn := range common.ButtonType(common.N_BUTTONS) {
@@ -119,33 +103,33 @@ func (s *FsmSync) HandleAssignerTask(task common.ElevInput, now time.Time, confi
 }
 
 func (s *FsmSync) Synchronize(now time.Time, confirmTimeout time.Duration) (elevStateChange bool, servicedFloor int, servicedCalls Requests) {
-	servicedFloor = -1
+	servicedFloor, servicedCalls = -1, Requests{}
+	newButtonPressed, atFloorActivity := s.localButtonPresses(now)
 
-	hadButtonPress, atFloorActivity := s.localButtonPresses(now)
-	if hadButtonPress {
+	newFloor, newBehaviour, newDirection := s.elevator.PollSensors()
+	if newFloor != s.prevFloor ||
+		newBehaviour != s.prevBehaviour ||
+		newDirection != s.prevDirection ||
+		newButtonPressed {
 		elevStateChange = true
 	}
-
-	newFloor, newBehaviour, newDirection, stateChanged := s.elevator.updateFromSensors(s.prevFloor, s.prevBehaviour, s.prevDirection)
-	if stateChanged {
-		elevStateChange = true
-	}
-	if newFloor != -1 && newFloor != s.prevFloor {
+	if newFloor != -1 && s.prevFloor != newFloor {
+		s.elevator.onFloorArrival(newFloor)
 		s.prevFloor = newFloor
 	}
 
-	s.updateDoorTimerPauseResume(now, atFloorActivity)
+	s.manageDoorTimer(now, atFloorActivity)
 
 	if s.prevBehaviour != newBehaviour && newBehaviour == EB_DoorOpen {
 		arrivalDirn := s.elevator.getDirection()
-		s.announceDir = s.elevator.chooseAnnounceDirAtFloor(s.prevFloor, arrivalDirn)
+		s.announceDir = s.elevator.chooseNewDirAtFloor(s.prevFloor, arrivalDirn)
 		s.startDoorTimer(now)
 	}
 	s.prevBehaviour = newBehaviour
 	s.prevDirection = newDirection
 
-	if s.doorTimerActive && now.After(s.doorTimerEnd) {
-		servicedFloor, servicedCalls = s.processDoorTimerExpiry(now)
+	if s.doorTimerState == common.DT_Active && now.After(s.doorTimerEnd) {
+		servicedFloor, servicedCalls = s.onDoorTimerExpiry(now)
 	}
 
 	s.injectReadyRequests(now, confirmTimeout)
@@ -156,7 +140,7 @@ func (s *FsmSync) Synchronize(now time.Time, confirmTimeout time.Duration) (elev
 func (s *FsmSync) BuildSnapshot(floor int, kind common.UpdateKind, callsCleared Requests, now time.Time) common.Snapshot {
 	online := s.isOnline(now)
 	baseCalls := s.localCalls
-	if kind == common.UpdateServiced && online && s.hasNet {
+	if kind == common.UpdateServiced && online {
 		baseCalls = s.netCalls
 	}
 
@@ -225,7 +209,7 @@ func (s *FsmSync) syncRequestStateFromNetwork(floor int, btn common.ButtonType) 
 }
 
 func (s *FsmSync) localButtonPresses(now time.Time) (bool, bool) {
-	edgePresses, hadButtonPress, atFloorActivity := s.elevator.pollButtonPressEdges(s.prevFloor)
+	edgePresses, newButtonPressed, atFloorActivity := s.elevator.pollButtonPresses(s.prevFloor)
 	currentFloor := s.elevator.floorSensor()
 	for f := range common.N_FLOORS {
 		for btn := range common.ButtonType(common.N_BUTTONS) {
@@ -239,13 +223,13 @@ func (s *FsmSync) localButtonPresses(now time.Time) (bool, bool) {
 			}
 		}
 	}
-	return hadButtonPress, atFloorActivity
+	return newButtonPressed, atFloorActivity
 }
 
 func (s *FsmSync) injectReadyRequests(now time.Time, confirmTimeout time.Duration) {
 	online := s.isOnline(now)
 	calls := s.localCalls
-	if online && s.hasNet {
+	if online {
 		calls = s.netCalls
 	}
 
@@ -306,39 +290,33 @@ func (s *FsmSync) clearServicedRequests(floor int, serviced Requests, now time.T
 
 func (s *FsmSync) startDoorTimer(now time.Time) {
 	s.doorTimerEnd = now.Add(doorOpenDuration)
-	s.doorTimerActive = true
-	s.timerPaused = false
+	s.doorTimerState = common.DT_Active
 }
 
-func (s *FsmSync) updateDoorTimerPauseResume(now time.Time, atFloorActivity bool) {
+func (s *FsmSync) manageDoorTimer(now time.Time, atFloorActivity bool) {
 	obstructed := s.elevator.obstruction()
 	if s.elevator.getBehaviour() == EB_DoorOpen {
 		if obstructed {
-			if !s.timerPaused {
-				s.doorTimerActive = false
-				s.timerPaused = true
-			}
-		} else if s.timerPaused || s.prevObstructed || atFloorActivity {
+			s.doorTimerState = common.DT_Paused
+		} else if s.doorTimerState == common.DT_Paused || s.prevObstructed || atFloorActivity {
 			s.startDoorTimer(now)
 		}
 	} else {
-		s.timerPaused = false
+		s.doorTimerState = common.DT_Inactive
 	}
 	s.prevObstructed = obstructed
 }
 
-func (s *FsmSync) processDoorTimerExpiry(now time.Time) (servicedFloor int, servicedCalls Requests) {
-	servicedFloor = -1
-	s.doorTimerActive = false
-	s.timerPaused = false
+func (s *FsmSync) onDoorTimerExpiry(now time.Time) (servicedFloor int, servicedCalls Requests) {
+	servicedFloor, servicedCalls = -1, Requests{}
+	s.doorTimerState = common.DT_Inactive
 	if s.prevFloor < 0 || s.prevFloor >= common.N_FLOORS {
 		return servicedFloor, servicedCalls
 	}
 
 	servicedFloor = s.prevFloor
-	cleared, nextAnnounceDir, restartDoorTimer := s.elevator.handleDoorTimerExpiryAtFloor(s.prevFloor, s.announceDir, true)
-	s.announceDir = nextAnnounceDir
-	servicedCalls = cleared
+	servicedCalls, nextAnnouncedDir, restartDoorTimer := s.elevator.OnDoorClose(s.prevFloor, s.announceDir, true)
+	s.announceDir = nextAnnouncedDir
 	s.clearServicedRequests(s.prevFloor, servicedCalls, now)
 	if restartDoorTimer {
 		s.startDoorTimer(now)
@@ -347,15 +325,14 @@ func (s *FsmSync) processDoorTimerExpiry(now time.Time) (servicedFloor int, serv
 }
 
 func (s *FsmSync) updateButtonLights(now time.Time) {
-	online := s.isOnline(now)
 	calls := s.localCalls
-	if online && s.hasNet {
+	if s.isOnline(now) {
 		calls = s.netCalls
 	}
 	s.elevator.setRequestLights(calls)
 }
 
-func (s *FsmSync) copyCabFromSnapshot(snapshot *common.Snapshot) bool {
+func (s *FsmSync) fetchCabFromSnapshot(snapshot *common.Snapshot) bool {
 	for floor := range common.N_FLOORS {
 		s.netCalls[floor][common.BT_Cab] = false
 	}
@@ -377,4 +354,16 @@ func (s *FsmSync) inject(f int, btn common.ButtonType) {
 	s.injected[f][btn] = true
 	s.callTimestamp[f][btn] = time.Time{}
 	s.localCalls[f][btn] = true
+}
+
+func (s *FsmSync) isOnline(now time.Time) bool {
+	return now.Sub(s.lastNetSeen) < netOfflineTimeout
+}
+
+func (s *FsmSync) IsInitFromNetwork() bool {
+	return s.initFromNetwork
+}
+
+func (s *FsmSync) GetCurrentFloor() int {
+	return s.prevFloor
 }
