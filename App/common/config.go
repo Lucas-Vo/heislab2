@@ -23,7 +23,7 @@ type Config struct {
 // DefaultConfig builds the config AND detects self.
 // Safe version: returns err if self cannot be detected.
 func DefaultConfig() (Config, string, error) {
-	cfg := Config{
+	config := Config{
 		Ports: []int{4242, 4243},
 		HostByID: map[int]string{
 			1: "10.100.23.34",
@@ -34,13 +34,13 @@ func DefaultConfig() (Config, string, error) {
 			6: "10.24.64.100",   // lucas ip
 		},
 	}
-	if err := cfg.InitSelf(); err != nil {
+	if err := config.InitSelf(); err != nil {
 		return Config{}, "", err
 	}
-	return cfg, cfg.SelfKey, nil
+	return config, config.SelfKey, nil
 }
 
-// InitSelf detects and stores SelfID/SelfKey inside cfg.
+// InitSelf detects and stores SelfID/SelfKey inside config.
 func (c *Config) InitSelf() error {
 	elevID, err := c.DetectSelfID()
 	if err != nil {

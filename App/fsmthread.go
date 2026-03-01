@@ -9,17 +9,17 @@ import (
 )
 
 func fsmThread(
-	cfg common.Config,
+	config common.Config,
 	assignerOutputCh <-chan common.ElevInput,
 	elevUpdateCh chan<- common.Snapshot,
 	netWorldView2Ch <-chan common.Snapshot, // network -> fsm
 ) {
-	log.Printf("fsmThread started (self=%s)", cfg.SelfKey)
+	log.Printf("fsmThread started (self=%s)", config.SelfKey)
 
 	inputPollRateMs := 25
 	confirmTimeout := 200 * time.Millisecond
 
-	sync := elevfsm.NewFsmSyncAndInit(cfg, elevUpdateCh)
+	sync := elevfsm.NewFsmSyncAndInit(config, elevUpdateCh)
 
 	ticker := time.NewTicker(time.Duration(inputPollRateMs) * time.Millisecond)
 	defer ticker.Stop()

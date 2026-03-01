@@ -37,15 +37,15 @@ func main() {
 	// vetle til filip
 	assignerOutCh := make(chan ElevInput, 4)
 
-	cfg, _, err := common.DefaultConfig()
+	config, _, err := common.DefaultConfig()
 	if err != nil {
 		fmt.Println("Error loading config")
 
 	}
 
-	go networkThread(ctx, cfg, elevUpdateCh, netSnap1Ch, netSnap2Ch)
-	go assignerThread(cfg, netSnap1Ch, assignerOutCh)
-	go fsmThread(cfg, assignerOutCh, elevUpdateCh, netSnap2Ch)
+	go networkThread(ctx, config, elevUpdateCh, netSnap1Ch, netSnap2Ch)
+	go assignerThread(config, netSnap1Ch, assignerOutCh)
+	go fsmThread(config, assignerOutCh, elevUpdateCh, netSnap2Ch)
 	<-ctx.Done()
 	fmt.Println("Shutting down")
 

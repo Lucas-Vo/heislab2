@@ -12,7 +12,7 @@ const netOfflineTimeout = 5 * time.Second
 const doorOpenDuration = 3 * time.Second
 
 type FsmSync struct {
-	cfg     common.Config
+	config  common.Config
 	selfKey string
 
 	hasNet      bool
@@ -47,10 +47,10 @@ type FsmSync struct {
 }
 
 // NewFsmSyncAndInit initializes sync, elevator IO and publishes an initial snapshot.
-func NewFsmSyncAndInit(cfg common.Config, elevUpdateCh chan<- common.Snapshot) *FsmSync {
+func NewFsmSyncAndInit(config common.Config, elevUpdateCh chan<- common.Snapshot) *FsmSync {
 	s := &FsmSync{
-		cfg:           cfg,
-		selfKey:       cfg.SelfKey,
+		config:        config,
+		selfKey:       config.SelfKey,
 		assignedHall:  [common.N_FLOORS][2]bool{},
 		reportedFloor: -1,
 		prevFloor:     -1,
