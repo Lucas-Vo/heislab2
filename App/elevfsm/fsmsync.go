@@ -125,8 +125,7 @@ func (s *FsmSync) Synchronize(now time.Time, confirmTimeout time.Duration) (elev
 		s.announceDir = s.elevator.chooseNewDirAtFloor(s.prevFloor, arrivalDirn)
 		s.startDoorTimer(now)
 	}
-	s.prevBehaviour = newBehaviour
-	s.prevDirection = newDirection
+	s.prevBehaviour, s.prevDirection = newBehaviour, newDirection
 
 	if s.doorTimerState == common.DT_Active && now.After(s.doorTimerEnd) {
 		servicedFloor, servicedCalls = s.onDoorTimerExpiry(now)
@@ -139,12 +138,11 @@ func (s *FsmSync) Synchronize(now time.Time, confirmTimeout time.Duration) (elev
 
 func (s *FsmSync) BuildSnapshot(floor int, kind common.UpdateKind, callsCleared Requests, now time.Time) common.Snapshot {
 	online := s.isOnline(now)
-	baseCalls := s.localCalls
+	outCalls := s.localCalls
 	if kind == common.UpdateServiced && online {
-		baseCalls = s.netCalls
+		outCalls = s.netCalls
 	}
 
-	outCalls := baseCalls
 	if kind == common.UpdateServiced {
 		for f := range common.N_FLOORS {
 			if callsCleared[f][common.BT_HallUp] {
