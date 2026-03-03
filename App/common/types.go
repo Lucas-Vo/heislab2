@@ -7,14 +7,6 @@ const (
 	UpdateServiced                   // AND merge
 )
 
-type DoorTimerState int
-
-const (
-	DT_Inactive DoorTimerState = iota
-	DT_Active
-	DT_Paused
-)
-
 type ElevState struct {
 	Behavior    string         `json:"behaviour"`
 	Floor       int            `json:"floor"`
