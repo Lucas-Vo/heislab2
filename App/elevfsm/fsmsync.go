@@ -257,25 +257,12 @@ func (s *FsmSync) clearServicedRequests(floor int, serviced Requests, now time.T
 		return
 	}
 	online := s.isOnline(now)
-
-	if serviced[floor][common.BT_HallUp] && s.injected[floor][common.BT_HallUp] {
-		s.localCalls[floor][common.BT_HallUp] = false
-		if !online {
-			s.injected[floor][common.BT_HallUp] = false
-		}
-	}
-
-	if serviced[floor][common.BT_HallDown] && s.injected[floor][common.BT_HallDown] {
-		s.localCalls[floor][common.BT_HallDown] = false
-		if !online {
-			s.injected[floor][common.BT_HallDown] = false
-		}
-	}
-
-	if serviced[floor][common.BT_Cab] && s.injected[floor][common.BT_Cab] {
-		s.localCalls[floor][common.BT_Cab] = false
-		if !online {
-			s.injected[floor][common.BT_Cab] = false
+	for btn := range common.ButtonType(common.N_BUTTONS) {
+		if serviced[floor][btn] && s.injected[floor][btn] {
+			s.localCalls[floor][btn] = false
+			if !online {
+				s.injected[floor][btn] = false
+			}
 		}
 	}
 }
