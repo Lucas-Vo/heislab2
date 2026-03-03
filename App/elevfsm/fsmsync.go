@@ -45,17 +45,8 @@ func NewFsmSyncAndInit(config common.Config, elevUpdateCh chan<- common.Snapshot
 		assignedHall: [common.N_FLOORS][2]bool{},
 		prevFloor:    -1,
 	}
-	s.elevator = elevatorInit("localhost:15657")
+	s.elevator, s.prevFloor, s.prevDirection, s.prevBehaviour = elevatorInit("localhost:15657")
 	s.lastNetSeen = time.Now()
-
-	if newFloor := s.elevator.floorSensor(); newFloor != -1 {
-		s.elevator.onFloorArrival(newFloor)
-		s.prevFloor = newFloor
-	} else {
-		s.elevator.onInitBetweenFloors()
-	}
-	s.prevDirection = s.elevator.getDirection()
-	s.prevBehaviour = s.elevator.getBehaviour()
 
 	initialSnap := s.BuildSnapshot(s.prevFloor, common.UpdateRequests, Requests{}, time.Now())
 	select {
@@ -115,7 +106,7 @@ func (s *FsmSync) Synchronize(now time.Time, confirmTimeout time.Duration) (elev
 	}
 
 	if s.prevBehaviour != newBehaviour && newBehaviour == EB_DoorOpen {
-		arrivalDirn := s.elevator.getDirection()
+		arrivalDirn := s.elevator.dirn
 		s.announceDir = s.elevator.chooseNewDirAtFloor(s.prevFloor, arrivalDirn)
 		s.doorTimerEnd = now.Add(doorOpenDuration)
 	}
