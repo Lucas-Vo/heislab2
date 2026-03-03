@@ -25,7 +25,7 @@ type Elevator struct {
 	outputDevice common.ElevOutputDevice
 }
 
-func elevatorInit(ioAddr string) *Elevator {
+func elevatorInit(ioAddr string) (elev *Elevator, prevFloor int, prevDirection common.MotorDirection, prevBehaviour ElevatorBehaviour) {
 	common.ElevioInit(ioAddr)
 	e := new(Elevator)
 	e.floor = -1
@@ -35,14 +35,20 @@ func elevatorInit(ioAddr string) *Elevator {
 	e.inputDevice = common.ElevioGetInputDevice()
 	e.outputDevice = common.ElevioGetOutputDevice()
 	e.outputDevice.DoorLight(false)
+	newFloor := e.floorSensor()
 
-	return e
-}
-
-func (e *Elevator) onInitBetweenFloors() {
-	e.outputDevice.MotorDirection(common.MD_Down)
-	e.dirn = common.MD_Down
-	e.behaviour = EB_Moving
+	if newFloor != -1 {
+		e.onFloorArrival(newFloor)
+		prevFloor = newFloor
+	} else {
+		e.outputDevice.MotorDirection(common.MD_Down)
+		e.dirn = common.MD_Down
+		e.behaviour = EB_Moving
+	}
+	prevDirection = e.dirn
+	prevBehaviour = e.behaviour
+	elev = e
+	return
 }
 
 func (e *Elevator) onRequestButtonPress(btnFloor int, btnType common.ButtonType) {
@@ -155,8 +161,8 @@ func (e *Elevator) pollButtonPresses() (buttonPresses Requests, hadPress bool) {
 
 func (e *Elevator) PollSensors() (newFloor int, newBehaviour ElevatorBehaviour, newDirection common.MotorDirection, obstructed bool) {
 	newFloor = e.inputDevice.FloorSensor()
-	newBehaviour = e.getBehaviour()
-	newDirection = e.getDirection()
+	newBehaviour = e.behaviour
+	newDirection = e.dirn
 	obstructed = e.obstruction()
 	return
 }
@@ -169,12 +175,8 @@ func (e *Elevator) setRequestLights(calls Requests) {
 	}
 }
 
-func (e *Elevator) getBehaviour() ElevatorBehaviour { return e.behaviour }
-
-func (e *Elevator) getDirection() common.MotorDirection { return e.dirn }
-
 func (e *Elevator) shouldSwitchDirection() bool {
-	switch e.getDirection() {
+	switch e.dirn {
 	case common.MD_Up:
 		return requests_above(e.requests, e.floor) == 0
 	case common.MD_Down:
@@ -212,7 +214,7 @@ func (e *Elevator) OnDoorClose(floor int, announceDir common.MotorDirection, cle
 	}
 
 	if upReq || downReq {
-		arrivalDir := e.getDirection()
+		arrivalDir := e.dirn
 		nextAnnounceDir = e.chooseNewDirAtFloor(floor, arrivalDir)
 		cleared = requests_clearAtCurrentFloorDir(e.requests, e.floor, nextAnnounceDir, clearCab)
 
