@@ -201,7 +201,7 @@ func (s *FsmSync) syncRequestStateFromNetwork(floor int, btn common.ButtonType) 
 }
 
 func (s *FsmSync) localButtonPresses(now time.Time) (newButtonPressed bool) {
-	edgePresses, newButtonPressed := s.elevator.pollButtonPresses(s.prevFloor)
+	edgePresses, newButtonPressed := s.elevator.pollButtonPresses()
 	currentFloor := s.elevator.floorSensor()
 	for f := range common.N_FLOORS {
 		for btn := range common.ButtonType(common.N_BUTTONS) {

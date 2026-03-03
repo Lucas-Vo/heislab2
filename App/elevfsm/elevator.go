@@ -48,18 +48,11 @@ func (e *Elevator) onInitBetweenFloors() {
 }
 
 func (e *Elevator) onRequestButtonPress(btnFloor int, btnType common.ButtonType) {
-	switch e.behaviour {
-	case EB_DoorOpen:
-		e.requests[btnFloor][btnType] = true
-	case EB_Moving:
-		e.requests[btnFloor][btnType] = true
-	case EB_Idle:
-		e.requests[btnFloor][btnType] = true
+	e.requests[btnFloor][btnType] = true
+	if e.behaviour == EB_Idle {
 		pair := requests_chooseDirection(*e)
-
 		e.dirn = pair.dirn
 		e.behaviour = pair.behaviour
-
 		switch pair.behaviour {
 		case EB_DoorOpen:
 			e.outputDevice.DoorLight(true)
@@ -105,14 +98,7 @@ func (e *Elevator) onDoorTimeout() {
 	}
 }
 
-func (e *Elevator) onStopButtonPress() { //TODO make function cool
-	switch e.behaviour {
-	case EB_Moving:
-		e.outputDevice.MotorDirection(common.MD_Stop)
-		e.outputDevice.DoorLight(true)
-		e.behaviour = EB_DoorOpen
-	}
-}
+func (e *Elevator) onStopButtonPress() { /*TODO make function cool*/ }
 
 func (e *Elevator) switchLight(floor int, btn common.ButtonType, on bool) {
 	e.outputDevice.RequestButtonLight(floor, btn, on)
@@ -174,7 +160,7 @@ func (e *Elevator) clearRequest(floor int, btn common.ButtonType) {
 	e.requests[floor][btn] = false
 }
 
-func (e *Elevator) pollButtonPresses(trackedFloor int) (buttonPresses Requests, hadPress bool) {
+func (e *Elevator) pollButtonPresses() (buttonPresses Requests, hadPress bool) {
 	buttonPresses, hadPress = Requests{}, false
 
 	for f := range common.N_FLOORS {
