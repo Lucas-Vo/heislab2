@@ -182,7 +182,7 @@ func (e *Elevator) onDoorTimerExpiry(now time.Time) (servicedFloor int, serviced
 }
 
 func (e *Elevator) CurrentFloor() int {
-	return e.floor
+	return e.prevFloor
 }
 
 func (e *Elevator) FloorSensor() int {
