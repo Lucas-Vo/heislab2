@@ -70,7 +70,7 @@ func assignerThread(
 			elevAssignment = ElevInput{HallTask: output[selfKey]}
 			elevatorTasksCh <- elevAssignment
 
-		case <-networkWatchdog.C:
+		case <-networkWatchdog.C: //TODO: more domain oriented naming
 			fmt.Println("Snapshot from network update timeout, withholding updates until next network ack")
 		}
 	}

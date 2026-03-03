@@ -33,7 +33,7 @@ type WorldView struct {
 	pm           *Manager
 }
 
-func NewWorldView(ctx context.Context, cfg common.Config, port int) (*WorldView, <-chan []byte) {
+func InitWorldView(ctx context.Context, cfg common.Config, port int) (*WorldView, <-chan []byte) {
 	pm := NewPeerManager()
 	incoming := pm.Start(ctx, cfg, port)
 	wv := &WorldView{
@@ -111,7 +111,7 @@ func (wv *WorldView) SnapshotsAreCoherent() bool {
 			hasRef = true
 			continue
 		}
-		if !snapshotsEqual(ref, snap, alive, wv.peers) {
+		if !common.SnapshotsEqual(ref, snap, alive, wv.peers) {
 			return false
 		}
 	}
@@ -214,13 +214,14 @@ func (wv *WorldView) mergeWorldView(fromKey string, ns common.Snapshot) (becameR
 	wv.lastHeard[fromKey] = time.Now()
 	if fromKey != wv.selfKey {
 		wv.lastSnapshot[fromKey] = common.DeepCopySnapshot(ns)
+		if !wv.ready && ns.UpdateKind == common.UpdateRequests {
+			wv.recoverCabRequests(ns)
+			wv.ready = true
+			becameReady = true
+		}
 	}
-	if !wv.ready && fromKey != wv.selfKey && ns.UpdateKind == common.UpdateRequests {
-		wv.recoverCabRequests(ns)
-		wv.ready = true
-		becameReady = true
-	}
-	wv.snapshot.HallRequests = mergeHall(wv.snapshot.HallRequests, ns.HallRequests, ns.UpdateKind)
+
+	wv.snapshot.HallRequests = common.MergeHallRequests(wv.snapshot.HallRequests, ns.HallRequests, ns.UpdateKind)
 	for k, st := range ns.States {
 		if k == wv.selfKey && fromKey != wv.selfKey && wv.ready {
 			wv.ready = true
@@ -240,54 +241,8 @@ func (wv *WorldView) recoverCabRequests(ns common.Snapshot) {
 	if len(localSelf.CabRequests) != common.N_FLOORS {
 		localSelf.CabRequests = [common.N_FLOORS]bool{}
 	}
-	for i := 0; i < common.N_FLOORS; i++ {
+	for i := range common.N_FLOORS {
 		localSelf.CabRequests[i] = localSelf.CabRequests[i] || peerSelf.CabRequests[i]
 	}
 	wv.snapshot.States[wv.selfKey] = localSelf
-}
-
-func snapshotsEqual(a, b common.Snapshot, alive map[string]bool, peers []string) bool {
-	for i := 0; i < common.N_FLOORS; i++ {
-		if hallAt(a, i, 0) != hallAt(b, i, 0) {
-			return false
-		}
-		if hallAt(a, i, 1) != hallAt(b, i, 1) {
-			return false
-		}
-	}
-	for _, id := range peers {
-		if !alive[id] {
-			continue
-		}
-		aSt, aOk := a.States[id]
-		bSt, bOk := b.States[id]
-		if !aOk || !bOk {
-			return false
-		}
-		if aSt.Behavior != bSt.Behavior || aSt.Direction != bSt.Direction || aSt.Floor != bSt.Floor {
-			return false
-		}
-	}
-	return true
-}
-
-func hallAt(s common.Snapshot, floor int, btn int) bool {
-	if floor < 0 || floor >= len(s.HallRequests) {
-		return false
-	}
-	return s.HallRequests[floor][btn]
-}
-
-func mergeHall(current, incoming [common.N_FLOORS][2]bool, kind common.UpdateKind) [common.N_FLOORS][2]bool {
-	merged := [common.N_FLOORS][2]bool{}
-	for i := range common.N_FLOORS {
-		if kind == common.UpdateServiced {
-			merged[i][0] = current[i][0] && incoming[i][0]
-			merged[i][1] = current[i][1] && incoming[i][1]
-		} else {
-			merged[i][0] = current[i][0] || incoming[i][0]
-			merged[i][1] = current[i][1] || incoming[i][1]
-		}
-	}
-	return merged
 }

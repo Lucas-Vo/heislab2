@@ -72,7 +72,7 @@ func (s *FsmSync) HandleNetworkSnapshot(snap common.Snapshot, now time.Time, con
 		s.netCalls[f][0] = snap.HallRequests[f][0]
 		s.netCalls[f][1] = snap.HallRequests[f][1]
 	}
-	if s.fetchCabFromSnapshot(&snap) {
+	if s.fetchSelfFromSnapshot(&snap) {
 		s.initFromNetwork = true
 	}
 	for f := range common.N_FLOORS {
@@ -305,7 +305,7 @@ func (s *FsmSync) updateButtonLights(now time.Time) {
 	s.elevator.setRequestLights(calls)
 }
 
-func (s *FsmSync) fetchCabFromSnapshot(snapshot *common.Snapshot) bool {
+func (s *FsmSync) fetchSelfFromSnapshot(snapshot *common.Snapshot) bool {
 	for floor := range common.N_FLOORS {
 		s.netCalls[floor][common.BT_Cab] = false
 	}

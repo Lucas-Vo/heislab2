@@ -21,7 +21,7 @@ func networkThread(
 ) {
 	selfKey := cfg.SelfKey
 
-	wv, incoming := elevnetwork.NewWorldView(ctx, cfg, 4242)
+	wv, incoming := elevnetwork.InitWorldView(ctx, cfg, 4242)
 
 	ticker := time.NewTicker(300 * time.Millisecond)
 	defer ticker.Stop()
@@ -34,17 +34,14 @@ func networkThread(
 
 	for {
 		select {
-		case <-ctx.Done():
-			return
-
 		case ns := <-elevUpdateCh:
 			wv.SetSelfAlive(true)
 			elevatorErrorTimer.Reset(4 * time.Second)
 			wv.MergeLocal(ns)
 
 		case frame := <-incoming:
-			kind, becameReady := wv.MergeRemote(frame)
-			if kind == common.UpdateRequests && becameReady { // todo, will cab recovery work without these lines?
+			kind, becameReady := wv.MergeRemote(frame)        //TODO: new name on this boo thang
+			if kind == common.UpdateRequests && becameReady { // TODO: will cab recovery work without these lines?
 				wv.PublishAll(netSnap1Ch, netSnap2Ch)
 			}
 

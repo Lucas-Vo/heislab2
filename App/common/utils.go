@@ -37,3 +37,49 @@ func GetCabSlice(in [N_FLOORS][N_BUTTONS]bool) [N_FLOORS]bool {
 	}
 	return out
 }
+
+func SnapshotsEqual(a, b Snapshot, alive map[string]bool, peers []string) bool {
+	for i := range N_FLOORS {
+		if HallAt(a, i, 0) != HallAt(b, i, 0) {
+			return false
+		}
+		if HallAt(a, i, 1) != HallAt(b, i, 1) {
+			return false
+		}
+	}
+	for _, id := range peers {
+		if !alive[id] {
+			continue
+		}
+		aSt, aOk := a.States[id]
+		bSt, bOk := b.States[id]
+		if !aOk || !bOk {
+			return false
+		}
+		if aSt.Behavior != bSt.Behavior || aSt.Direction != bSt.Direction || aSt.Floor != bSt.Floor {
+			return false
+		}
+	}
+	return true
+}
+
+func HallAt(s Snapshot, floor int, btn int) bool {
+	if floor < 0 || floor >= len(s.HallRequests) {
+		return false
+	}
+	return s.HallRequests[floor][btn]
+}
+
+func MergeHallRequests(current, incoming [N_FLOORS][2]bool, kind UpdateKind) [N_FLOORS][2]bool {
+	merged := [N_FLOORS][2]bool{}
+	for i := range N_FLOORS {
+		if kind == UpdateServiced {
+			merged[i][0] = current[i][0] && incoming[i][0]
+			merged[i][1] = current[i][1] && incoming[i][1]
+		} else {
+			merged[i][0] = current[i][0] || incoming[i][0]
+			merged[i][1] = current[i][1] || incoming[i][1]
+		}
+	}
+	return merged
+}
