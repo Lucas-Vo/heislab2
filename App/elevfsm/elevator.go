@@ -133,11 +133,12 @@ func (e *Elevator) Tick(now time.Time) (stateChanged bool, servicedFloor int, se
 	newDirection := e.dirn
 	obstructed := e.obstruction()
 
-	if newFloor != e.prevFloor ||
+	if newFloor != e.floor ||
 		newBehaviour != e.prevBehaviour ||
 		newDirection != e.prevDirection {
 		stateChanged = true
 	}
+	e.floor = newFloor
 
 	if newFloor != -1 && e.prevFloor != newFloor {
 		e.onFloorArrival(newFloor)
@@ -181,7 +182,7 @@ func (e *Elevator) onDoorTimerExpiry(now time.Time) (servicedFloor int, serviced
 }
 
 func (e *Elevator) CurrentFloor() int {
-	return e.prevFloor
+	return e.floor
 }
 
 func (e *Elevator) FloorSensor() int {
