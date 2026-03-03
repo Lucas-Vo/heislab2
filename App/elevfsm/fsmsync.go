@@ -41,9 +41,9 @@ func (sync *FsmSync) HandleNetworkSnapshot(snapshot common.Snapshot, now time.Ti
 	for floor := range common.N_FLOORS {
 		for button := range common.ButtonType(common.N_BUTTONS) {
 			if sync.netCalls[floor][button] {
-				sync.callTime[floor][button] = time.Time{}
 				sync.confirmed[floor][button] = true
 				if button == common.BT_Cab {
+					sync.callTime[floor][button] = time.Time{}
 					sync.localCalls[floor][button] = true
 				}
 				continue
@@ -108,15 +108,15 @@ func (sync *FsmSync) ReadyInjects(now time.Time, confirmTimeout time.Duration, o
 				continue
 			}
 
-			timedOut := sync.callTime[floor][button].IsZero() || now.Sub(sync.callTime[floor][button]) >= confirmTimeout
+			hasTimestamp := !sync.callTime[floor][button].IsZero()
+			timedOut := hasTimestamp && now.Sub(sync.callTime[floor][button]) >= confirmTimeout
 			assignedHere := button == common.BT_Cab || sync.assignedHall[floor][button]
-			if (!online && timedOut) || (online && assignedHere) {
+			shouldInject := (!online && (!hasTimestamp || timedOut)) ||
+				(online && (assignedHere || (button != common.BT_Cab && timedOut)))
+			if shouldInject {
 				toInject[floor][button] = true
 				sync.markInjected(floor, button)
 				continue
-			}
-			if online && button != common.BT_Cab && !sync.assignedHall[floor][button] && !sync.callTime[floor][button].IsZero() {
-				sync.callTime[floor][button] = time.Time{}
 			}
 		}
 	}
