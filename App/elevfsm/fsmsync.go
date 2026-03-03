@@ -97,8 +97,7 @@ func (s *FsmSync) Synchronize(now time.Time, confirmTimeout time.Duration) (elev
 	servicedFloor, servicedCalls = -1, Requests{}
 	newButtonPressed := s.localButtonPresses(now)
 
-	newFloor, newBehaviour, newDirection := s.elevator.PollSensors() //TODO: You dont tell me what todo
-	obstructed := s.elevator.obstruction()
+	newFloor, newBehaviour, newDirection, obstructed := s.elevator.PollSensors() //TODO: You dont tell me what todo
 
 	if newFloor != s.prevFloor ||
 		newBehaviour != s.prevBehaviour ||

@@ -192,10 +192,11 @@ func (e *Elevator) pollButtonPresses(trackedFloor int) (buttonPresses Requests, 
 	return buttonPresses, hadPress
 }
 
-func (e *Elevator) PollSensors() (newFloor int, newBehaviour ElevatorBehaviour, newDirection common.MotorDirection) {
+func (e *Elevator) PollSensors() (newFloor int, newBehaviour ElevatorBehaviour, newDirection common.MotorDirection, obstructed bool) {
 	newFloor = e.inputDevice.FloorSensor()
 	newBehaviour = e.getBehaviour()
 	newDirection = e.getDirection()
+	obstructed = e.obstruction()
 	return
 }
 
