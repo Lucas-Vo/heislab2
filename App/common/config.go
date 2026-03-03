@@ -31,7 +31,7 @@ func DefaultConfig() (Config, string, error) {
 			3: "10.100.23.37",
 			4: "192.168.0.197", // filip ip
 			5: "10.22.54.158",  // veetel ip
-			6: "10.24.64.100",  // lucas ip
+			6: "10.24.66.49",   // lucas ip
 		},
 	}
 	if err := config.InitSelf(); err != nil {

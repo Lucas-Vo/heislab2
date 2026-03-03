@@ -30,7 +30,7 @@ func fsmThread(
 
 	initialBehaviour, initialDirection := elevator.MotionStrings()
 	initialSnapshot := sync.BuildSnapshot(
-		-1,
+		elevator.CurrentFloor(),
 		common.UpdateRequests,
 		elevfsm.Requests{},
 		online,
@@ -54,7 +54,7 @@ func fsmThread(
 		case task := <-assignerOutputCh:
 			now = time.Now()
 			lastAssignerTaskAt = now
-			sync.HandleAssignerTask(task, elevator)
+			elevator.ApplyClearRequests(sync.HandleAssignerTask(task))
 
 		case <-ticker.C:
 			now = time.Now()
@@ -63,13 +63,12 @@ func fsmThread(
 			online = networkFresh && assignerFresh
 
 			edgePresses, newButtonPressed := elevator.PollButtonPresses()
-			sync.HandleLocalButtonPresses(edgePresses, now, elevator)
+			elevator.ApplyInjectRequests(sync.HandleLocalButtonPresses(edgePresses, elevator.FloorSensor(), now))
 
 			elevStateChange, servicedFloor, servicedCalls := elevator.Tick(now)
 			sync.ClearServicedRequests(servicedFloor, servicedCalls, online)
-
-			sync.InjectReadyRequests(now, confirmTimeout, online, elevator)
-			sync.SetLights(online, elevator)
+			elevator.ApplyInjectRequests(sync.ReadyInjects(now, confirmTimeout, online))
+			elevator.SetRequestLights(sync.CallsForLights(online))
 
 			if !sync.IsInitFromNetwork() {
 				continue

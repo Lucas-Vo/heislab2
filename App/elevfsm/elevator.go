@@ -35,11 +35,7 @@ type Elevator struct {
 }
 
 func NewElevator(ioAddress string) *Elevator {
-	return elevatorInit(ioAddress)
-}
-
-func elevatorInit(ioAddr string) *Elevator {
-	common.ElevioInit(ioAddr)
+	common.ElevioInit(ioAddress)
 	e := new(Elevator)
 	e.floor = -1
 	e.dirn = common.MD_Stop
@@ -67,8 +63,22 @@ func (e *Elevator) InjectRequest(buttonFloor int, buttonType common.ButtonType) 
 	e.onRequestButtonPress(buttonFloor, buttonType)
 }
 
+func (e *Elevator) ApplyInjectRequests(requests Requests) {
+	for floor := range common.N_FLOORS {
+		for button := range common.ButtonType(common.N_BUTTONS) {
+			if requests[floor][button] {
+				e.InjectRequest(floor, button)
+			}
+		}
+	}
+}
+
 func (e *Elevator) onRequestButtonPress(buttonFloor int, buttonType common.ButtonType) {
 	e.requests[buttonFloor][buttonType] = true
+	if e.behaviour == EB_DoorOpen && buttonFloor == e.floor {
+		e.doorTimerEnd = time.Now().Add(doorOpenDuration)
+		return
+	}
 	if e.behaviour == EB_Idle {
 		pair := requests_chooseDirection(e.requests, e.floor, e.dirn)
 		e.dirn = pair.dirn
@@ -84,6 +94,16 @@ func (e *Elevator) onRequestButtonPress(buttonFloor int, buttonType common.Butto
 
 func (e *Elevator) ClearRequest(floor int, button common.ButtonType) {
 	e.requests = requests_clear(e.requests, floor, button)
+}
+
+func (e *Elevator) ApplyClearRequests(requests Requests) {
+	for floor := range common.N_FLOORS {
+		for button := range common.ButtonType(common.N_BUTTONS) {
+			if requests[floor][button] {
+				e.ClearRequest(floor, button)
+			}
+		}
+	}
 }
 
 func (e *Elevator) PollButtonPresses() (buttonPresses Requests, hadPress bool) {
@@ -171,7 +191,7 @@ func (e *Elevator) FloorSensor() int {
 func (e *Elevator) SetRequestLights(calls Requests) {
 	for floor := range common.N_FLOORS {
 		for button := range common.ButtonType(common.N_BUTTONS) {
-			e.switchLight(floor, button, calls[floor][button])
+			e.outputDevice.RequestButtonLight(floor, button, calls[floor][button])
 		}
 	}
 }
@@ -226,12 +246,6 @@ func (e *Elevator) onDoorTimeout() {
 	}
 }
 
-func (e *Elevator) onStopButtonPress() { /*TODO make function cool*/ }
-
-func (e *Elevator) switchLight(floor int, btn common.ButtonType, on bool) {
-	e.outputDevice.RequestButtonLight(floor, btn, on)
-}
-
 func (e *Elevator) obstruction() bool {
 	return e.inputDevice.Obstruction() != 0
 }
@@ -272,7 +286,7 @@ func (e *Elevator) OnDoorClose(floor int, announceDir common.MotorDirection, cle
 	nextAnnounceDir = announceDir
 
 	if announceDir == common.MD_Up && upReq {
-		cleared = requests_clearAtCurrentFloorDir(e.requests, e.floor, common.MD_Up, clearCab)
+		e.requests, cleared = requests_clearAtCurrentFloorDir(e.requests, e.floor, common.MD_Up, clearCab)
 		if downReq && e.shouldSwitchDirection() {
 			return cleared, common.MD_Down, true
 		}
@@ -281,7 +295,7 @@ func (e *Elevator) OnDoorClose(floor int, announceDir common.MotorDirection, cle
 	}
 
 	if announceDir == common.MD_Down && downReq {
-		cleared = requests_clearAtCurrentFloorDir(e.requests, e.floor, common.MD_Down, clearCab)
+		e.requests, cleared = requests_clearAtCurrentFloorDir(e.requests, e.floor, common.MD_Down, clearCab)
 		if upReq && e.shouldSwitchDirection() {
 			return cleared, common.MD_Up, true
 		}
@@ -292,7 +306,7 @@ func (e *Elevator) OnDoorClose(floor int, announceDir common.MotorDirection, cle
 	if upReq || downReq {
 		arrivalDir := e.dirn
 		nextAnnounceDir = e.chooseNewDirAtFloor(floor, arrivalDir)
-		cleared = requests_clearAtCurrentFloorDir(e.requests, e.floor, nextAnnounceDir, clearCab)
+		e.requests, cleared = requests_clearAtCurrentFloorDir(e.requests, e.floor, nextAnnounceDir, clearCab)
 
 		if nextAnnounceDir == common.MD_Up && downReq && e.shouldSwitchDirection() {
 			return cleared, common.MD_Down, true
@@ -304,7 +318,7 @@ func (e *Elevator) OnDoorClose(floor int, announceDir common.MotorDirection, cle
 		return cleared, nextAnnounceDir, false
 	}
 
-	cleared = requests_clearAtCurrentFloorDir(e.requests, e.floor, common.MD_Stop, clearCab)
+	e.requests, cleared = requests_clearAtCurrentFloorDir(e.requests, e.floor, common.MD_Stop, clearCab)
 	e.onDoorTimeout()
 	return cleared, common.MD_Stop, false
 }

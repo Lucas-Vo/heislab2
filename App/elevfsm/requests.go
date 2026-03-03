@@ -77,24 +77,24 @@ func requests_shouldStop(requests Requests, floor int, dirn common.MotorDirectio
 	}
 }
 
-func requests_clearAtCurrentFloorDir(requests Requests, floor int, announceDir common.MotorDirection, clearCab bool) Requests {
-	var cleared Requests
+func requests_clearAtCurrentFloorDir(requests Requests, floor int, announceDir common.MotorDirection, clearCab bool) (updated Requests, cleared Requests) {
+	updated = requests
 	if clearCab {
-		if requests[floor][common.BT_Cab] {
+		if updated[floor][common.BT_Cab] {
 			cleared[floor][common.BT_Cab] = true
 		}
-		requests[floor][common.BT_Cab] = false
+		updated[floor][common.BT_Cab] = false
 	}
 
 	switch announceDir {
 	case common.MD_Up:
-		if requests[floor][common.BT_HallUp] {
-			requests[floor][common.BT_HallUp] = false
+		if updated[floor][common.BT_HallUp] {
+			updated[floor][common.BT_HallUp] = false
 			cleared[floor][common.BT_HallUp] = true
 		}
 	case common.MD_Down:
-		if requests[floor][common.BT_HallDown] {
-			requests[floor][common.BT_HallDown] = false
+		if updated[floor][common.BT_HallDown] {
+			updated[floor][common.BT_HallDown] = false
 			cleared[floor][common.BT_HallDown] = true
 		}
 	case common.MD_Stop:
@@ -102,7 +102,7 @@ func requests_clearAtCurrentFloorDir(requests Requests, floor int, announceDir c
 	default:
 		// no hall clearing when direction isn't announced
 	}
-	return cleared
+	return updated, cleared
 }
 
 func requests_clear(requests Requests, floor int, btn common.ButtonType) Requests {

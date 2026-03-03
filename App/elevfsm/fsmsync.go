@@ -16,125 +16,119 @@ type FsmSync struct {
 	assignedHall [common.N_FLOORS][2]bool
 	netCalls     Requests
 	localCalls   Requests
-
-	callTimestamp [common.N_FLOORS][common.N_BUTTONS]time.Time
-	injected      Requests
-	confirmed     Requests
+	callTime     [common.N_FLOORS][common.N_BUTTONS]time.Time
+	injected     Requests
+	confirmed    Requests
 }
 
 func NewFsmSync(config common.Config) *FsmSync {
-	return &FsmSync{
-		selfKey:      config.SelfKey,
-		assignedHall: [common.N_FLOORS][2]bool{},
-	}
+	return &FsmSync{selfKey: config.SelfKey}
 }
 
 func (sync *FsmSync) HandleNetworkSnapshot(snapshot common.Snapshot, now time.Time) {
 	sync.lastNetSeen = now
-
 	for floor := range common.N_FLOORS {
-		sync.netCalls[floor][0] = snapshot.HallRequests[floor][0]
-		sync.netCalls[floor][1] = snapshot.HallRequests[floor][1]
+		sync.netCalls[floor][0], sync.netCalls[floor][1] = snapshot.HallRequests[floor][0], snapshot.HallRequests[floor][1]
+		sync.netCalls[floor][common.BT_Cab] = false
 	}
-	if sync.fetchSelfFromSnapshot(&snapshot) {
+	if state, ok := snapshot.States[sync.selfKey]; ok {
 		sync.initFromNetwork = true
+		for floor := 0; floor < common.N_FLOORS && floor < len(state.CabRequests); floor++ {
+			sync.netCalls[floor][common.BT_Cab] = state.CabRequests[floor]
+		}
 	}
 
 	for floor := range common.N_FLOORS {
 		for button := range common.ButtonType(common.N_BUTTONS) {
-			wasConfirmed := sync.confirmed[floor][button]
-			netCallActive := sync.netCalls[floor][button]
-
-			if netCallActive {
-				sync.callTimestamp[floor][button] = time.Time{}
+			if sync.netCalls[floor][button] {
+				sync.callTime[floor][button] = time.Time{}
 				sync.confirmed[floor][button] = true
 				if button == common.BT_Cab {
 					sync.localCalls[floor][button] = true
 				}
 				continue
 			}
-
-			sync.confirmed[floor][button] = false
-			if wasConfirmed {
+			if sync.confirmed[floor][button] {
 				sync.localCalls[floor][button] = false
 				sync.injected[floor][button] = false
 			}
+			sync.confirmed[floor][button] = false
 		}
 	}
 }
 
-func (sync *FsmSync) HandleAssignerTask(task common.ElevInput, elevator *Elevator) {
+func (sync *FsmSync) HandleAssignerTask(task common.ElevInput) (toClear Requests) {
 	previousAssignment := sync.assignedHall
 	sync.assignedHall = task.HallTask
 
 	for floor := range previousAssignment {
 		if previousAssignment[floor][0] && !sync.assignedHall[floor][0] {
-			sync.callTimestamp[floor][common.BT_HallUp] = time.Time{}
+			sync.callTime[floor][common.BT_HallUp] = time.Time{}
 			sync.injected[floor][common.BT_HallUp] = false
 			sync.confirmed[floor][common.BT_HallUp] = false
 			sync.localCalls[floor][common.BT_HallUp] = false
-			elevator.ClearRequest(floor, common.BT_HallUp)
+			toClear[floor][common.BT_HallUp] = true
 		}
 		if previousAssignment[floor][1] && !sync.assignedHall[floor][1] {
-			sync.callTimestamp[floor][common.BT_HallDown] = time.Time{}
+			sync.callTime[floor][common.BT_HallDown] = time.Time{}
 			sync.injected[floor][common.BT_HallDown] = false
 			sync.confirmed[floor][common.BT_HallDown] = false
 			sync.localCalls[floor][common.BT_HallDown] = false
-			elevator.ClearRequest(floor, common.BT_HallDown)
+			toClear[floor][common.BT_HallDown] = true
 		}
 	}
+	return toClear
 }
 
-func (sync *FsmSync) HandleLocalButtonPresses(edgePresses Requests, now time.Time, elevator *Elevator) {
+func (sync *FsmSync) HandleLocalButtonPresses(edgePresses Requests, currentFloor int, now time.Time) (toInject Requests) {
 	for floor := range common.N_FLOORS {
 		for button := range common.ButtonType(common.N_BUTTONS) {
 			if !edgePresses[floor][button] {
 				continue
 			}
-			sync.callTimestamp[floor][button] = now
+			sync.callTime[floor][button] = now
 			sync.localCalls[floor][button] = true
-			if elevator.FloorSensor() == floor {
-				sync.inject(floor, button, elevator)
+			if button == common.BT_Cab || currentFloor == floor {
+				toInject[floor][button] = true
+				sync.markInjected(floor, button)
 			}
 		}
 	}
+	return toInject
 }
 
-func (sync *FsmSync) InjectReadyRequests(now time.Time, confirmTimeout time.Duration, online bool, elevator *Elevator) {
-	calls := sync.localCalls
-	if online {
-		calls = sync.netCalls
-	}
-
+func (sync *FsmSync) ReadyInjects(now time.Time, confirmTimeout time.Duration, online bool) (toInject Requests) {
 	for floor := range common.N_FLOORS {
 		for button := range common.ButtonType(common.N_BUTTONS) {
-			if !calls[floor][button] || sync.injected[floor][button] {
+			callActive := sync.localCalls[floor][button]
+			if online && button != common.BT_Cab {
+				callActive = sync.netCalls[floor][button]
+			}
+			if !callActive || sync.injected[floor][button] {
 				continue
 			}
 
-			callTimestamp := sync.callTimestamp[floor][button]
-			timedOut := callTimestamp.IsZero() || now.Sub(callTimestamp) >= confirmTimeout
-			shouldInject := (!online && timedOut) || (online && (button == common.BT_Cab || sync.assignedHall[floor][button]))
-
-			if shouldInject {
-				sync.inject(floor, button, elevator)
+			timedOut := sync.callTime[floor][button].IsZero() || now.Sub(sync.callTime[floor][button]) >= confirmTimeout
+			assignedHere := button == common.BT_Cab || sync.assignedHall[floor][button]
+			if (!online && timedOut) || (online && assignedHere) {
+				toInject[floor][button] = true
+				sync.markInjected(floor, button)
 				continue
 			}
-
-			if online && button != common.BT_Cab && !sync.assignedHall[floor][button] && !callTimestamp.IsZero() {
-				sync.callTimestamp[floor][button] = time.Time{}
+			if online && button != common.BT_Cab && !sync.assignedHall[floor][button] && !sync.callTime[floor][button].IsZero() {
+				sync.callTime[floor][button] = time.Time{}
 			}
 		}
 	}
+	return toInject
 }
 
 func (sync *FsmSync) ClearServicedRequests(floor int, serviced Requests, online bool) {
 	if floor < 0 || floor >= common.N_FLOORS {
 		return
 	}
-
 	for button := range common.ButtonType(common.N_BUTTONS) {
-		if serviced[floor][button] && sync.injected[floor][button] {
+		if serviced[floor][button] {
 			sync.localCalls[floor][button] = false
 			if !online {
 				sync.injected[floor][button] = false
@@ -143,12 +137,15 @@ func (sync *FsmSync) ClearServicedRequests(floor int, serviced Requests, online 
 	}
 }
 
-func (sync *FsmSync) SetLights(online bool, elevator *Elevator) {
-	if online {
-		elevator.SetRequestLights(sync.netCalls)
-		return
+func (sync *FsmSync) CallsForLights(online bool) Requests {
+	if !online {
+		return sync.localCalls
 	}
-	elevator.SetRequestLights(sync.localCalls)
+	calls := sync.netCalls
+	for floor := range common.N_FLOORS {
+		calls[floor][common.BT_Cab] = sync.localCalls[floor][common.BT_Cab]
+	}
+	return calls
 }
 
 func (sync *FsmSync) BuildSnapshot(
@@ -163,7 +160,6 @@ func (sync *FsmSync) BuildSnapshot(
 	if kind == common.UpdateServiced && online {
 		outCalls = sync.netCalls
 	}
-
 	if kind == common.UpdateServiced {
 		for floor := range common.N_FLOORS {
 			if callsCleared[floor][common.BT_HallUp] {
@@ -190,38 +186,15 @@ func (sync *FsmSync) BuildSnapshot(
 }
 
 func (sync *FsmSync) NetworkOnline(now time.Time) bool {
-	if sync.lastNetSeen.IsZero() {
-		return false
-	}
-	return now.Sub(sync.lastNetSeen) < netOfflineTimeout
+	return !sync.lastNetSeen.IsZero() && now.Sub(sync.lastNetSeen) < netOfflineTimeout
 }
 
 func (sync *FsmSync) IsInitFromNetwork() bool {
 	return sync.initFromNetwork
 }
 
-func (sync *FsmSync) fetchSelfFromSnapshot(snapshot *common.Snapshot) bool {
-	for floor := range common.N_FLOORS {
-		sync.netCalls[floor][common.BT_Cab] = false
-	}
-	if snapshot.States == nil {
-		return false
-	}
-
-	state, found := snapshot.States[sync.selfKey]
-	if !found {
-		return false
-	}
-
-	for floor := 0; floor < common.N_FLOORS && floor < len(state.CabRequests); floor++ {
-		sync.netCalls[floor][common.BT_Cab] = state.CabRequests[floor]
-	}
-	return true
-}
-
-func (sync *FsmSync) inject(floor int, button common.ButtonType, elevator *Elevator) {
-	elevator.InjectRequest(floor, button)
+func (sync *FsmSync) markInjected(floor int, button common.ButtonType) {
 	sync.injected[floor][button] = true
-	sync.callTimestamp[floor][button] = time.Time{}
+	sync.callTime[floor][button] = time.Time{}
 	sync.localCalls[floor][button] = true
 }
