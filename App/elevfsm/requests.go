@@ -9,67 +9,38 @@ type DirnBehaviourPair struct {
 	behaviour ElevatorBehaviour
 }
 
-func requests_above(e Elevator) int {
-	for f := e.floor + 1; f < common.N_FLOORS; f++ {
-		for btn := range common.N_BUTTONS {
-			if e.requests[f][btn] {
-				return 1
-			}
-		}
-	}
-	return 0
-}
+type Requests [common.N_FLOORS][common.N_BUTTONS]bool
 
-func requests_below(e Elevator) int {
-	for f := range e.floor {
-		for btn := range common.N_BUTTONS {
-			if e.requests[f][btn] {
-				return 1
-			}
-		}
-	}
-	return 0
-}
-
-func requests_here(e Elevator) int {
-	for btn := range common.N_BUTTONS {
-		if e.requests[e.floor][btn] {
-			return 1
-		}
-	}
-	return 0
-}
-
-func requests_chooseDirection(e Elevator) DirnBehaviourPair {
-	switch e.dirn {
+func requests_chooseDirection(requests Requests, floor int, dirn common.MotorDirection) DirnBehaviourPair {
+	switch dirn {
 	case common.MD_Up:
-		if requests_above(e) != 0 {
+		if requests_above(requests, floor) != 0 {
 			return DirnBehaviourPair{common.MD_Up, EB_Moving}
-		} else if requests_here(e) != 0 {
+		} else if requests_at_floor(requests, floor) != 0 {
 			return DirnBehaviourPair{common.MD_Down, EB_DoorOpen}
-		} else if requests_below(e) != 0 {
+		} else if requests_below(requests, floor) != 0 {
 			return DirnBehaviourPair{common.MD_Down, EB_Moving}
 		} else {
 			return DirnBehaviourPair{common.MD_Stop, EB_Idle}
 		}
 
 	case common.MD_Down:
-		if requests_below(e) != 0 {
+		if requests_below(requests, floor) != 0 {
 			return DirnBehaviourPair{common.MD_Down, EB_Moving}
-		} else if requests_here(e) != 0 {
+		} else if requests_at_floor(requests, floor) != 0 {
 			return DirnBehaviourPair{common.MD_Up, EB_DoorOpen}
-		} else if requests_above(e) != 0 {
+		} else if requests_above(requests, floor) != 0 {
 			return DirnBehaviourPair{common.MD_Up, EB_Moving}
 		} else {
 			return DirnBehaviourPair{common.MD_Stop, EB_Idle}
 		}
 
 	case common.MD_Stop:
-		if requests_here(e) != 0 {
+		if requests_at_floor(requests, floor) != 0 {
 			return DirnBehaviourPair{common.MD_Stop, EB_DoorOpen}
-		} else if requests_above(e) != 0 {
+		} else if requests_above(requests, floor) != 0 {
 			return DirnBehaviourPair{common.MD_Up, EB_Moving}
-		} else if requests_below(e) != 0 {
+		} else if requests_below(requests, floor) != 0 {
 			return DirnBehaviourPair{common.MD_Down, EB_Moving}
 		} else {
 			return DirnBehaviourPair{common.MD_Stop, EB_Idle}
@@ -81,20 +52,20 @@ func requests_chooseDirection(e Elevator) DirnBehaviourPair {
 }
 
 // int requests_shouldStop(Elevator e)
-func requests_shouldStop(e Elevator) int {
-	switch e.dirn {
+func requests_shouldStop(requests Requests, floor int, dirn common.MotorDirection) int {
+	switch dirn {
 	case common.MD_Down:
-		if e.requests[e.floor][common.BT_HallDown] ||
-			e.requests[e.floor][common.BT_Cab] ||
-			requests_below(e) == 0 {
+		if requests[floor][common.BT_HallDown] ||
+			requests[floor][common.BT_Cab] ||
+			requests_below(requests, floor) == 0 {
 			return 1
 		}
 		return 0
 
 	case common.MD_Up:
-		if e.requests[e.floor][common.BT_HallUp] ||
-			e.requests[e.floor][common.BT_Cab] ||
-			requests_above(e) == 0 {
+		if requests[floor][common.BT_HallUp] ||
+			requests[floor][common.BT_Cab] ||
+			requests_above(requests, floor) == 0 {
 			return 1
 		}
 		return 0
@@ -106,30 +77,89 @@ func requests_shouldStop(e Elevator) int {
 	}
 }
 
-func requests_clearAtCurrentFloorDir(e Elevator, announceDir common.MotorDirection, clearCab bool) (_ Elevator, cleared Requests) {
-	f := e.floor
+func requests_clearAtCurrentFloorDir(requests Requests, floor int, announceDir common.MotorDirection, clearCab bool) Requests {
+	var cleared Requests
 	if clearCab {
-		if e.requests[f][common.BT_Cab] {
-			cleared[f][common.BT_Cab] = true
+		if requests[floor][common.BT_Cab] {
+			cleared[floor][common.BT_Cab] = true
 		}
-		e.requests[f][common.BT_Cab] = false
+		requests[floor][common.BT_Cab] = false
 	}
 
 	switch announceDir {
 	case common.MD_Up:
-		if e.requests[f][common.BT_HallUp] {
-			e.requests[f][common.BT_HallUp] = false
-			cleared[f][common.BT_HallUp] = true
+		if requests[floor][common.BT_HallUp] {
+			requests[floor][common.BT_HallUp] = false
+			cleared[floor][common.BT_HallUp] = true
 		}
 	case common.MD_Down:
-		if e.requests[f][common.BT_HallDown] {
-			e.requests[f][common.BT_HallDown] = false
-			cleared[f][common.BT_HallDown] = true
+		if requests[floor][common.BT_HallDown] {
+			requests[floor][common.BT_HallDown] = false
+			cleared[floor][common.BT_HallDown] = true
 		}
 	case common.MD_Stop:
 		fallthrough
 	default:
 		// no hall clearing when direction isn't announced
 	}
-	return e, cleared
+	return cleared
+}
+
+func requests_clear(requests Requests, floor int, btn common.ButtonType) Requests {
+	if floor < 0 || floor >= common.N_FLOORS {
+		return requests
+	}
+	if btn < 0 || btn >= common.N_BUTTONS {
+		return requests
+	}
+	requests[floor][btn] = false
+	return requests
+}
+
+func requests_above(requests Requests, floor int) int {
+	for f := floor + 1; f < common.N_FLOORS; f++ {
+		for btn := range common.N_BUTTONS {
+			if requests[f][btn] {
+				return 1
+			}
+		}
+	}
+	return 0
+}
+
+func requests_below(requests Requests, floor int) int {
+	for f := range floor {
+		for btn := range common.N_BUTTONS {
+			if requests[f][btn] {
+				return 1
+			}
+		}
+	}
+	return 0
+}
+
+func requests_at_floor(requests Requests, floor int) int {
+	for btn := range common.N_BUTTONS {
+		if requests[floor][btn] {
+			return 1
+		}
+	}
+	return 0
+}
+
+func request_at(requests Requests, floor int, btn common.ButtonType) bool {
+	if floor < 0 || floor >= common.N_FLOORS {
+		return false
+	}
+	if btn < 0 || btn >= common.N_BUTTONS {
+		return false
+	}
+	return requests[floor][btn]
+}
+
+func requests_hallRequestsAtFloor(requests Requests, floor int) (up bool, down bool) {
+	if floor < 0 || floor >= common.N_FLOORS {
+		return false, false
+	}
+	return request_at(requests, floor, common.BT_HallUp), request_at(requests, floor, common.BT_HallDown)
 }
