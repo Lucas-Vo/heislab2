@@ -11,7 +11,7 @@ import (
 const (
 	inputPollRateMs        = 25
 	confirmTimeout         = 200 * time.Millisecond
-	assignerOfflineTimeout = 1200 * time.Millisecond
+	assignerOfflineTimeout = 2500 * time.Millisecond
 )
 
 func fsmThread(
