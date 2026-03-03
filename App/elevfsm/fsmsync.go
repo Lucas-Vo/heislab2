@@ -12,6 +12,7 @@ type FsmSync struct {
 
 	initFromNetwork bool
 	lastNetSeen     time.Time
+	hasAlivePeer    bool
 
 	assignedHall [common.N_FLOORS][2]bool
 	netCalls     Requests
@@ -27,6 +28,13 @@ func NewFsmSync(config common.Config) *FsmSync {
 
 func (sync *FsmSync) HandleNetworkSnapshot(snapshot common.Snapshot, now time.Time) {
 	sync.lastNetSeen = now
+	sync.hasAlivePeer = false
+	for key, alive := range snapshot.Alive {
+		if key != sync.selfKey && alive {
+			sync.hasAlivePeer = true
+			break
+		}
+	}
 	for floor := range common.N_FLOORS {
 		sync.netCalls[floor][0], sync.netCalls[floor][1] = snapshot.HallRequests[floor][0], snapshot.HallRequests[floor][1]
 		sync.netCalls[floor][common.BT_Cab] = false
@@ -110,9 +118,8 @@ func (sync *FsmSync) ReadyInjects(now time.Time, confirmTimeout time.Duration, o
 
 			hasTimestamp := !sync.callTime[floor][button].IsZero()
 			timedOut := hasTimestamp && now.Sub(sync.callTime[floor][button]) >= confirmTimeout
-			assignedHere := button == common.BT_Cab || sync.assignedHall[floor][button]
-			shouldInject := (!online && (!hasTimestamp || timedOut)) ||
-				(online && (assignedHere || (button != common.BT_Cab && timedOut)))
+			shouldInject := (online && (button == common.BT_Cab || sync.assignedHall[floor][button])) ||
+				(!online && (!hasTimestamp || timedOut))
 			if shouldInject {
 				toInject[floor][button] = true
 				sync.markInjected(floor, button)
@@ -187,6 +194,10 @@ func (sync *FsmSync) BuildSnapshot(
 
 func (sync *FsmSync) NetworkOnline(now time.Time) bool {
 	return !sync.lastNetSeen.IsZero() && now.Sub(sync.lastNetSeen) < netOfflineTimeout
+}
+
+func (sync *FsmSync) HasAlivePeer() bool {
+	return sync.hasAlivePeer
 }
 
 func (sync *FsmSync) IsInitFromNetwork() bool {

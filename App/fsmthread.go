@@ -9,9 +9,8 @@ import (
 )
 
 const (
-	inputPollRateMs        = 25
-	confirmTimeout         = 200 * time.Millisecond
-	assignerOfflineTimeout = 2500 * time.Millisecond
+	inputPollRateMs = 25
+	confirmTimeout  = 200 * time.Millisecond
 )
 
 func fsmThread(
@@ -26,7 +25,6 @@ func fsmThread(
 	elevator := elevfsm.NewElevator("localhost:15657")
 	online := false
 	now := time.Now()
-	lastAssignerTaskAt := time.Time{}
 
 	initialBehaviour, initialDirection := elevator.MotionStrings()
 	initialSnapshot := sync.BuildSnapshot(
@@ -53,14 +51,11 @@ func fsmThread(
 
 		case task := <-assignerOutputCh:
 			now = time.Now()
-			lastAssignerTaskAt = now
 			elevator.ApplyClearRequests(sync.HandleAssignerTask(task))
 
 		case <-ticker.C:
 			now = time.Now()
-			networkFresh := sync.NetworkOnline(now)
-			assignerFresh := !lastAssignerTaskAt.IsZero() && now.Sub(lastAssignerTaskAt) < assignerOfflineTimeout
-			online = networkFresh && assignerFresh
+			online = sync.HasAlivePeer()
 
 			edgePresses, newButtonPressed := elevator.PollButtonPresses()
 			elevator.ApplyInjectRequests(sync.HandleLocalButtonPresses(edgePresses, elevator.FloorSensor(), now))
