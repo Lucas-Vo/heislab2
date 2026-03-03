@@ -174,9 +174,8 @@ func (e *Elevator) clearRequest(floor int, btn common.ButtonType) {
 	e.requests[floor][btn] = false
 }
 
-func (e *Elevator) pollButtonPresses(trackedFloor int) (buttonPresses Requests, hadPress bool, atFloorActivity bool) {
+func (e *Elevator) pollButtonPresses(trackedFloor int) (buttonPresses Requests, hadPress bool) {
 	buttonPresses, hadPress = Requests{}, false
-	direction := e.getDirection()
 
 	for f := range common.N_FLOORS {
 		for btn := range common.N_BUTTONS {
@@ -186,21 +185,11 @@ func (e *Elevator) pollButtonPresses(trackedFloor int) (buttonPresses Requests, 
 				hadPress = true
 				buttonType := common.ButtonType(btn)
 				buttonPresses[f][buttonType] = true
-				if f == trackedFloor {
-					switch buttonType {
-					case common.BT_HallUp:
-						atFloorActivity = direction != common.MD_Stop || atFloorActivity
-					case common.BT_HallDown:
-						atFloorActivity = direction != common.MD_Stop || atFloorActivity //TODO: Maybe changeable
-					case common.BT_Cab:
-						atFloorActivity = true
-					}
-				}
 			}
 			e.buttonLevels[f][btn] = value
 		}
 	}
-	return buttonPresses, hadPress, atFloorActivity
+	return buttonPresses, hadPress
 }
 
 func (e *Elevator) PollSensors() (newFloor int, newBehaviour ElevatorBehaviour, newDirection common.MotorDirection) {

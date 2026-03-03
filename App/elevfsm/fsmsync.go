@@ -95,7 +95,7 @@ func (s *FsmSync) HandleAssignerTask(task common.ElevInput, now time.Time, confi
 
 func (s *FsmSync) Synchronize(now time.Time, confirmTimeout time.Duration) (elevStateChange bool, servicedFloor int, servicedCalls Requests) {
 	servicedFloor, servicedCalls = -1, Requests{}
-	newButtonPressed, _ := s.localButtonPresses(now)
+	newButtonPressed := s.localButtonPresses(now)
 
 	newFloor, newBehaviour, newDirection := s.elevator.PollSensors() //TODO: You dont tell me what todo
 	obstructed := s.elevator.obstruction()
@@ -201,8 +201,8 @@ func (s *FsmSync) syncRequestStateFromNetwork(floor int, btn common.ButtonType) 
 	}
 }
 
-func (s *FsmSync) localButtonPresses(now time.Time) (bool, bool) {
-	edgePresses, newButtonPressed, atFloorActivity := s.elevator.pollButtonPresses(s.prevFloor)
+func (s *FsmSync) localButtonPresses(now time.Time) (newButtonPressed bool) {
+	edgePresses, newButtonPressed := s.elevator.pollButtonPresses(s.prevFloor)
 	currentFloor := s.elevator.floorSensor()
 	for f := range common.N_FLOORS {
 		for btn := range common.ButtonType(common.N_BUTTONS) {
@@ -216,7 +216,7 @@ func (s *FsmSync) localButtonPresses(now time.Time) (bool, bool) {
 			}
 		}
 	}
-	return newButtonPressed, atFloorActivity
+	return newButtonPressed
 }
 
 func (s *FsmSync) injectReadyRequests(now time.Time, confirmTimeout time.Duration) { //TODO: WAYYY too ugly logic, needs refactor
