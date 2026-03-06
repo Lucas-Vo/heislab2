@@ -51,12 +51,10 @@ func InitWorldView(ctx context.Context, cfg common.Config, port int) (*WorldView
 		latestCount:  make(map[string]uint64),
 		pm:           pm,
 	}
-	// populate snapshot TODO: does this work if this line is removed?
-	wv.sendOverNetwork(common.Snapshot{
-		UpdateKind:   common.UpdateRequests,
-		HallRequests: [common.N_FLOORS][2]bool{},
-		States:       map[string]common.ElevState{},
-	})
+	// Broadcast an initial requests snapshot to seed local/remote bookkeeping early.
+	initialSnapshot := common.DeepCopySnapshot(wv.snapshot)
+	initialSnapshot.UpdateKind = common.UpdateRequests
+	wv.sendOverNetwork(initialSnapshot)
 	return wv, incoming
 }
 

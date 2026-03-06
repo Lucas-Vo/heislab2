@@ -172,10 +172,11 @@ func (sync *FsmSync) BuildSnapshot(
 	direction string,
 ) common.Snapshot {
 	outCalls := sync.localCalls
-	if kind == common.UpdateServiced && online {
-		outCalls = sync.netCalls
-	}
 	if kind == common.UpdateServiced {
+		for floor := range common.N_FLOORS {
+			outCalls[floor][common.BT_HallUp] = true
+			outCalls[floor][common.BT_HallDown] = true
+		}
 		for floor := range common.N_FLOORS {
 			if callsCleared[floor][common.BT_HallUp] {
 				outCalls[floor][common.BT_HallUp] = false
