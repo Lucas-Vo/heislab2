@@ -283,36 +283,36 @@ func (e *Elevator) shouldSwitchDirection() bool {
 // Returns cleared requests at floor, the next announce direction, and whether to restart the door timer.
 func (e *Elevator) OnDoorClose(floor int, announceDir common.MotorDirection, clearCab bool) (cleared Requests, nextAnnounceDir common.MotorDirection, restartDoorTimer bool) {
 	e.floor = floor
-	upReq, downReq := requests_hallRequestsAtFloor(e.requests, e.floor)
+	upRequestAtFloor, downRequestAtFloor := requests_hallRequestsAtFloor(e.requests, e.floor)
 	nextAnnounceDir = announceDir
 
-	if announceDir == common.MD_Up && upReq {
+	if announceDir == common.MD_Up && upRequestAtFloor {
 		e.requests, cleared = requests_clearAtCurrentFloorDir(e.requests, e.floor, common.MD_Up, clearCab)
-		if downReq && e.shouldSwitchDirection() {
+		if downRequestAtFloor && e.shouldSwitchDirection() {
 			return cleared, common.MD_Down, true
 		}
 		e.onDoorTimeout()
 		return cleared, announceDir, false
 	}
 
-	if announceDir == common.MD_Down && downReq {
+	if announceDir == common.MD_Down && downRequestAtFloor {
 		e.requests, cleared = requests_clearAtCurrentFloorDir(e.requests, e.floor, common.MD_Down, clearCab)
-		if upReq && e.shouldSwitchDirection() {
+		if upRequestAtFloor && e.shouldSwitchDirection() {
 			return cleared, common.MD_Up, true
 		}
 		e.onDoorTimeout()
 		return cleared, announceDir, false
 	}
 
-	if upReq || downReq {
+	if upRequestAtFloor || downRequestAtFloor {
 		arrivalDir := e.dirn
 		nextAnnounceDir = e.chooseNewDirAtFloor(floor, arrivalDir)
 		e.requests, cleared = requests_clearAtCurrentFloorDir(e.requests, e.floor, nextAnnounceDir, clearCab)
 
-		if nextAnnounceDir == common.MD_Up && downReq && e.shouldSwitchDirection() {
+		if nextAnnounceDir == common.MD_Up && downRequestAtFloor && e.shouldSwitchDirection() {
 			return cleared, common.MD_Down, true
 		}
-		if nextAnnounceDir == common.MD_Down && upReq && e.shouldSwitchDirection() {
+		if nextAnnounceDir == common.MD_Down && upRequestAtFloor && e.shouldSwitchDirection() {
 			return cleared, common.MD_Up, true
 		}
 		e.onDoorTimeout()
