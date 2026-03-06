@@ -55,7 +55,7 @@ func fsmThread(
 
 		case <-ticker.C:
 			now = time.Now()
-			online = sync.HasAlivePeer()
+			online = sync.NetworkOnline(now)
 
 			edgePresses, newButtonPressed := elevator.PollButtonPresses()
 			elevator.ApplyInjectRequests(sync.HandleLocalButtonPresses(edgePresses, elevator.FloorSensor(), now))

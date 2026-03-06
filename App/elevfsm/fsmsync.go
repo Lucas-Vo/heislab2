@@ -173,6 +173,8 @@ func (sync *FsmSync) BuildSnapshot(
 	outCalls := sync.localCalls
 	if online {
 		outCalls = sync.netCalls
+	}
+	if kind == common.UpdateRequests {
 		for f := range common.N_FLOORS {
 			if sync.localCalls[f][common.BT_HallUp] && !sync.confirmed[f][common.BT_HallUp] {
 				outCalls[f][common.BT_HallUp] = true
