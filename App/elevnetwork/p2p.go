@@ -12,10 +12,10 @@ import (
 const (
 	openStreamTimeout    = 2 * time.Second
 	dialTimeout          = 4 * time.Second
-	writeTimeout         = 150 * time.Millisecond
+	writeTimeout         = 400 * time.Millisecond
 	incomingBufSize      = 128
-	KeepAlivePeriod      = 2 * time.Second
-	HandshakeIdleTimeout = 3 * time.Second
+	KeepAlivePeriod      = 4 * time.Second
+	HandshakeIdleTimeout = 6 * time.Second
 	MaxIdleTimeout       = 6 * time.Second
 )
 
