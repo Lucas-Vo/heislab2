@@ -61,7 +61,7 @@ func networkThread(
 			if snap.States[selfKey].Behavior != "idle" {
 				if wv.SelfAlive() {
 					wv.SetSelfAlive(false)
-					log.Printf("No behavior change detected for 4 seconds, marking Elevator as stale")
+					log.Printf("No behavior change detected for 6 seconds, marking Elevator as stale")
 					wv.PublishAll(netSnap1Ch, netSnap2Ch)
 				}
 			} else {
@@ -69,7 +69,7 @@ func networkThread(
 					wv.SetSelfAlive(true)
 					wv.PublishAll(netSnap1Ch, netSnap2Ch)
 				}
-				elevatorErrorTimer.Reset(4 * time.Second)
+				elevatorErrorTimer.Reset(6 * time.Second)
 			}
 		}
 	}

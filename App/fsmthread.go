@@ -73,10 +73,7 @@ func fsmThread(
 			if floorWasServiced {
 				behaviour, direction := elevator.MotionStrings()
 				snapshot := sync.BuildSnapshot(servicedFloor, common.UpdateServiced, servicedCalls, online, behaviour, direction)
-				select {
-				case elevUpdateCh <- snapshot:
-				default:
-				}
+				elevUpdateCh <- snapshot
 			}
 			if elevStateChange || newButtonPressed {
 				behaviour, direction := elevator.MotionStrings()
