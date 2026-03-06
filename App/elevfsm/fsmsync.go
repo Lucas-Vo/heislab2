@@ -137,6 +137,9 @@ func (sync *FsmSync) ClearServicedRequests(floor int, serviced Requests, online 
 	for button := range common.ButtonType(common.N_BUTTONS) {
 		if serviced[floor][button] {
 			sync.localCalls[floor][button] = false
+			// Ensure lamps and local world-view reflect service immediately.
+			sync.netCalls[floor][button] = false
+			sync.confirmed[floor][button] = false
 			if !online {
 				sync.injected[floor][button] = false
 			}
@@ -145,10 +148,15 @@ func (sync *FsmSync) ClearServicedRequests(floor int, serviced Requests, online 
 }
 
 func (sync *FsmSync) CallsForLights(online bool) Requests {
-	if !online {
-		return sync.localCalls
+	calls := sync.localCalls
+	if online {
+		for floor := range common.N_FLOORS {
+			calls[floor][common.BT_HallUp] =
+				sync.netCalls[floor][common.BT_HallUp] || sync.localCalls[floor][common.BT_HallUp]
+			calls[floor][common.BT_HallDown] =
+				sync.netCalls[floor][common.BT_HallDown] || sync.localCalls[floor][common.BT_HallDown]
+		}
 	}
-	calls := sync.netCalls
 	for floor := range common.N_FLOORS {
 		calls[floor][common.BT_Cab] = sync.localCalls[floor][common.BT_Cab]
 	}

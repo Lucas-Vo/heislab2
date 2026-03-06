@@ -65,10 +65,6 @@ func fsmThread(
 			elevator.ApplyInjectRequests(sync.ReadyInjects(now, confirmTimeout, online))
 			elevator.SetRequestLights(sync.CallsForLights(online))
 
-			if !sync.IsInitFromNetwork() {
-				continue
-			}
-
 			floorWasServiced := servicedFloor >= 0 &&
 				servicedFloor < common.N_FLOORS &&
 				(servicedCalls[servicedFloor][common.BT_HallUp] ||
