@@ -29,16 +29,16 @@ func assignerThread(
 		return
 	}
 
-	// state variables
-	elevAssignment := ElevInput{HallTask: [N_FLOORS][2]bool{}} // TODO: needs a new name
+	// Current hall assignment for this elevator.
+	hallAssignment := ElevInput{HallTask: [N_FLOORS][2]bool{}}
 
-	networkWatchdog := time.NewTimer(NETWORK_PACKET_TIMEOUT)
-	defer networkWatchdog.Stop()
+	snapshotTimeoutTimer := time.NewTimer(NETWORK_PACKET_TIMEOUT)
+	defer snapshotTimeoutTimer.Stop()
 
 	for {
 		select {
 		case networkSnapshot := <-networkSnapshotCh:
-			networkWatchdog.Reset(NETWORK_PACKET_TIMEOUT)
+			snapshotTimeoutTimer.Reset(NETWORK_PACKET_TIMEOUT)
 
 			err := elevassigner.RemoveStaleStates(&networkSnapshot, selfKey)
 			if err != nil {
@@ -67,10 +67,10 @@ func assignerThread(
 				break
 			}
 
-			elevAssignment = ElevInput{HallTask: output[selfKey]}
-			elevatorTasksCh <- elevAssignment
+			hallAssignment = ElevInput{HallTask: output[selfKey]}
+			elevatorTasksCh <- hallAssignment
 
-		case <-networkWatchdog.C: //TODO: more domain oriented naming
+		case <-snapshotTimeoutTimer.C:
 			fmt.Println("Snapshot from network update timeout, withholding updates until next network ack")
 		}
 	}
