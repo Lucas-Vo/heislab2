@@ -140,9 +140,8 @@ func (sync *FsmSync) ClearServicedRequests(floor int, serviced Requests, online 
 			// Ensure lamps and local world-view reflect service immediately.
 			sync.netCalls[floor][button] = false
 			sync.confirmed[floor][button] = false
-			if !online {
-				sync.injected[floor][button] = false
-			}
+			sync.injected[floor][button] = false
+			sync.callTime[floor][button] = time.Time{}
 		}
 	}
 }
@@ -172,6 +171,17 @@ func (sync *FsmSync) BuildSnapshot(
 	direction string,
 ) common.Snapshot {
 	outCalls := sync.localCalls
+	if online {
+		outCalls = sync.netCalls
+		for f := range common.N_FLOORS {
+			if sync.localCalls[f][common.BT_HallUp] && !sync.confirmed[f][common.BT_HallUp] {
+				outCalls[f][common.BT_HallUp] = true
+			}
+			if sync.localCalls[f][common.BT_HallDown] && !sync.confirmed[f][common.BT_HallDown] {
+				outCalls[f][common.BT_HallDown] = true
+			}
+		}
+	}
 	if kind == common.UpdateServiced {
 		for floor := range common.N_FLOORS {
 			outCalls[floor][common.BT_HallUp] = true
