@@ -13,6 +13,7 @@ type FsmSync struct {
 	initFromNetwork bool
 	lastNetSeen     time.Time
 	hasAlivePeer    bool
+	coherent        bool
 
 	assignedHall [common.N_FLOORS][2]bool
 	netCalls     Requests
@@ -29,10 +30,13 @@ func NewFsmSync(config common.Config) *FsmSync {
 func (sync *FsmSync) HandleNetworkSnapshot(snapshot common.Snapshot, now time.Time) {
 	sync.lastNetSeen = now
 	sync.hasAlivePeer = false
+	sync.coherent = snapshot.Coherent
 	for key, alive := range snapshot.Alive {
 		if key != sync.selfKey && alive {
-			sync.hasAlivePeer = true
-			break
+			if _, hasState := snapshot.States[key]; hasState {
+				sync.hasAlivePeer = true
+				break
+			}
 		}
 	}
 	for floor := range common.N_FLOORS {
@@ -148,12 +152,15 @@ func (sync *FsmSync) ClearServicedRequests(floor int, serviced Requests, online 
 
 func (sync *FsmSync) CallsForLights(online bool) Requests {
 	calls := sync.localCalls
-	if online {
+	if online && sync.hasAlivePeer {
 		for floor := range common.N_FLOORS {
-			calls[floor][common.BT_HallUp] =
-				sync.netCalls[floor][common.BT_HallUp] || sync.localCalls[floor][common.BT_HallUp]
-			calls[floor][common.BT_HallDown] =
-				sync.netCalls[floor][common.BT_HallDown] || sync.localCalls[floor][common.BT_HallDown]
+			if sync.coherent {
+				calls[floor][common.BT_HallUp] = sync.netCalls[floor][common.BT_HallUp]
+				calls[floor][common.BT_HallDown] = sync.netCalls[floor][common.BT_HallDown]
+			} else {
+				calls[floor][common.BT_HallUp] = false
+				calls[floor][common.BT_HallDown] = false
+			}
 		}
 	}
 	for floor := range common.N_FLOORS {

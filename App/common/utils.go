@@ -15,6 +15,7 @@ func DeepCopySnapshot(ns Snapshot) Snapshot {
 		HallRequests: ns.HallRequests,
 		States:       make(map[string]ElevState, len(ns.States)),
 		Alive:        make(map[string]bool, len(ns.Alive)),
+		Coherent:     ns.Coherent,
 		UpdateKind:   ns.UpdateKind,
 	}
 	maps.Copy(snapshotCopy.States, ns.States)

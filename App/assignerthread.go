@@ -38,6 +38,9 @@ func assignerThread(
 	for {
 		select {
 		case networkSnapshot := <-networkSnapshotCh:
+			if !networkSnapshot.Coherent {
+				continue
+			}
 			snapshotTimeoutTimer.Reset(NETWORK_PACKET_TIMEOUT)
 
 			err := elevassigner.RemoveStaleStates(&networkSnapshot, selfKey)

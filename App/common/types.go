@@ -18,6 +18,7 @@ type Snapshot struct {
 	HallRequests [N_FLOORS][2]bool    `json:"hallRequests"`
 	States       map[string]ElevState `json:"states"`
 	Alive        map[string]bool      `json:"alive"`
+	Coherent     bool                 `json:"coherent,omitempty"`
 	UpdateKind   UpdateKind           `json:"type"`
 }
 
