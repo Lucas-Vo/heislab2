@@ -30,7 +30,7 @@ func assignerThread(
 	}
 
 	// Current hall assignment for this elevator.
-	hallAssignment := ElevInput{HallTask: [N_FLOORS][2]bool{}}
+	hallAssignment := ElevInput{HallTask: [N_FLOORS][2]bool{}, HallRequests: [N_FLOORS][2]bool{}}
 
 	snapshotTimeoutTimer := time.NewTimer(NETWORK_PACKET_TIMEOUT)
 	defer snapshotTimeoutTimer.Stop()
@@ -70,7 +70,7 @@ func assignerThread(
 				break
 			}
 
-			hallAssignment = ElevInput{HallTask: output[selfKey]}
+			hallAssignment = ElevInput{HallTask: output[selfKey], HallRequests: networkSnapshot.HallRequests}
 			elevatorTasksCh <- hallAssignment
 
 		case <-snapshotTimeoutTimer.C:

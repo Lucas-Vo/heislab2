@@ -241,3 +241,7 @@ func (sync *FsmSync) markInjected(floor int, button common.ButtonType) {
 	sync.callTime[floor][button] = time.Time{}
 	sync.localCalls[floor][button] = true
 }
+
+func (sync *FsmSync) GetLocalCab() [common.N_FLOORS]bool {
+	return common.GetCabSlice(sync.localCalls)
+}

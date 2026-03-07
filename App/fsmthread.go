@@ -52,6 +52,7 @@ func fsmThread(
 		case task := <-assignerOutputCh:
 			now = time.Now()
 			elevator.ApplyClearRequests(sync.HandleAssignerTask(task))
+			elevator.SetRequestLights(task.HallRequests, sync.GetLocalCab())
 
 		case <-ticker.C:
 			now = time.Now()
@@ -63,7 +64,6 @@ func fsmThread(
 			elevStateChange, servicedFloor, servicedCalls := elevator.Tick(now)
 			sync.ClearServicedRequests(servicedFloor, servicedCalls, online)
 			elevator.ApplyInjectRequests(sync.ReadyInjects(now, confirmTimeout, online))
-			elevator.SetRequestLights(sync.CallsForLights(online))
 
 			floorWasServiced := servicedFloor >= 0 &&
 				servicedFloor < common.N_FLOORS &&
