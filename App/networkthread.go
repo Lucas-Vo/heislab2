@@ -26,7 +26,7 @@ func networkThread(
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
 
-	ticker2 := time.NewTicker(1 * time.Second)
+	ticker2 := time.NewTicker(2 * time.Second)
 	defer ticker2.Stop()
 
 	contactTimer := time.NewTimer(INITIAL_CONTACT_TIMEOUT)
@@ -59,7 +59,7 @@ func networkThread(
 			wv.ForceReady()
 
 		case <-ticker.C:
-			if !wv.SnapshotsAreCoherent(){
+			if !wv.SnapshotsAreCoherent() {
 				wv.BroadcastRequests()
 			}
 			if wv.Ready() {
@@ -68,7 +68,7 @@ func networkThread(
 
 		case <-ticker2.C:
 			wv.BroadcastRequests()
-			
+
 		case <-elevatorErrorTimer.C:
 			snap := wv.GetSnapshot()
 			if snap.States[selfKey].Behavior != "idle" {
