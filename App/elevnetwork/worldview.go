@@ -82,11 +82,11 @@ func (wv *WorldView) PublishAll(netSnap1Ch, netSnap2Ch chan<- common.Snapshot) {
 		case netSnap1Ch <- snap1:
 		default:
 		}
-	}
-	snap2 := common.DeepCopySnapshot(snap)
-	select {
-	case netSnap2Ch <- snap2:
-	default:
+		snap2 := common.DeepCopySnapshot(snap)
+		select {
+		case netSnap2Ch <- snap2:
+		default:
+		}
 	}
 }
 
@@ -319,7 +319,6 @@ func (wv *WorldView) mergeWorldView(fromKey string, ns common.Snapshot) (becameR
 	wv.clearServicedTimestampsForActiveHalls()
 	for k, st := range ns.States {
 		if k == wv.selfKey && fromKey != wv.selfKey && wv.ready {
-			wv.ready = true
 			continue
 		}
 		wv.snapshot.States[k] = st
