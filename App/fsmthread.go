@@ -52,7 +52,7 @@ func fsmThread(
 		case task := <-assignerOutputCh:
 			now = time.Now()
 			elevator.ApplyClearRequests(sync.HandleAssignerTask(task))
-			elevator.SetRequestLights(task.HallRequests, sync.GetLocalCab())
+			elevator.SetHallLights(task.HallRequests)
 
 		case <-ticker.C:
 			now = time.Now()
@@ -64,9 +64,11 @@ func fsmThread(
 			elevStateChange, servicedFloor, servicedCalls := elevator.Tick(now)
 			sync.ClearServicedRequests(servicedFloor, servicedCalls, online)
 			elevator.ApplyInjectRequests(sync.ReadyInjects(now, confirmTimeout, online))
+			elevator.SetCabLights(sync.GetLocalCab())
 			if !online {
-				elevator.SetRequestLights(sync.GetLocalHall(), sync.GetLocalCab())
+				elevator.SetHallLights(sync.GetLocalHall())
 			}
+
 			floorWasServiced := servicedFloor >= 0 &&
 				servicedFloor < common.N_FLOORS &&
 				(servicedCalls[servicedFloor][common.BT_HallUp] ||
@@ -83,6 +85,7 @@ func fsmThread(
 				select {
 				case elevUpdateCh <- snapshot:
 				default:
+					log.Printf("fsmThread: elevUpdateCh is full, skipping snapshot update")
 				}
 			}
 		}

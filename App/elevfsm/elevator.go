@@ -190,10 +190,15 @@ func (e *Elevator) FloorSensor() int {
 	return e.inputDevice.FloorSensor()
 }
 
-func (e *Elevator) SetRequestLights(hallCallsFromAssigner [common.N_FLOORS][2]bool, localCab [common.N_FLOORS]bool) {
+func (e *Elevator) SetHallLights(hallRequests [common.N_FLOORS][2]bool) {
 	for floor := range common.N_FLOORS {
-		e.outputDevice.RequestButtonLight(floor, common.BT_HallDown, hallCallsFromAssigner[floor][common.BT_HallDown])
-		e.outputDevice.RequestButtonLight(floor, common.BT_HallUp, hallCallsFromAssigner[floor][common.BT_HallUp])
+		e.outputDevice.RequestButtonLight(floor, common.BT_HallDown, hallRequests[floor][common.BT_HallDown])
+		e.outputDevice.RequestButtonLight(floor, common.BT_HallUp, hallRequests[floor][common.BT_HallUp])
+	}
+}
+
+func (e *Elevator) SetCabLights(localCab [common.N_FLOORS]bool) {
+	for floor := range common.N_FLOORS {
 		e.outputDevice.RequestButtonLight(floor, common.BT_Cab, localCab[floor])
 	}
 }
