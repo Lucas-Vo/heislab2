@@ -86,6 +86,7 @@ func (e *Elevator) onRequestButtonPress(buttonFloor int, buttonType common.Butto
 		switch pair.behaviour {
 		case EB_DoorOpen:
 			e.outputDevice.DoorLight(true)
+			e.doorTimerEnd = time.Now().Add(doorOpenDuration)
 		case EB_Moving:
 			e.outputDevice.MotorDirection(e.dirn)
 		}

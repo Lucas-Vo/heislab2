@@ -58,7 +58,7 @@ func fsmThread(
 			online = sync.NetworkOnline(now)
 
 			edgePresses, newButtonPressed := elevator.PollButtonPresses()
-			elevator.ApplyInjectRequests(sync.HandleLocalButtonPresses(edgePresses, elevator.FloorSensor(), now))
+			elevator.ApplyInjectRequests(sync.HandleLocalButtonPresses(edgePresses, elevator.FloorSensor(), now, online))
 
 			elevStateChange, servicedFloor, servicedCalls := elevator.Tick(now)
 			sync.ClearServicedRequests(servicedFloor, servicedCalls, online)

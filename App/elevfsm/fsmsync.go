@@ -92,7 +92,8 @@ func (sync *FsmSync) HandleAssignerTask(task common.ElevInput) (toClear Requests
 	return toClear
 }
 
-func (sync *FsmSync) HandleLocalButtonPresses(edgePresses Requests, currentFloor int, now time.Time) (toInject Requests) {
+func (sync *FsmSync) HandleLocalButtonPresses(edgePresses Requests, currentFloor int, now time.Time, online bool) (toInject Requests) {
+	distributedOnline := online && sync.hasAlivePeer
 	for floor := range common.N_FLOORS {
 		for button := range common.ButtonType(common.N_BUTTONS) {
 			if !edgePresses[floor][button] {
@@ -100,7 +101,8 @@ func (sync *FsmSync) HandleLocalButtonPresses(edgePresses Requests, currentFloor
 			}
 			sync.callTime[floor][button] = now
 			sync.localCalls[floor][button] = true
-			if button == common.BT_Cab || currentFloor == floor {
+			allowImmediateHallInject := !distributedOnline
+			if button == common.BT_Cab || (currentFloor == floor && allowImmediateHallInject) {
 				toInject[floor][button] = true
 				sync.markInjected(floor, button)
 			}
@@ -110,11 +112,14 @@ func (sync *FsmSync) HandleLocalButtonPresses(edgePresses Requests, currentFloor
 }
 
 func (sync *FsmSync) ReadyInjects(now time.Time, confirmTimeout time.Duration, online bool) (toInject Requests) {
+	distributedOnline := online && sync.hasAlivePeer
 	for floor := range common.N_FLOORS {
 		for button := range common.ButtonType(common.N_BUTTONS) {
 			callActive := sync.localCalls[floor][button]
-			if online && button != common.BT_Cab {
-				callActive = sync.netCalls[floor][button]
+			if distributedOnline && button != common.BT_Cab {
+				callActive = sync.coherent && sync.netCalls[floor][button]
+			} else if online && button != common.BT_Cab {
+				callActive = sync.netCalls[floor][button] || sync.localCalls[floor][button]
 			}
 			if !callActive || sync.injected[floor][button] {
 				continue
@@ -124,6 +129,9 @@ func (sync *FsmSync) ReadyInjects(now time.Time, confirmTimeout time.Duration, o
 			timedOut := hasTimestamp && now.Sub(sync.callTime[floor][button]) >= confirmTimeout
 			shouldInject := (online && (button == common.BT_Cab || sync.assignedHall[floor][button])) ||
 				(!online && (!hasTimestamp || timedOut))
+			if distributedOnline && button != common.BT_Cab {
+				shouldInject = sync.coherent && sync.assignedHall[floor][button]
+			}
 			if shouldInject {
 				toInject[floor][button] = true
 				sync.markInjected(floor, button)
