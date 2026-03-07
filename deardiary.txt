@@ -1,1 +1,2 @@
-Too long startup sequence
+Moving elev while on floor and then giving requests leads to crash. Dont make me crash please
+Self init from crash is hella dependent on timing andthe goodwill of God
