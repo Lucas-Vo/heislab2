@@ -48,12 +48,9 @@ func networkThread(
 			if hasRecentlyServiced {
 				wv.ResendServicedHallRequests(servicedHall)
 			}
-			updateKind, transitionedToReady := wv.MergeRemote(frameToMerge)
+			wv.MergeRemote(frameToMerge)
 			wv.PublishAll(netSnap1Ch, netSnap2Ch)
-			// Publish immediately when transitioning to ready so recovered cab requests are propagated without waiting for the next ticker event.
-			if updateKind == common.UpdateRequests && transitionedToReady {
-				wv.PublishAll(netSnap1Ch, netSnap2Ch)
-			}
+			
 
 		case <-contactTimer.C:
 			log.Printf("networkThread: forcing ready")

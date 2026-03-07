@@ -217,13 +217,13 @@ func (wv *WorldView) ResendServicedHallRequests(serviced [common.N_FLOORS][2]boo
 	wv.sendOverNetwork(snap)
 }
 
-func (wv *WorldView) MergeRemote(frame []byte) (common.UpdateKind, bool) {
+func (wv *WorldView) MergeRemote(frame []byte) {
 	msg := decodeNetMsg(frame)
 
 	wv.mu.Lock()
 	if msg.Origin == wv.selfKey || msg.Origin == "" {
 		wv.mu.Unlock()
-		return msg.Snapshot.UpdateKind, false
+		return
 	}
 	now := time.Now()
 	prevCount, seen := wv.latestCount[msg.Origin]
@@ -233,23 +233,27 @@ func (wv *WorldView) MergeRemote(frame []byte) (common.UpdateKind, bool) {
 		wv.latestCount[msg.Origin] = msg.Counter
 	} else {
 		wv.mu.Unlock()
-		return msg.Snapshot.UpdateKind, false
+		return
 	}
-	becameReady := wv.mergeWorldView(msg.Origin, msg.Snapshot)
+	log.Printf("merge 1  %v", msg.Snapshot.States["1"])
+	log.Printf("merge 3  %v", msg.Snapshot.States["3"])
+	wv.mergeWorldView(msg.Origin, msg.Snapshot)
 	alive := wv.selfAlive
 	pm := wv.pm
 	wv.mu.Unlock()
 	if alive && pm != nil {
 		pm.Broadcast(frame)
 	}
-	return msg.Snapshot.UpdateKind, becameReady
 }
 
 func (wv *WorldView) BroadcastRequests() {
 	alive := wv.selfAlive
 	if alive {
 		snap := common.DeepCopySnapshot(wv.snapshot)
+		log.Printf("broadcast 1  %v", snap.States["1"])
+		log.Printf("broadcast 3  %v", snap.States["3"])
 		snap.UpdateKind = common.UpdateRequests
+
 		wv.sendOverNetwork(snap)
 	}
 }
@@ -304,14 +308,13 @@ func (wv *WorldView) wasRecentlyServicedLocked(floor int, button int, now time.T
 	return now.Sub(lastServiced) <= recentlyServicedWindow
 }
 
-func (wv *WorldView) mergeWorldView(fromKey string, ns common.Snapshot) (becameReady bool) {
+func (wv *WorldView) mergeWorldView(fromKey string, ns common.Snapshot) {
 	wv.lastHeard[fromKey] = time.Now()
 	if fromKey != wv.selfKey {
 		wv.lastSnapshot[fromKey] = common.DeepCopySnapshot(ns)
 		if !wv.ready && ns.UpdateKind == common.UpdateRequests {
 			wv.recoverCabRequests(ns)
 			wv.ready = true
-			becameReady = true
 		}
 	}
 
@@ -323,7 +326,6 @@ func (wv *WorldView) mergeWorldView(fromKey string, ns common.Snapshot) (becameR
 		}
 		wv.snapshot.States[k] = st
 	}
-	return becameReady
 }
 
 func (wv *WorldView) clearServicedTimestampsForActiveHalls() {

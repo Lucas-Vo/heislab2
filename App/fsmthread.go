@@ -51,6 +51,7 @@ func fsmThread(
 			online = sync.NetworkOnline(now)
 
 			if online {
+				log.Printf("fsmThread: network snapshot received, elevator online. Coherent: %v, hasAlivePeer: %v", snap.Coherent, sync.HasAlivePeer())
 				if snap.Coherent {
 					elevator.SetCabLights(sync.GetLocalCab())
 					elevator.SetHallLights(sync.GetNetHall())
@@ -62,7 +63,6 @@ func fsmThread(
 		case task := <-assignerOutputCh:
 			now = time.Now()
 			elevator.ApplyClearRequests(sync.HandleAssignerTask(task))
-			
 
 		case <-ticker.C:
 			now = time.Now()
