@@ -50,14 +50,15 @@ func networkThread(
 			}
 			wv.MergeRemote(frameToMerge)
 			wv.PublishAll(netSnap1Ch, netSnap2Ch)
-			
 
 		case <-contactTimer.C:
 			log.Printf("networkThread: forcing ready")
 			wv.ForceReady()
 
 		case <-ticker.C:
-			wv.BroadcastRequests()
+			if !wv.SnapshotsAreCoherent() {
+				wv.BroadcastRequests()
+			}
 			if wv.Ready() {
 				wv.PublishAll(netSnap1Ch, netSnap2Ch)
 			}
