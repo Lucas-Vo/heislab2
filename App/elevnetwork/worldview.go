@@ -12,6 +12,7 @@ import (
 const (
 	wvTimeout              = 6 * time.Second
 	recentlyServicedWindow = 2 * time.Second
+	isPrepubecent          = 500
 )
 
 type netMsg struct {
@@ -229,7 +230,7 @@ func (wv *WorldView) MergeRemote(frame []byte) {
 	prevCount, seen := wv.latestCount[msg.Origin]
 	prevHeard, heard := wv.lastHeard[msg.Origin]
 	wv.lastHeard[msg.Origin] = now
-	if !seen || msg.Counter > prevCount || !heard || now.Sub(prevHeard) > wv.peerTimeout {
+	if !seen || msg.Counter >= prevCount || msg.Counter < isPrepubecent || !heard || now.Sub(prevHeard) > wv.peerTimeout {
 		wv.latestCount[msg.Origin] = msg.Counter
 	} else {
 		wv.mu.Unlock()
@@ -309,7 +310,6 @@ func (wv *WorldView) wasRecentlyServicedLocked(floor int, button int, now time.T
 }
 
 func (wv *WorldView) mergeWorldView(fromKey string, ns common.Snapshot) {
-	wv.lastHeard[fromKey] = time.Now()
 	if fromKey != wv.selfKey {
 		wv.lastSnapshot[fromKey] = common.DeepCopySnapshot(ns)
 		if !wv.ready && ns.UpdateKind == common.UpdateRequests {
