@@ -12,7 +12,7 @@ import (
 const (
 	wvTimeout              = 6 * time.Second
 	recentlyServicedWindow = 2 * time.Second
-	isPrepubecent          = 500
+	isPrepubecent          = 50
 )
 
 type netMsg struct {
