@@ -10,9 +10,8 @@ import (
 )
 
 const (
-	wvTimeout              = 6 * time.Second
+	wvTimeout              = 4 * time.Second
 	recentlyServicedWindow = 2 * time.Second
-	isPrepubecent          = 50
 )
 
 type netMsg struct {
@@ -230,7 +229,8 @@ func (wv *WorldView) MergeRemote(frame []byte) {
 	prevCount, seen := wv.latestCount[msg.Origin]
 	prevHeard, heard := wv.lastHeard[msg.Origin]
 	wv.lastHeard[msg.Origin] = now
-	if !seen || msg.Counter >= prevCount || msg.Counter < isPrepubecent || !heard || now.Sub(prevHeard) > wv.peerTimeout {
+
+	if !seen || msg.Counter > prevCount || !heard || now.Sub(prevHeard) > wv.peerTimeout {
 		wv.latestCount[msg.Origin] = msg.Counter
 	} else {
 		wv.mu.Unlock()
