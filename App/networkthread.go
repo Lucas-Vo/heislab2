@@ -37,10 +37,17 @@ func networkThread(
 		case ns := <-elevUpdateCh:
 			wv.SetSelfAlive(true)
 			elevatorErrorTimer.Reset(4 * time.Second)
+			if ns.UpdateKind == common.UpdateServiced {
+				wv.TrackLocallyServicedHallRequests(ns, time.Now())
+			}
 			wv.MergeLocal(ns)
 
 		case frame := <-incoming:
-			updateKind, transitionedToReady := wv.MergeRemote(frame)
+			frameToMerge, servicedHall, hasRecentlyServiced := wv.SuppressRecentlyServicedFromFrame(frame, time.Now())
+			if hasRecentlyServiced {
+				wv.ResendServicedHallRequests(servicedHall)
+			}
+			updateKind, transitionedToReady := wv.MergeRemote(frameToMerge)
 			// Publish immediately when transitioning to ready so recovered cab requests are propagated without waiting for the next ticker event.
 			if updateKind == common.UpdateRequests && transitionedToReady {
 				wv.PublishAll(netSnap1Ch, netSnap2Ch)

@@ -9,7 +9,10 @@ import (
 	"time"
 )
 
-const wvTimeout = 4 * time.Second
+const (
+	wvTimeout              = 4 * time.Second
+	recentlyServicedWindow = 2 * time.Second
+)
 
 type netMsg struct {
 	Origin   string          `json:"origin"`
@@ -17,10 +20,15 @@ type netMsg struct {
 	Snapshot common.Snapshot `json:"snapshot"`
 }
 
+type servicedFloorTimestamp struct {
+	Hall [common.N_FLOORS][2]time.Time
+}
+
 type WorldView struct {
 	mu           sync.Mutex
 	peers        []string
 	snapshot     common.Snapshot
+	servicedHall servicedFloorTimestamp
 	lastHeard    map[string]time.Time
 	lastSnapshot map[string]common.Snapshot
 	peerTimeout  time.Duration
@@ -129,6 +137,86 @@ func (wv *WorldView) MergeLocal(ns common.Snapshot) {
 	wv.sendOverNetwork(snap)
 }
 
+func (wv *WorldView) TrackLocallyServicedHallRequests(ns common.Snapshot, now time.Time) {
+	if ns.UpdateKind != common.UpdateServiced {
+		return
+	}
+	wv.mu.Lock()
+	defer wv.mu.Unlock()
+	for floor := range common.N_FLOORS {
+		for button := 0; button < 2; button++ {
+			if wv.snapshot.HallRequests[floor][button] && !ns.HallRequests[floor][button] {
+				wv.servicedHall.Hall[floor][button] = now
+			}
+		}
+	}
+}
+
+func (wv *WorldView) SuppressRecentlyServicedFromFrame(
+	frame []byte,
+	now time.Time,
+) ([]byte, [common.N_FLOORS][2]bool, bool) {
+	msg := decodeNetMsg(frame)
+	if msg.Origin == "" || msg.Origin == wv.selfKey {
+		return frame, [common.N_FLOORS][2]bool{}, false
+	}
+
+	var serviced [common.N_FLOORS][2]bool
+	mutated := false
+
+	wv.mu.Lock()
+	for floor := range common.N_FLOORS {
+		for button := 0; button < 2; button++ {
+			if !msg.Snapshot.HallRequests[floor][button] {
+				continue
+			}
+			if wv.wasRecentlyServicedLocked(floor, button, now) {
+				msg.Snapshot.HallRequests[floor][button] = false
+				serviced[floor][button] = true
+				mutated = true
+			}
+		}
+	}
+	wv.mu.Unlock()
+
+	if !mutated {
+		return frame, serviced, false
+	}
+	encoded, err := json.Marshal(msg)
+	if err != nil {
+		return frame, [common.N_FLOORS][2]bool{}, false
+	}
+	return encoded, serviced, true
+}
+
+func (wv *WorldView) ResendServicedHallRequests(serviced [common.N_FLOORS][2]bool) {
+	shouldResend := false
+	for floor := range common.N_FLOORS {
+		for button := 0; button < 2; button++ {
+			if serviced[floor][button] {
+				shouldResend = true
+			}
+		}
+	}
+	if !shouldResend {
+		return
+	}
+
+	wv.mu.Lock()
+	snap := common.DeepCopySnapshot(wv.snapshot)
+	wv.mu.Unlock()
+
+	snap.UpdateKind = common.UpdateServiced
+	for floor := range common.N_FLOORS {
+		for button := 0; button < 2; button++ {
+			if serviced[floor][button] {
+				snap.HallRequests[floor][button] = false
+			}
+		}
+	}
+	wv.sendOverNetwork(snap)
+}
+
 func (wv *WorldView) MergeRemote(frame []byte) (common.UpdateKind, bool) {
 	msg := decodeNetMsg(frame)
 
@@ -208,6 +296,14 @@ func decodeNetMsg(frame []byte) netMsg {
 	return msg
 }
 
+func (wv *WorldView) wasRecentlyServicedLocked(floor int, button int, now time.Time) bool {
+	lastServiced := wv.servicedHall.Hall[floor][button]
+	if lastServiced.IsZero() {
+		return false
+	}
+	return now.Sub(lastServiced) <= recentlyServicedWindow
+}
+
 func (wv *WorldView) mergeWorldView(fromKey string, ns common.Snapshot) (becameReady bool) {
 	wv.lastHeard[fromKey] = time.Now()
 	if fromKey != wv.selfKey {
@@ -220,6 +316,7 @@ func (wv *WorldView) mergeWorldView(fromKey string, ns common.Snapshot) (becameR
 	}
 
 	wv.snapshot.HallRequests = common.MergeHallRequests(wv.snapshot.HallRequests, ns.HallRequests, ns.UpdateKind)
+	wv.clearServicedTimestampsForActiveHalls()
 	for k, st := range ns.States {
 		if k == wv.selfKey && fromKey != wv.selfKey && wv.ready {
 			wv.ready = true
@@ -228,6 +325,16 @@ func (wv *WorldView) mergeWorldView(fromKey string, ns common.Snapshot) (becameR
 		wv.snapshot.States[k] = st
 	}
 	return becameReady
+}
+
+func (wv *WorldView) clearServicedTimestampsForActiveHalls() {
+	for floor := range common.N_FLOORS {
+		for button := 0; button < 2; button++ {
+			if wv.snapshot.HallRequests[floor][button] {
+				wv.servicedHall.Hall[floor][button] = time.Time{}
+			}
+		}
+	}
 }
 
 func (wv *WorldView) recoverCabRequests(ns common.Snapshot) {
