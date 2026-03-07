@@ -245,3 +245,7 @@ func (sync *FsmSync) markInjected(floor int, button common.ButtonType) {
 func (sync *FsmSync) GetLocalCab() [common.N_FLOORS]bool {
 	return common.GetCabSlice(sync.localCalls)
 }
+
+func (sync *FsmSync) GetLocalHall() [common.N_FLOORS][2]bool {
+	return common.GetHallSlice(sync.localCalls)
+}

@@ -64,7 +64,9 @@ func fsmThread(
 			elevStateChange, servicedFloor, servicedCalls := elevator.Tick(now)
 			sync.ClearServicedRequests(servicedFloor, servicedCalls, online)
 			elevator.ApplyInjectRequests(sync.ReadyInjects(now, confirmTimeout, online))
-
+			if !online {
+				elevator.SetRequestLights(sync.GetLocalHall(), sync.GetLocalCab())
+			}
 			floorWasServiced := servicedFloor >= 0 &&
 				servicedFloor < common.N_FLOORS &&
 				(servicedCalls[servicedFloor][common.BT_HallUp] ||

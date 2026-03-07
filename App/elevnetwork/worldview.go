@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	wvTimeout              = 4 * time.Second
+	wvTimeout              = 6 * time.Second
 	recentlyServicedWindow = 2 * time.Second
 )
 

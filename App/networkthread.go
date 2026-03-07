@@ -23,7 +23,7 @@ func networkThread(
 
 	wv, incoming := elevnetwork.InitWorldView(ctx, cfg, 4242)
 
-	ticker := time.NewTicker(300 * time.Millisecond)
+	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
 
 	contactTimer := time.NewTimer(INITIAL_CONTACT_TIMEOUT)
