@@ -158,25 +158,6 @@ func (sync *FsmSync) ClearServicedRequests(floor int, serviced Requests, online 
 	}
 }
 
-func (sync *FsmSync) CallsForLights(online bool) Requests {
-	calls := sync.localCalls
-	if online && sync.hasAlivePeer {
-		for floor := range common.N_FLOORS {
-			if sync.coherent {
-				calls[floor][common.BT_HallUp] = sync.netCalls[floor][common.BT_HallUp]
-				calls[floor][common.BT_HallDown] = sync.netCalls[floor][common.BT_HallDown]
-			} else {
-				calls[floor][common.BT_HallUp] = false
-				calls[floor][common.BT_HallDown] = false
-			}
-		}
-	}
-	for floor := range common.N_FLOORS {
-		calls[floor][common.BT_Cab] = sync.localCalls[floor][common.BT_Cab]
-	}
-	return calls
-}
-
 func (sync *FsmSync) BuildSnapshot(
 	floor int,
 	kind common.UpdateKind,
@@ -248,4 +229,8 @@ func (sync *FsmSync) GetLocalCab() [common.N_FLOORS]bool {
 
 func (sync *FsmSync) GetLocalHall() [common.N_FLOORS][2]bool {
 	return common.GetHallSlice(sync.localCalls)
+}
+
+func (sync *FsmSync) GetNetHall() [common.N_FLOORS][2]bool {
+	return common.GetHallSlice(sync.netCalls)
 }

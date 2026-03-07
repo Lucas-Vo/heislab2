@@ -48,11 +48,21 @@ func fsmThread(
 		case snap := <-netWorldView2Ch:
 			now = time.Now()
 			sync.HandleNetworkSnapshot(snap, now)
+			online = sync.NetworkOnline(now)
+
+			if online {
+				if snap.Coherent {
+					elevator.SetCabLights(sync.GetLocalCab())
+					elevator.SetHallLights(sync.GetNetHall())
+				}
+			} else {
+				elevator.SetCabLights(sync.GetLocalCab())
+			}
 
 		case task := <-assignerOutputCh:
 			now = time.Now()
 			elevator.ApplyClearRequests(sync.HandleAssignerTask(task))
-			elevator.SetHallLights(task.HallRequests)
+			
 
 		case <-ticker.C:
 			now = time.Now()
@@ -64,7 +74,7 @@ func fsmThread(
 			elevStateChange, servicedFloor, servicedCalls := elevator.Tick(now)
 			sync.ClearServicedRequests(servicedFloor, servicedCalls, online)
 			elevator.ApplyInjectRequests(sync.ReadyInjects(now, confirmTimeout, online))
-			elevator.SetCabLights(sync.GetLocalCab())
+
 			if !online {
 				elevator.SetHallLights(sync.GetLocalHall())
 			}
