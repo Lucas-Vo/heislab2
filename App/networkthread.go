@@ -12,60 +12,63 @@ import (
 
 const (
 	INITIAL_CONTACT_TIMEOUT = 5 * time.Second
+	ELEVATOR_ERROR_TIMEOUT  = 4 * time.Second
+	LOCAL_PUBLISH_PERIOD    = 100 * time.Millisecond
+	BROADCAST_PERIOD        = 2 * time.Second
 )
 
 func networkThread(
 	ctx context.Context,
 	cfg common.Config,
 	elevUpdateCh <-chan common.Snapshot,
-	netSnap1Ch chan<- common.Snapshot,
-	netSnap2Ch chan<- common.Snapshot,
+	netSnapAssignerCh chan<- common.Snapshot,
+	netSnapElevCh chan<- common.Snapshot,
 ) {
 	selfKey := cfg.SelfKey
 
 	wv, incoming := elevnetwork.InitWorldView(ctx, cfg, 4242)
 
-	localTicker := time.NewTicker(100 * time.Millisecond)
+	localTicker := time.NewTicker(LOCAL_PUBLISH_PERIOD)
 	defer localTicker.Stop()
 
-	broadcastTicker := time.NewTicker(2 * time.Second)
+	broadcastTicker := time.NewTicker(BROADCAST_PERIOD)
 	defer broadcastTicker.Stop()
 
-	contactTimer := time.NewTimer(INITIAL_CONTACT_TIMEOUT)
-	defer contactTimer.Stop()
+	startupTimer := time.NewTimer(INITIAL_CONTACT_TIMEOUT)
+	defer startupTimer.Stop()
 
-	elevatorErrorTimer := time.NewTimer(4 * time.Second)
+	elevatorErrorTimer := time.NewTimer(ELEVATOR_ERROR_TIMEOUT)
 	defer elevatorErrorTimer.Stop()
 
 	for {
 		select {
 		case ns := <-elevUpdateCh:
 			wv.SetSelfAlive(true)
-			elevatorErrorTimer.Reset(4 * time.Second)
+			elevatorErrorTimer.Reset(ELEVATOR_ERROR_TIMEOUT)
 			if ns.UpdateKind == common.UpdateServiced {
-				wv.TrackLocallyServicedHallRequests(ns, time.Now())
+				wv.MarkRecentlyServicedHalls(ns, time.Now())
 			}
 			wv.MergeLocal(ns)
-			wv.PublishLocally(netSnap1Ch, netSnap2Ch)
+			wv.PublishLocally(netSnapAssignerCh, netSnapElevCh)
 
 		case frame := <-incoming:
-			frameToMerge, servicedHall, hasRecentlyServiced := wv.SuppressRecentlyServicedFromFrame(frame, time.Now())
-			if hasRecentlyServiced {
-				wv.ResendServicedHallRequests(servicedHall)
+			frameToMerge, filteredHalls, isFiltered := wv.FilterRecentlyServicedHalls(frame, time.Now())
+			if isFiltered {
+				wv.ResendServicedHalls(filteredHalls)
 			}
 			wv.MergeRemote(frameToMerge)
-			wv.PublishLocally(netSnap1Ch, netSnap2Ch)
+			wv.PublishLocally(netSnapAssignerCh, netSnapElevCh)
 
-		case <-contactTimer.C:
-			log.Printf("networkThread: forcing ready")
-			wv.ForceReady()
+		case <-startupTimer.C:
+			log.Printf("networkThread: forcing end of startup phase")
+			wv.EndStartupPeriod()
 
 		case <-localTicker.C:
 			if !wv.SnapshotsAreCoherent() {
 				wv.BroadcastRequests()
 			}
-			if wv.Ready() {
-				wv.PublishLocally(netSnap1Ch, netSnap2Ch)
+			if wv.JoinedNetwork() {
+				wv.PublishLocally(netSnapAssignerCh, netSnapElevCh)
 			}
 
 		case <-broadcastTicker.C:
@@ -77,12 +80,12 @@ func networkThread(
 				if wv.SelfAlive() {
 					wv.SetSelfAlive(false)
 					log.Printf("No behavior change detected for 6 seconds, marking Elevator as stale")
-					wv.PublishLocally(netSnap1Ch, netSnap2Ch)
+					wv.PublishLocally(netSnapAssignerCh, netSnapElevCh)
 				}
 			} else {
 				if !wv.SelfAlive() {
 					wv.SetSelfAlive(true)
-					wv.PublishLocally(netSnap1Ch, netSnap2Ch)
+					wv.PublishLocally(netSnapAssignerCh, netSnapElevCh)
 				}
 				elevatorErrorTimer.Reset(6 * time.Second)
 			}
