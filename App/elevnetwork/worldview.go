@@ -94,14 +94,14 @@ func (wv *WorldView) GetSnapshot() common.Snapshot {
 	wv.mu.Lock()
 	defer wv.mu.Unlock()
 	snap := common.DeepCopySnapshot(wv.snapshot)
-	snap.Alive = wv.calculateAlive(time.Now())
+	snap.Alive = wv.CalculateAlive(time.Now())
 	return snap
 }
 
 func (wv *WorldView) SnapshotsAreCoherent() bool {
 	wv.mu.Lock()
 	defer wv.mu.Unlock()
-	alivePeers := wv.calculateAlive(time.Now())
+	alivePeers := wv.CalculateAlive(time.Now())
 	selfSnapshot, hasSelfSnapshot := wv.lastSnapshot[wv.selfKey]
 	if !hasSelfSnapshot {
 		return false
@@ -260,7 +260,7 @@ func (wv *WorldView) BroadcastRequests() {
 	}
 }
 
-func (wv *WorldView) calculateAlive(now time.Time) map[string]bool {
+func (wv *WorldView) CalculateAlive(now time.Time) map[string]bool {
 	alive := make(map[string]bool, len(wv.peers))
 	startupGrace := now.Sub(wv.startTime) <= wv.peerTimeout
 	for _, id := range wv.peers {

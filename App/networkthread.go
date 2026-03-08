@@ -60,9 +60,18 @@ func networkThread(
 			wv.PublishLocally(netUpdateAssignerCh, netUpdateElevCh)
 
 		case <-localTicker.C:
-			if !wv.SnapshotsAreCoherent() {
+			alivePeers := false
+			calculateAlive := wv.CalculateAlive(time.Now())
+			for key, alive := range calculateAlive {
+				if key != selfKey && alive {
+					alivePeers = true
+					break
+				}
+			}
+			if !wv.SnapshotsAreCoherent() || !alivePeers {
 				wv.BroadcastRequests()
 			}
+
 			if wv.JoinedNetwork() {
 				wv.PublishLocally(netUpdateAssignerCh, netUpdateElevCh)
 			}
