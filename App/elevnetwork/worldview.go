@@ -76,7 +76,7 @@ func (wv *WorldView) SelfAlive() bool { return wv.selfAlive }
 
 func (wv *WorldView) PublishLocally(netSnap1Ch, netSnap2Ch chan<- common.Snapshot) {
 	snap := wv.GetSnapshot()
-	coherent := wv.JoinedNetwork() && wv.SnapshotsAreCoherent() || snap.UpdateKind == common.UpdateServiced
+	coherent := wv.JoinedNetwork() && (wv.SnapshotsAreCoherent() || snap.UpdateKind == common.UpdateServiced)
 	snap.Coherent = coherent
 	snap1 := common.DeepCopySnapshot(snap)
 	select {
@@ -216,18 +216,6 @@ func (wv *WorldView) FilterRecentlyServicedHalls(
 }
 
 func (wv *WorldView) ResendServicedHalls(serviced [common.N_FLOORS][2]bool) {
-	shouldResend := false
-	for floor := range common.N_FLOORS {
-		for button := 0; button < 2; button++ {
-			if serviced[floor][button] {
-				shouldResend = true
-			}
-		}
-	}
-	if !shouldResend {
-		return
-	}
-
 	wv.mu.Lock()
 	snap := common.DeepCopySnapshot(wv.snapshot)
 	wv.mu.Unlock()

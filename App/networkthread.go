@@ -39,7 +39,6 @@ func networkThread(
 
 	elevatorErrorTimer := time.NewTimer(ELEVATOR_ERROR_TIMEOUT)
 	defer elevatorErrorTimer.Stop()
-	isFiltered := false
 	for {
 		select {
 		case ns := <-elevUpdateCh:
@@ -53,10 +52,11 @@ func networkThread(
 
 		case frame := <-incoming:
 			frameToMerge, filteredHalls, isFiltered := wv.FilterRecentlyServicedHalls(frame, time.Now())
+			wv.MergeRemote(frameToMerge)
 			if isFiltered {
 				wv.ResendServicedHalls(filteredHalls)
 			}
-			wv.MergeRemote(frameToMerge)
+			
 			wv.PublishLocally(netUpdateAssignerCh, netUpdateElevCh)
 
 		case <-startupTimer.C:
@@ -64,9 +64,8 @@ func networkThread(
 			wv.EndStartupPeriod()
 
 		case <-localTicker.C:
-			if !wv.SnapshotsAreCoherent() || isFiltered {
+			if !wv.SnapshotsAreCoherent() {
 				wv.BroadcastRequests()
-				isFiltered = false
 			}
 			if wv.JoinedNetwork() {
 				wv.PublishLocally(netUpdateAssignerCh, netUpdateElevCh)
