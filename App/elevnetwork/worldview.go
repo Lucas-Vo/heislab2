@@ -101,17 +101,25 @@ func (wv *WorldView) GetSnapshot() common.Snapshot {
 func (wv *WorldView) SnapshotsAreCoherent() bool {
 	wv.mu.Lock()
 	defer wv.mu.Unlock()
-	alive := wv.calculateAlive(time.Now())
+	alivePeers := wv.calculateAlive(time.Now())
 	selfSnapshot, hasSelfSnapshot := wv.lastSnapshot[wv.selfKey]
 	if !hasSelfSnapshot {
 		return false
 	}
+	selfViewOfSelf, hasSelfViewOfSelf := selfSnapshot.States[wv.selfKey]
+	if !hasSelfViewOfSelf {
+		return false
+	}
 	for _, peerID := range wv.peers {
-		if peerID == wv.selfKey || !alive[peerID] {
+		if peerID == wv.selfKey || !alivePeers[peerID] {
 			continue
 		}
 		peerSnapshot, hasPeerSnapshot := wv.lastSnapshot[peerID]
 		if !hasPeerSnapshot {
+			return false
+		}
+		peerViewOfSelf, hasPeerViewOfSelf := peerSnapshot.States[wv.selfKey]
+		if !hasPeerViewOfSelf {
 			return false
 		}
 
@@ -124,14 +132,9 @@ func (wv *WorldView) SnapshotsAreCoherent() bool {
 			}
 		}
 
-		internalSelfState, hasInternalSelfState := selfSnapshot.States[wv.selfKey]
-		peerSelfState, hasPeerSelfState := peerSnapshot.States[wv.selfKey]
-		if !hasInternalSelfState || !hasPeerSelfState {
-			return false
-		}
-		if internalSelfState.Behavior != peerSelfState.Behavior ||
-			internalSelfState.Direction != peerSelfState.Direction ||
-			internalSelfState.Floor != peerSelfState.Floor {
+		if selfViewOfSelf.Behavior != peerViewOfSelf.Behavior ||
+			selfViewOfSelf.Direction != peerViewOfSelf.Direction ||
+			selfViewOfSelf.Floor != peerViewOfSelf.Floor {
 			return false
 		}
 	}
