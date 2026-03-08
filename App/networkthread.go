@@ -14,7 +14,7 @@ const (
 	INITIAL_CONTACT_TIMEOUT = 5 * time.Second
 	ELEVATOR_ERROR_TIMEOUT  = 4 * time.Second
 	LOCAL_PUBLISH_PERIOD    = 100 * time.Millisecond
-	BROADCAST_PERIOD        = 2 * time.Second
+	BROADCAST_PERIOD        = 1 * time.Second
 )
 
 func networkThread(
@@ -56,7 +56,7 @@ func networkThread(
 			if isFiltered {
 				wv.ResendServicedHalls(filteredHalls)
 			}
-			
+
 			wv.PublishLocally(netUpdateAssignerCh, netUpdateElevCh)
 
 		case <-startupTimer.C:
