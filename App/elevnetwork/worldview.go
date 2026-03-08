@@ -106,6 +106,7 @@ func (wv *WorldView) SnapshotsAreCoherent() bool {
 	if !ok {
 		return false
 	}
+	var comparisonResult = false
 	for _, id := range wv.peers {
 		if id == wv.selfKey || !alive[id] {
 			continue
@@ -114,11 +115,26 @@ func (wv *WorldView) SnapshotsAreCoherent() bool {
 		if !ok {
 			return false
 		}
-		if !common.HallAndStateEqualForElevator(ref, snap, wv.selfKey) {
-			return false
+		for i := range common.N_FLOORS {
+
+			if ref.HallRequests[i][common.BT_HallUp] != snap.HallRequests[i][common.BT_HallUp] {
+				comparisonResult = false
+			}
+			if ref.HallRequests[i][common.BT_HallDown] != snap.HallRequests[i][common.BT_HallDown] {
+				comparisonResult = false
+			}
 		}
+		refSt, refOk := ref.States[wv.selfKey]
+		snapSt, snapOk := ref.States[wv.selfKey]
+		if !refOk || !snapOk {
+			comparisonResult = false
+		}
+		if refSt.Behavior != snapSt.Behavior || refSt.Direction != snapSt.Direction || refSt.Floor != snapSt.Floor {
+			comparisonResult = false
+		}
+		comparisonResult = true
 	}
-	return true
+	return comparisonResult
 }
 
 func (wv *WorldView) MergeLocal(ns common.Snapshot) {

@@ -39,33 +39,6 @@ func GetCabSlice(in [N_FLOORS][N_BUTTONS]bool) [N_FLOORS]bool {
 	return out
 }
 
-func HallAndStateEqualForElevator(a, b Snapshot, elevID string) bool {
-	for i := range N_FLOORS {
-		if HallAt(a, i, 0) != HallAt(b, i, 0) {
-			return false
-		}
-		if HallAt(a, i, 1) != HallAt(b, i, 1) {
-			return false
-		}
-	}
-	aSt, aOk := a.States[elevID]
-	bSt, bOk := b.States[elevID]
-	if !aOk || !bOk {
-		return false
-	}
-	if aSt.Behavior != bSt.Behavior || aSt.Direction != bSt.Direction || aSt.Floor != bSt.Floor {
-		return false
-	}
-	return true
-}
-
-func HallAt(s Snapshot, floor int, btn int) bool {
-	if floor < 0 || floor >= len(s.HallRequests) {
-		return false
-	}
-	return s.HallRequests[floor][btn]
-}
-
 func MergeHallRequests(current, incoming [N_FLOORS][2]bool, kind UpdateKind) [N_FLOORS][2]bool {
 	merged := [N_FLOORS][2]bool{}
 	for i := range N_FLOORS {
