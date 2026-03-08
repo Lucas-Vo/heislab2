@@ -154,25 +154,12 @@ func (wv *WorldView) MergeLocal(ns common.Snapshot) {
 }
 
 func (wv *WorldView) MarkRecentlyServicedHalls(ns common.Snapshot, now time.Time) {
-	if ns.UpdateKind != common.UpdateServiced {
-		return
-	}
 	wv.mu.Lock()
 	defer wv.mu.Unlock()
 	for floor := range common.N_FLOORS {
 		for button := 0; button < 2; button++ {
 			if wv.snapshot.HallRequests[floor][button] && !ns.HallRequests[floor][button] {
 				wv.servicedHall.Hall[floor][button] = now
-			}
-		}
-	}
-}
-
-func (wv *WorldView) clearServicedHalls() {
-	for floor := range common.N_FLOORS {
-		for button := 0; button < 2; button++ {
-			if wv.snapshot.HallRequests[floor][button] {
-				wv.servicedHall.Hall[floor][button] = time.Time{}
 			}
 		}
 	}
@@ -323,7 +310,7 @@ func (wv *WorldView) wasRecentlyServicedLocked(floor int, button int, now time.T
 	return now.Sub(lastServiced) <= recentlyServicedWindow
 }
 
-func (wv *WorldView) mergeWorldView(fromKey string, ns common.Snapshot) {
+func (wv *WorldView) mergeWorldView(fromKey string, ns common.Snapshot) { //TODO: maybe since we copy ns, use the new copy to keep synchronizing good
 	if fromKey != wv.selfKey {
 		wv.lastSnapshot[fromKey] = common.DeepCopySnapshot(ns)
 		if !wv.inStartupPeriod && ns.UpdateKind == common.UpdateRequests {
@@ -333,7 +320,6 @@ func (wv *WorldView) mergeWorldView(fromKey string, ns common.Snapshot) {
 	}
 
 	wv.snapshot.HallRequests = common.MergeHallRequests(wv.snapshot.HallRequests, ns.HallRequests, ns.UpdateKind)
-	wv.clearServicedHalls()
 	for k, st := range ns.States {
 		if k == wv.selfKey && fromKey != wv.selfKey && wv.inStartupPeriod {
 			continue
