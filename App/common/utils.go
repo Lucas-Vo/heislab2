@@ -42,10 +42,11 @@ func GetCabCalls(in [N_FLOORS][N_BUTTONS]bool) [N_FLOORS]bool {
 func MergeHallRequests(current, incoming [N_FLOORS][2]bool, kind UpdateKind) [N_FLOORS][2]bool {
 	merged := [N_FLOORS][2]bool{}
 	for i := range N_FLOORS {
-		if kind == UpdateServiced {
+		switch kind {
+		case UpdateServiced:
 			merged[i][0] = current[i][0] && incoming[i][0]
 			merged[i][1] = current[i][1] && incoming[i][1]
-		} else if kind == UpdateRequests {
+		case UpdateRequests:
 			merged[i][0] = current[i][0] || incoming[i][0]
 			merged[i][1] = current[i][1] || incoming[i][1]
 		}

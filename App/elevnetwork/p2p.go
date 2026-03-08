@@ -4,6 +4,7 @@ import (
 	"context"
 	"elevator/common"
 	"fmt"
+	"log"
 	"sync"
 	"time"
 
@@ -74,6 +75,7 @@ func (m *Manager) Broadcast(payload []byte) {
 	for _, p := range peers {
 		_, _ = WriteFixedFrame(p.stream, payload, m.frameSize, writeTimeout)
 	}
+	log.Printf("BROADCAST")
 }
 
 func (m *Manager) listen(ctx context.Context, addr string) {
