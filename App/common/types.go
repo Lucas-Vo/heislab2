@@ -1,5 +1,7 @@
 package common
 
+import "time"
+
 type UpdateKind int
 
 const (
@@ -23,10 +25,23 @@ type Snapshot struct {
 }
 
 type ElevInput struct {
-	HallTask     [N_FLOORS][2]bool `json:"HallTask"`
-
+	HallTask [N_FLOORS][2]bool `json:"HallTask"`
 }
 
 type HRAOutput struct {
 	HallTasks []ElevInput `json:"HallTasks"`
+}
+
+type CallStatus int
+
+const (
+	CallNone CallStatus = iota
+	CallPending
+	CallConfirmed
+)
+
+type CallInfo struct {
+	State    CallStatus
+	Injected bool
+	Time     time.Time
 }

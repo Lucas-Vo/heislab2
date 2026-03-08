@@ -10,7 +10,6 @@ import (
 
 const (
 	inputPollRateMs = 25
-	confirmTimeout  = 200 * time.Millisecond
 )
 
 func fsmThread(
@@ -73,7 +72,7 @@ func fsmThread(
 
 			elevStateChange, servicedFloor, servicedCalls := elevator.Tick(now)
 			sync.ClearServicedRequests(servicedFloor, servicedCalls, online)
-			elevator.ApplyInjectRequests(sync.ReadyInjects(now, confirmTimeout, online))
+			elevator.ApplyInjectRequests(sync.ReadyInjects(now, online))
 
 			if !online {
 				elevator.SetHallLights(sync.GetLocalHall())
