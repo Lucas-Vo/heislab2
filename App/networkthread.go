@@ -11,10 +11,10 @@ import (
 )
 
 const (
-	INITIAL_CONTACT_TIMEOUT = 5 * time.Second
-	ELEVATOR_ERROR_TIMEOUT  = 5 * time.Second
-	LOCAL_PUBLISH_PERIOD    = 100 * time.Millisecond
-	BROADCAST_PERIOD        = 1 * time.Second
+	INITIAL_CONTACT_TIMEOUT = 7 * time.Second
+	ELEVATOR_ERROR_TIMEOUT  = 6 * time.Second
+	LOCAL_PUBLISH_PERIOD    = 200 * time.Millisecond
+	BROADCAST_PERIOD        = 2 * time.Second
 )
 
 func networkThread(
