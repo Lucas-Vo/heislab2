@@ -60,7 +60,8 @@ func fsmThread(
 
 		case task := <-assignerOutputCh:
 			now = time.Now()
-			elevator.ApplyClearRequests(sync.HandleAssignerTask(task))
+			toClear := sync.HandleAssignerTask(task)
+			elevator.ApplyClearRequests(toClear)
 
 		case <-ticker.C:
 			now = time.Now()

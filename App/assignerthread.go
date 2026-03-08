@@ -22,7 +22,7 @@ func assignerThread(config common.Config, networkSnapshotCh <-chan common.Snapsh
 		return
 	}
 
-	hallAssignment := common.ElevInput{HallTask: [common.N_FLOORS][2]bool{}, HallRequests: [common.N_FLOORS][2]bool{}}
+	hallAssignment := common.ElevInput{HallTask: [common.N_FLOORS][2]bool{}}
 
 	networkTimeout := time.NewTimer(NET_SNAP_TIMEOUT)
 	defer networkTimeout.Stop()
@@ -61,7 +61,7 @@ func assignerThread(config common.Config, networkSnapshotCh <-chan common.Snapsh
 				continue
 			}
 
-			hallAssignment = common.ElevInput{HallTask: output[selfKey], HallRequests: networkSnapshot.HallRequests}
+			hallAssignment = common.ElevInput{HallTask: output[selfKey]}
 			elevatorTasksCh <- hallAssignment
 
 		case <-networkTimeout.C:
