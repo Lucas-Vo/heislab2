@@ -1,6 +1,9 @@
 Moving elev while on floor and then giving requests leads to crash. Dont make me crash please
 Self init from crash is hella dependent on timing andthe goodwill of God
     Make a reconnect reset the counter. Then we have victory
-E1 and E2 should not fight over E3s state, this is a private matter between E1 and E3, and E2 and E3
+    Cab lights use wayy too long
 
 Reduce size of implementation of holding onto servicedcalls too long
+
+Done and dusted:
+    E1 and E2 should not fight over E3s state, this is a private matter between E1 and E3, and E2 and E3
