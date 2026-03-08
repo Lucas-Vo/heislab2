@@ -12,7 +12,7 @@ import (
 
 const (
 	INITIAL_CONTACT_TIMEOUT = 5 * time.Second
-	ELEVATOR_ERROR_TIMEOUT  = 4 * time.Second
+	ELEVATOR_ERROR_TIMEOUT  = 5 * time.Second
 	LOCAL_PUBLISH_PERIOD    = 100 * time.Millisecond
 	BROADCAST_PERIOD        = 1 * time.Second
 )
@@ -59,10 +59,6 @@ func networkThread(
 
 			wv.PublishLocally(netUpdateAssignerCh, netUpdateElevCh)
 
-		case <-startupTimer.C:
-			log.Printf("networkThread: forcing end of startup phase")
-			wv.EndStartupPeriod()
-
 		case <-localTicker.C:
 			if !wv.SnapshotsAreCoherent() {
 				wv.BroadcastRequests()
@@ -87,8 +83,11 @@ func networkThread(
 					wv.SetSelfAlive(true)
 					wv.PublishLocally(netUpdateAssignerCh, netUpdateElevCh)
 				}
-				elevatorErrorTimer.Reset(6 * time.Second)
+				elevatorErrorTimer.Reset(ELEVATOR_ERROR_TIMEOUT)
 			}
+		case <-startupTimer.C:
+			log.Printf("networkThread: forcing end of startup phase")
+			wv.EndStartupPeriod()
 		}
 	}
 }

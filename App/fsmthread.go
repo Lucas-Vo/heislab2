@@ -43,6 +43,9 @@ func fsmThread(
 	ticker := time.NewTicker(time.Duration(inputPollRateMs) * time.Millisecond)
 	defer ticker.Stop()
 
+	idleTicker := time.NewTicker(1 * time.Second)
+	defer idleTicker.Stop()
+
 	for {
 		select {
 		case snap := <-netUpdateElevCh:
@@ -80,24 +83,32 @@ func fsmThread(
 				elevator.SetCabLights(sync.GetLocalCab())
 			}
 
+			behaviour, direction := elevator.MotionStrings()
 			floorWasServiced := servicedFloor >= 0 &&
 				servicedFloor < common.N_FLOORS &&
 				(servicedCalls[servicedFloor][common.BT_HallUp] ||
 					servicedCalls[servicedFloor][common.BT_HallDown] ||
 					servicedCalls[servicedFloor][common.BT_Cab])
 			if floorWasServiced {
-				behaviour, direction := elevator.MotionStrings()
 				snapshot := sync.BuildSnapshot(servicedFloor, common.UpdateServiced, servicedCalls, online, behaviour, direction)
 				elevUpdateNetCh <- snapshot
 			}
 			if elevStateChange || newButtonPressed {
-				behaviour, direction := elevator.MotionStrings()
 				snapshot := sync.BuildSnapshot(elevator.CurrentFloor(), common.UpdateRequests, elevfsm.Requests{}, online, behaviour, direction)
 				select {
 				case elevUpdateNetCh <- snapshot:
 				default:
 					log.Printf("fsmThread: elevUpdateCh is full, skipping snapshot update")
 				}
+			}
+			
+		case <-idleTicker.C:
+			behaviour, direction := elevator.MotionStrings()
+			snapshot := sync.BuildSnapshot(elevator.CurrentFloor(), common.UpdateRequests, elevfsm.Requests{}, online, behaviour, direction)
+			select {
+			case elevUpdateNetCh <- snapshot:
+			default:
+				log.Printf("fsmThread: elevUpdateCh is full, skipping snapshot update")
 			}
 		}
 	}

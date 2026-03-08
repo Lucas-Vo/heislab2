@@ -158,7 +158,7 @@ func (sync *FsmSync) ClearServicedRequests(floor int, serviced Requests, online 
 	}
 }
 
-func (sync *FsmSync) BuildSnapshot(
+func (sync *FsmSync) BuildSnapshot( //TODO: Change the callsCleared to the thing that we fill both serviced and requests with
 	floor int,
 	kind common.UpdateKind,
 	callsCleared Requests,
