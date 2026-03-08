@@ -10,7 +10,9 @@ import (
 	"elevator/elevnetwork"
 )
 
-const INITIAL_CONTACT_TIMEOUT = 5 * time.Second
+const (
+	INITIAL_CONTACT_TIMEOUT = 5 * time.Second
+)
 
 func networkThread(
 	ctx context.Context,
@@ -23,11 +25,11 @@ func networkThread(
 
 	wv, incoming := elevnetwork.InitWorldView(ctx, cfg, 4242)
 
-	ticker := time.NewTicker(100 * time.Millisecond)
-	defer ticker.Stop()
+	localTicker := time.NewTicker(100 * time.Millisecond)
+	defer localTicker.Stop()
 
-	ticker2 := time.NewTicker(2 * time.Second)
-	defer ticker2.Stop()
+	broadcastTicker := time.NewTicker(2 * time.Second)
+	defer broadcastTicker.Stop()
 
 	contactTimer := time.NewTimer(INITIAL_CONTACT_TIMEOUT)
 	defer contactTimer.Stop()
@@ -44,7 +46,7 @@ func networkThread(
 				wv.TrackLocallyServicedHallRequests(ns, time.Now())
 			}
 			wv.MergeLocal(ns)
-			wv.PublishAll(netSnap1Ch, netSnap2Ch)
+			wv.PublishLocally(netSnap1Ch, netSnap2Ch)
 
 		case frame := <-incoming:
 			frameToMerge, servicedHall, hasRecentlyServiced := wv.SuppressRecentlyServicedFromFrame(frame, time.Now())
@@ -52,21 +54,21 @@ func networkThread(
 				wv.ResendServicedHallRequests(servicedHall)
 			}
 			wv.MergeRemote(frameToMerge)
-			wv.PublishAll(netSnap1Ch, netSnap2Ch)
+			wv.PublishLocally(netSnap1Ch, netSnap2Ch)
 
 		case <-contactTimer.C:
 			log.Printf("networkThread: forcing ready")
 			wv.ForceReady()
 
-		case <-ticker.C:
+		case <-localTicker.C:
 			if !wv.SnapshotsAreCoherent() {
 				wv.BroadcastRequests()
 			}
 			if wv.Ready() {
-				wv.PublishAll(netSnap1Ch, netSnap2Ch)
+				wv.PublishLocally(netSnap1Ch, netSnap2Ch)
 			}
 
-		case <-ticker2.C:
+		case <-broadcastTicker.C:
 			wv.BroadcastRequests()
 
 		case <-elevatorErrorTimer.C:
@@ -75,12 +77,12 @@ func networkThread(
 				if wv.SelfAlive() {
 					wv.SetSelfAlive(false)
 					log.Printf("No behavior change detected for 6 seconds, marking Elevator as stale")
-					wv.PublishAll(netSnap1Ch, netSnap2Ch)
+					wv.PublishLocally(netSnap1Ch, netSnap2Ch)
 				}
 			} else {
 				if !wv.SelfAlive() {
 					wv.SetSelfAlive(true)
-					wv.PublishAll(netSnap1Ch, netSnap2Ch)
+					wv.PublishLocally(netSnap1Ch, netSnap2Ch)
 				}
 				elevatorErrorTimer.Reset(6 * time.Second)
 			}

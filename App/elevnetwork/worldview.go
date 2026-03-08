@@ -74,7 +74,7 @@ func (wv *WorldView) SetSelfAlive(alive bool) { wv.selfAlive = alive }
 
 func (wv *WorldView) SelfAlive() bool { return wv.selfAlive }
 
-func (wv *WorldView) PublishAll(netSnap1Ch, netSnap2Ch chan<- common.Snapshot) {
+func (wv *WorldView) PublishLocally(netSnap1Ch, netSnap2Ch chan<- common.Snapshot) {
 	snap := wv.GetSnapshot()
 	coherent := wv.Ready() && wv.SnapshotsAreCoherent()
 	snap.Coherent = coherent
@@ -92,9 +92,9 @@ func (wv *WorldView) PublishAll(netSnap1Ch, netSnap2Ch chan<- common.Snapshot) {
 
 func (wv *WorldView) GetSnapshot() common.Snapshot {
 	wv.mu.Lock()
+	defer wv.mu.Unlock()
 	snap := common.DeepCopySnapshot(wv.snapshot)
 	snap.Alive = wv.calculateAlive(time.Now())
-	wv.mu.Unlock()
 	return snap
 }
 
