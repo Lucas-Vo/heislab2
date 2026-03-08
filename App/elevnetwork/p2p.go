@@ -3,6 +3,7 @@ package elevnetwork
 import (
 	"context"
 	"elevator/common"
+	"fmt"
 	"sync"
 	"time"
 
@@ -50,7 +51,7 @@ func (m *Manager) Start(ctx context.Context, cfg common.Config, port int) <-chan
 	if err != nil {
 		panic(err)
 	}
-	listenAddr := cfg.ListenAddrForPort(port)
+	listenAddr := fmt.Sprintf(":%d", port)
 
 	go m.listen(ctx, listenAddr)
 	for peerID, peerAddr := range peers {
