@@ -241,15 +241,10 @@ func (wv *WorldView) MergeRemote(frame []byte) {
 	log.Printf("merge 2  %v", msg.Snapshot.States["2"])
 	log.Printf("merge 3  %v", msg.Snapshot.States["3"])
 	wv.mergeWorldView(msg.Origin, msg.Snapshot)
-	msg.Snapshot = common.DeepCopySnapshot(wv.snapshot)
-	b, err := json.Marshal(msg)
-	if err == nil {
-		return
-	}
 	alive := wv.selfAlive
 	wv.mu.Unlock()
 	if alive && wv.pm != nil {
-		wv.pm.Broadcast(b)
+		wv.pm.Broadcast(frame)
 	}
 }
 
