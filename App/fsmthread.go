@@ -56,8 +56,6 @@ func fsmThread(
 					elevator.SetCabLights(sync.GetLocalCab())
 					elevator.SetHallLights(sync.GetNetHall())
 				}
-			} else {
-				elevator.SetCabLights(sync.GetLocalCab())
 			}
 
 		case task := <-assignerOutputCh:
@@ -77,6 +75,7 @@ func fsmThread(
 
 			if !online {
 				elevator.SetHallLights(sync.GetLocalHall())
+				elevator.SetCabLights(sync.GetLocalCab())
 			}
 
 			floorWasServiced := servicedFloor >= 0 &&

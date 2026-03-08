@@ -192,13 +192,13 @@ func (sync *FsmSync) BuildSnapshot(
 	}
 
 	return common.Snapshot{
-		HallRequests: common.GetHallSlice(outCalls),
+		HallRequests: common.GetHallCalls(outCalls),
 		States: map[string]common.ElevState{
 			sync.selfKey: {
 				Behavior:    behavior,
 				Floor:       floor,
 				Direction:   direction,
-				CabRequests: common.GetCabSlice(sync.localCalls),
+				CabRequests: common.GetCabCalls(sync.localCalls),
 			},
 		},
 		UpdateKind: kind,
@@ -224,13 +224,13 @@ func (sync *FsmSync) markInjected(floor int, button common.ButtonType) {
 }
 
 func (sync *FsmSync) GetLocalCab() [common.N_FLOORS]bool {
-	return common.GetCabSlice(sync.localCalls)
+	return common.GetCabCalls(sync.localCalls)
 }
 
 func (sync *FsmSync) GetLocalHall() [common.N_FLOORS][2]bool {
-	return common.GetHallSlice(sync.localCalls)
+	return common.GetHallCalls(sync.localCalls)
 }
 
 func (sync *FsmSync) GetNetHall() [common.N_FLOORS][2]bool {
-	return common.GetHallSlice(sync.netCalls)
+	return common.GetHallCalls(sync.netCalls)
 }

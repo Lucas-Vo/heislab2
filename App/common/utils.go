@@ -23,7 +23,7 @@ func DeepCopySnapshot(ns Snapshot) Snapshot {
 	return snapshotCopy
 }
 
-func GetHallSlice(in [N_FLOORS][N_BUTTONS]bool) [N_FLOORS][2]bool {
+func GetHallCalls(in [N_FLOORS][N_BUTTONS]bool) [N_FLOORS][2]bool {
 	var out [N_FLOORS][2]bool
 	for i, row := range in {
 		out[i] = [2]bool{row[0], row[1]}
@@ -31,7 +31,7 @@ func GetHallSlice(in [N_FLOORS][N_BUTTONS]bool) [N_FLOORS][2]bool {
 	return out
 }
 
-func GetCabSlice(in [N_FLOORS][N_BUTTONS]bool) [N_FLOORS]bool {
+func GetCabCalls(in [N_FLOORS][N_BUTTONS]bool) [N_FLOORS]bool {
 	var out [N_FLOORS]bool
 	for i, row := range in {
 		out[i] = row[2]
@@ -45,7 +45,7 @@ func MergeHallRequests(current, incoming [N_FLOORS][2]bool, kind UpdateKind) [N_
 		if kind == UpdateServiced {
 			merged[i][0] = current[i][0] && incoming[i][0]
 			merged[i][1] = current[i][1] && incoming[i][1]
-		} else {
+		} else if kind == UpdateRequests {
 			merged[i][0] = current[i][0] || incoming[i][0]
 			merged[i][1] = current[i][1] || incoming[i][1]
 		}
