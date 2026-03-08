@@ -51,7 +51,6 @@ func requests_chooseDirection(requests Requests, floor int, dirn common.MotorDir
 	}
 }
 
-// int requests_shouldStop(Elevator e)
 func requests_shouldStop(requests Requests, floor int, dirn common.MotorDirection) int {
 	switch dirn {
 	case common.MD_Down:

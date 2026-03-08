@@ -6,7 +6,6 @@ import (
 	"time"
 )
 
-// enums
 type ElevatorBehaviour int
 
 const (
@@ -17,7 +16,6 @@ const (
 
 const doorOpenDuration = 3 * time.Second
 
-// structs
 type Elevator struct {
 	floor        int
 	dirn         common.MotorDirection
@@ -49,9 +47,7 @@ func NewElevator(ioAddress string) *Elevator {
 	if newFloor != -1 {
 		e.onFloorArrival(newFloor)
 	} else {
-		e.outputDevice.MotorDirection(common.MD_Down)
-		e.dirn = common.MD_Down
-		e.behaviour = EB_Moving
+		e.startFloorSearch()
 	}
 	e.prevFloor = e.floor
 	e.prevDirection = e.dirn
@@ -77,6 +73,10 @@ func (e *Elevator) onRequestButtonPress(buttonFloor int, buttonType common.Butto
 	e.requests[buttonFloor][buttonType] = true
 	if e.behaviour == EB_DoorOpen && buttonFloor == e.floor {
 		e.doorTimerEnd = time.Now().Add(doorOpenDuration)
+		return
+	}
+	if e.floor < 0 || e.floor >= common.N_FLOORS {
+		e.startFloorSearch()
 		return
 	}
 	if e.behaviour == EB_Idle {
@@ -255,6 +255,12 @@ func (e *Elevator) onDoorTimeout() {
 
 func (e *Elevator) obstruction() bool {
 	return e.inputDevice.Obstruction() != 0
+}
+
+func (e *Elevator) startFloorSearch() {
+	e.outputDevice.MotorDirection(common.MD_Down)
+	e.dirn = common.MD_Down
+	e.behaviour = EB_Moving
 }
 
 func (e *Elevator) chooseNewDirAtFloor(floor int, fallback common.MotorDirection) common.MotorDirection {

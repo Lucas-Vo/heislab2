@@ -1,4 +1,3 @@
-// common/config.go
 package common
 
 import (

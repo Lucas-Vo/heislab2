@@ -1,20 +1,15 @@
 package main
 
 import (
-
-	// Adjust these imports to your actual module path:
-	//"elevator/elevnetwork"
 	"context"
 	"elevator/common"
 	. "elevator/common"
 	"fmt"
 	"os"
 	"os/signal"
-	//quic "github.com/quic-go/quic-go"
 )
 
 func main() {
-	// ctrl + c handling
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -25,16 +20,9 @@ func main() {
 		cancel()
 	}()
 
-	// filip til lucas
 	elevUpdateCh := make(chan Snapshot, 8)
-
-	// lucas til filip
-	netSnap2Ch := make(chan Snapshot, 8)
-
-	// lucas til vetle
-	netSnap1Ch := make(chan Snapshot, 8)
-
-	// vetle til filip
+	netSnapElevCh := make(chan Snapshot, 8)
+	netSnapAssignerCh := make(chan Snapshot, 8)
 	assignerOutCh := make(chan ElevInput, 4)
 
 	config, _, err := common.DefaultConfig()
@@ -43,9 +31,9 @@ func main() {
 
 	}
 
-	go networkThread(ctx, config, elevUpdateCh, netSnap1Ch, netSnap2Ch)
-	go assignerThread(config, netSnap1Ch, assignerOutCh)
-	go fsmThread(config, assignerOutCh, elevUpdateCh, netSnap2Ch)
+	go networkThread(ctx, config, elevUpdateCh, netSnapAssignerCh, netSnapElevCh)
+	go assignerThread(config, netSnapAssignerCh, assignerOutCh)
+	go fsmThread(config, assignerOutCh, elevUpdateCh, netSnapElevCh)
 	<-ctx.Done()
 	fmt.Println("Shutting down")
 

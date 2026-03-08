@@ -16,8 +16,8 @@ const (
 func fsmThread(
 	config common.Config,
 	assignerOutputCh <-chan common.ElevInput,
-	elevUpdateCh chan<- common.Snapshot,
-	netWorldView2Ch <-chan common.Snapshot, // network -> fsm
+	elevUpdateNetCh chan<- common.Snapshot, // elev -> network
+	netUpdateElevCh <-chan common.Snapshot, // network -> elev
 ) {
 	log.Printf("fsmThread started (self=%s)", config.SelfKey)
 
@@ -36,7 +36,7 @@ func fsmThread(
 		initialDirection,
 	)
 	select {
-	case elevUpdateCh <- initialSnapshot:
+	case elevUpdateNetCh <- initialSnapshot:
 	default:
 	}
 
@@ -45,7 +45,7 @@ func fsmThread(
 
 	for {
 		select {
-		case snap := <-netWorldView2Ch:
+		case snap := <-netUpdateElevCh:
 			now = time.Now()
 			sync.HandleNetworkSnapshot(snap, now)
 			online = sync.NetworkOnline(now)
@@ -88,13 +88,13 @@ func fsmThread(
 			if floorWasServiced {
 				behaviour, direction := elevator.MotionStrings()
 				snapshot := sync.BuildSnapshot(servicedFloor, common.UpdateServiced, servicedCalls, online, behaviour, direction)
-				elevUpdateCh <- snapshot
+				elevUpdateNetCh <- snapshot
 			}
 			if elevStateChange || newButtonPressed {
 				behaviour, direction := elevator.MotionStrings()
 				snapshot := sync.BuildSnapshot(elevator.CurrentFloor(), common.UpdateRequests, elevfsm.Requests{}, online, behaviour, direction)
 				select {
-				case elevUpdateCh <- snapshot:
+				case elevUpdateNetCh <- snapshot:
 				default:
 					log.Printf("fsmThread: elevUpdateCh is full, skipping snapshot update")
 				}

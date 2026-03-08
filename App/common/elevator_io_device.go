@@ -1,12 +1,10 @@
 package common
 
-// constants
 const (
 	N_FLOORS  = 4
 	N_BUTTONS = 3
 )
 
-// structs
 type ElevInputDevice struct {
 	FloorSensor   func() int
 	RequestButton func(int, ButtonType) int
