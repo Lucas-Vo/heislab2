@@ -1,39 +1,31 @@
 package main
 
 import (
-	. "elevator/common"
+	"elevator/common"
 	"elevator/elevassigner"
 	"encoding/json"
-	"fmt"
+	"log"
 	"os/exec"
 	"time"
 )
 
 // constants (seconds)
 const (
-	NETWORK_PACKET_TIMEOUT = 2 * time.Second
-
-	HRA_EXECUTABLE = "hall_request_assigner"
+	NET_SNAP_TIMEOUT = 2 * time.Second
+	HRA_EXECUTABLE_PATH   = "./elevassigner/hall_request_assigner"
 )
 
-func assignerThread(
-	config Config,
-	networkSnapshotCh <-chan Snapshot,
-	elevatorTasksCh chan<- ElevInput,
-) {
-	// Use config.SelfKey (string "1","2",...)
+func assignerThread(config common.Config, networkSnapshotCh <-chan common.Snapshot, elevatorTasksCh chan<- common.ElevInput) {
 	selfKey := config.SelfKey
 	if selfKey == "" {
-		// fallback if caller didn't init self (shouldn't happen if you use MustDefaultConfig / InitSelf)
-		fmt.Println("assignerThread: config.SelfKey is empty (did you call config.InitSelf()?)")
+		log.Println("assignerThread: config.SelfKey is empty (did you call config.InitSelf()?)")
 		return
 	}
 
-	// Current hall assignment for this elevator.
-	hallAssignment := ElevInput{HallTask: [N_FLOORS][2]bool{}, HallRequests: [N_FLOORS][2]bool{}}
+	hallAssignment := common.ElevInput{HallTask: [common.N_FLOORS][2]bool{}, HallRequests: [common.N_FLOORS][2]bool{}}
 
-	snapshotTimeoutTimer := time.NewTimer(NETWORK_PACKET_TIMEOUT)
-	defer snapshotTimeoutTimer.Stop()
+	networkTimeout := time.NewTimer(NET_SNAP_TIMEOUT)
+	defer networkTimeout.Stop()
 
 	for {
 		select {
@@ -41,40 +33,39 @@ func assignerThread(
 			if !networkSnapshot.Coherent {
 				continue
 			}
-			snapshotTimeoutTimer.Reset(NETWORK_PACKET_TIMEOUT)
+			networkTimeout.Reset(NET_SNAP_TIMEOUT)
 
 			err := elevassigner.RemoveStaleStates(&networkSnapshot, selfKey)
 			if err != nil {
-				fmt.Println("removing stale states error: ", err)
-				break
+				log.Println("removing stale states error: ", err)
+				continue
 			}
 
 			// serialize snapshot to JSON
 			jsonBytes, err := json.Marshal(networkSnapshot)
 			if err != nil {
-				fmt.Println("json.Marshal error:", err)
-				break
-
+				log.Println("json.Marshal error:", err)
+				continue
 			}
 			// Run external hall request assigner executable
-			ret, err := exec.Command("./elevassigner/"+HRA_EXECUTABLE, "-i", string(jsonBytes)).CombinedOutput()
+			ret, err := exec.Command(HRA_EXECUTABLE_PATH, "-i", string(jsonBytes)).CombinedOutput()
 			if err != nil {
-				fmt.Printf("exec.Command error: %v (states=%d, hall=%d)\n", err, len(networkSnapshot.States), len(networkSnapshot.HallRequests))
-				fmt.Println(string(ret))
-				break
+				log.Printf("exec.Command error: %v (states=%d, hall=%d)\n", err, len(networkSnapshot.States), len(networkSnapshot.HallRequests))
+				log.Println(string(ret))
+				continue
 			}
 			// parse assigner output
-			var output map[string][N_FLOORS][2]bool
+			var output map[string][common.N_FLOORS][2]bool
 			if err := json.Unmarshal(ret, &output); err != nil {
-				fmt.Println("json.Unmarshal error:", err)
-				break
+				log.Println("json.Unmarshal error:", err)
+				continue
 			}
 
-			hallAssignment = ElevInput{HallTask: output[selfKey], HallRequests: networkSnapshot.HallRequests}
+			hallAssignment = common.ElevInput{HallTask: output[selfKey], HallRequests: networkSnapshot.HallRequests}
 			elevatorTasksCh <- hallAssignment
 
-		case <-snapshotTimeoutTimer.C:
-			fmt.Println("Snapshot from network update timeout, withholding updates until next network ack")
+		case <-networkTimeout.C:
+			log.Println("Snapshot from network update timeout, withholding updates until next network ack")
 		}
 	}
 }
