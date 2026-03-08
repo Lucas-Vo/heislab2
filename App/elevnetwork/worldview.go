@@ -102,22 +102,19 @@ func (wv *WorldView) SnapshotsAreCoherent() bool {
 	wv.mu.Lock()
 	defer wv.mu.Unlock()
 	alive := wv.calculateAlive(time.Now())
-	var ref common.Snapshot
-	hasRef := false
+	ref, ok := wv.lastSnapshot[wv.selfKey]
+	if !ok {
+		return false
+	}
 	for _, id := range wv.peers {
-		if !alive[id] {
+		if id == wv.selfKey || !alive[id] {
 			continue
 		}
 		snap, ok := wv.lastSnapshot[id]
 		if !ok {
 			return false
 		}
-		if !hasRef {
-			ref = snap
-			hasRef = true
-			continue
-		}
-		if !common.SnapshotsEqual(ref, snap, alive, wv.peers) {
+		if !common.HallAndStateEqualForElevator(ref, snap, wv.selfKey) {
 			return false
 		}
 	}

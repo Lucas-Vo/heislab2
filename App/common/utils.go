@@ -39,7 +39,7 @@ func GetCabSlice(in [N_FLOORS][N_BUTTONS]bool) [N_FLOORS]bool {
 	return out
 }
 
-func SnapshotsEqual(a, b Snapshot, alive map[string]bool, peers []string) bool {
+func HallAndStateEqualForElevator(a, b Snapshot, elevID string) bool {
 	for i := range N_FLOORS {
 		if HallAt(a, i, 0) != HallAt(b, i, 0) {
 			return false
@@ -48,18 +48,13 @@ func SnapshotsEqual(a, b Snapshot, alive map[string]bool, peers []string) bool {
 			return false
 		}
 	}
-	for _, id := range peers {
-		if !alive[id] {
-			continue
-		}
-		aSt, aOk := a.States[id]
-		bSt, bOk := b.States[id]
-		if !aOk || !bOk {
-			return false
-		}
-		if aSt.Behavior != bSt.Behavior || aSt.Direction != bSt.Direction || aSt.Floor != bSt.Floor {
-			return false
-		}
+	aSt, aOk := a.States[elevID]
+	bSt, bOk := b.States[elevID]
+	if !aOk || !bOk {
+		return false
+	}
+	if aSt.Behavior != bSt.Behavior || aSt.Direction != bSt.Direction || aSt.Floor != bSt.Floor {
+		return false
 	}
 	return true
 }
