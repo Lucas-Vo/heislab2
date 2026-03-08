@@ -11,8 +11,8 @@ import (
 
 // constants (seconds)
 const (
-	NET_SNAP_TIMEOUT = 2 * time.Second
-	HRA_EXECUTABLE_PATH   = "./elevassigner/hall_request_assigner"
+	NET_SNAP_TIMEOUT    = 2 * time.Second
+	HRA_EXECUTABLE_PATH = "./elevassigner/hall_request_assigner"
 )
 
 func assignerThread(config common.Config, networkSnapshotCh <-chan common.Snapshot, elevatorTasksCh chan<- common.ElevInput) {

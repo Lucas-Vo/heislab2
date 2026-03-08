@@ -165,6 +165,16 @@ func (wv *WorldView) TrackLocallyServicedHallRequests(ns common.Snapshot, now ti
 	}
 }
 
+func (wv *WorldView) clearServicedTimestampsForActiveHalls() {
+	for floor := range common.N_FLOORS {
+		for button := 0; button < 2; button++ {
+			if wv.snapshot.HallRequests[floor][button] {
+				wv.servicedHall.Hall[floor][button] = time.Time{}
+			}
+		}
+	}
+}
+
 func (wv *WorldView) SuppressRecentlyServicedFromFrame(
 	frame []byte,
 	now time.Time,
@@ -338,16 +348,6 @@ func (wv *WorldView) mergeWorldView(fromKey string, ns common.Snapshot) {
 			continue
 		}
 		wv.snapshot.States[k] = st
-	}
-}
-
-func (wv *WorldView) clearServicedTimestampsForActiveHalls() {
-	for floor := range common.N_FLOORS {
-		for button := 0; button < 2; button++ {
-			if wv.snapshot.HallRequests[floor][button] {
-				wv.servicedHall.Hall[floor][button] = time.Time{}
-			}
-		}
 	}
 }
 
