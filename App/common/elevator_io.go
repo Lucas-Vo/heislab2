@@ -1,6 +1,6 @@
+// This file is SOUP, and is from the driver-go repository.
 package common
 
-// This file is SOUP, and is from the driver-go repository.
 import (
 	"fmt"
 	"net"

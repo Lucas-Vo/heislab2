@@ -6,7 +6,6 @@ import (
 	"time"
 )
 
-// enums
 type ElevatorBehaviour int
 
 const (
@@ -17,7 +16,6 @@ const (
 
 const doorOpenDuration = 3 * time.Second
 
-// structs
 type Elevator struct {
 	floor        int
 	dirn         common.MotorDirection
