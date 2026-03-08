@@ -101,9 +101,12 @@ func fsmThread(
 					log.Printf("fsmThread: elevUpdateCh is full, skipping snapshot update")
 				}
 			}
-			
+
 		case <-idleTicker.C:
 			behaviour, direction := elevator.MotionStrings()
+			if behaviour != "idle" {
+				continue
+			}
 			snapshot := sync.BuildSnapshot(elevator.CurrentFloor(), common.UpdateRequests, elevfsm.Requests{}, online, behaviour, direction)
 			select {
 			case elevUpdateNetCh <- snapshot:
