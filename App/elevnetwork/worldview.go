@@ -243,6 +243,9 @@ func (wv *WorldView) MergeRemote(frame []byte) {
 	wv.mergeWorldView(msg.Origin, msg.Snapshot)
 	msg.Snapshot = common.DeepCopySnapshot(wv.snapshot)
 	b, err := json.Marshal(msg)
+	if err == nil {
+		return
+	}
 	alive := wv.selfAlive
 	wv.mu.Unlock()
 	if alive && wv.pm != nil {
