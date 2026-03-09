@@ -50,14 +50,15 @@ func InitWorldView(ctx context.Context, cfg common.Config, port int) (*WorldView
 			HallRequests: [common.N_FLOORS][2]bool{},
 			States:       make(map[string]common.ElevState),
 		},
-		lastHeard:    make(map[string]time.Time),
-		lastSnapshot: make(map[string]common.Snapshot),
-		peerTimeout:  wvTimeout,
-		startTime:    time.Now(),
-		selfKey:      cfg.SelfKey,
-		selfAlive:    true,
-		latestCount:  make(map[string]uint64),
-		pm:           pm,
+		lastHeard:       make(map[string]time.Time),
+		lastSnapshot:    make(map[string]common.Snapshot),
+		peerTimeout:     wvTimeout,
+		startTime:       time.Now(),
+		selfKey:         cfg.SelfKey,
+		selfAlive:       true,
+		latestCount:     make(map[string]uint64),
+		inStartupPeriod: true,
+		pm:              pm,
 	}
 	// Broadcast an initial requests snapshot to seed local/remote bookkeeping early.
 	initialSnapshot := common.DeepCopySnapshot(wv.snapshot)
@@ -66,9 +67,9 @@ func InitWorldView(ctx context.Context, cfg common.Config, port int) (*WorldView
 	return wv, incoming
 }
 
-func (wv *WorldView) JoinedNetwork() bool { return wv.inStartupPeriod }
+func (wv *WorldView) JoinedNetwork() bool { return !wv.inStartupPeriod }
 
-func (wv *WorldView) EndStartupPeriod() { wv.inStartupPeriod = true }
+func (wv *WorldView) EndStartupPeriod() { wv.inStartupPeriod = false }
 
 func (wv *WorldView) SetSelfAlive(alive bool) { wv.selfAlive = alive }
 
@@ -145,7 +146,7 @@ func (wv *WorldView) MergeLocal(ns common.Snapshot) {
 	wv.mergeWorldView(wv.selfKey, ns)
 	inStartupPeriod, alive, kind := wv.inStartupPeriod, wv.selfAlive, ns.UpdateKind
 	wv.mu.Unlock()
-	if !alive || (kind == common.UpdateRequests && !inStartupPeriod) {
+	if !alive || (kind == common.UpdateRequests && inStartupPeriod) {
 		return
 	}
 	snap := common.DeepCopySnapshot(wv.snapshot)
@@ -222,8 +223,8 @@ func (wv *WorldView) MergeRemote(frame []byte) {
 	msg := decodeNetMsg(frame)
 
 	wv.mu.Lock()
+	defer wv.mu.Unlock()
 	if msg.Origin == wv.selfKey || msg.Origin == "" {
-		wv.mu.Unlock()
 		return
 	}
 	now := time.Now()
@@ -234,18 +235,12 @@ func (wv *WorldView) MergeRemote(frame []byte) {
 	if !seen || msg.Counter > prevCount || !heard || now.Sub(prevHeard) > wv.peerTimeout {
 		wv.latestCount[msg.Origin] = msg.Counter
 	} else {
-		wv.mu.Unlock()
 		return
 	}
 	log.Printf("merge 1  %v", msg.Snapshot.States["1"])
 	log.Printf("merge 2  %v", msg.Snapshot.States["2"])
 	log.Printf("merge 3  %v", msg.Snapshot.States["3"])
 	wv.mergeWorldView(msg.Origin, msg.Snapshot)
-	alive := wv.selfAlive
-	wv.mu.Unlock()
-	if alive && wv.pm != nil {
-		wv.pm.Broadcast(frame)
-	}
 }
 
 func (wv *WorldView) BroadcastRequests() {
@@ -314,15 +309,15 @@ func (wv *WorldView) wasRecentlyServicedLocked(floor int, button int, now time.T
 func (wv *WorldView) mergeWorldView(fromKey string, ns common.Snapshot) { //TODO: maybe since we copy ns, use the new copy to keep synchronizing good
 	if fromKey != wv.selfKey {
 		wv.lastSnapshot[fromKey] = common.DeepCopySnapshot(ns)
-		if !wv.inStartupPeriod && ns.UpdateKind == common.UpdateRequests {
+		if wv.inStartupPeriod && ns.UpdateKind == common.UpdateRequests {
 			wv.recoverCabRequests(ns)
-			wv.inStartupPeriod = true
+			wv.inStartupPeriod = false
 		}
 	}
 
 	wv.snapshot.HallRequests = common.MergeHallRequests(wv.snapshot.HallRequests, ns.HallRequests, ns.UpdateKind)
 	for k, st := range ns.States {
-		if k == wv.selfKey && fromKey != wv.selfKey && wv.inStartupPeriod {
+		if k == wv.selfKey && fromKey != wv.selfKey && !wv.inStartupPeriod {
 			continue
 		}
 		wv.snapshot.States[k] = st

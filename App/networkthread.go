@@ -98,8 +98,8 @@ func networkThread(
 			log.Printf("networkThread: forcing end of startup phase")
 			wv.EndStartupPeriod()
 		default:
-			time.Sleep(10*time.Millisecond)
+			time.Sleep(10 * time.Millisecond)
 		}
-		
+
 	}
 }
