@@ -13,9 +13,7 @@ import (
 )
 
 const (
-	openStreamTimeout    = 2 * time.Second
 	dialTimeout          = 4 * time.Second
-	writeTimeout         = 400 * time.Millisecond
 	incomingBufSize      = 128
 	KeepAlivePeriod      = 4 * time.Second
 	HandshakeIdleTimeout = 6 * time.Second
@@ -31,9 +29,8 @@ type Manager struct {
 }
 
 type peer struct {
-	addr   string
-	conn   *quic.Conn
-	stream *quic.Stream
+	addr string
+	conn *quic.Conn
 }
 
 func NewPeerManager() *Manager {
@@ -43,6 +40,7 @@ func NewPeerManager() *Manager {
 			KeepAlivePeriod:      KeepAlivePeriod,
 			HandshakeIdleTimeout: HandshakeIdleTimeout,
 			MaxIdleTimeout:       MaxIdleTimeout,
+			EnableDatagrams:      true,
 		},
 		peers:    make(map[string]*peer),
 		incoming: make(chan []byte, incomingBufSize),
@@ -69,13 +67,13 @@ func (m *Manager) Broadcast(payload []byte) {
 	m.mu.RLock()
 	peers := make([]*peer, 0, len(m.peers))
 	for _, p := range m.peers {
-		if p != nil && p.stream != nil {
+		if p != nil && p.conn != nil {
 			peers = append(peers, p)
 		}
 	}
 	m.mu.RUnlock()
 	for _, p := range peers {
-		if _, err := WriteFixedFrame(p.stream, payload, m.frameSize, writeTimeout); err != nil {
+		if err := WriteDatagram(p.conn, payload, m.frameSize); err != nil {
 			log.Printf("p2p broadcast write failed peer=%s: %v", p.addr, err)
 		}
 	}
@@ -96,7 +94,7 @@ func (m *Manager) dialLoop(ctx context.Context, addr string) {
 			time.Sleep(500 * time.Millisecond)
 			continue
 		}
-		conn, st, err := m.dialOnce(ctx, addr)
+		conn, err := m.dialOnce(ctx, addr)
 		if err != nil {
 			if ctx.Err() == nil {
 				log.Printf("p2p dial failed addr=%s: %v", addr, err)
@@ -104,15 +102,15 @@ func (m *Manager) dialLoop(ctx context.Context, addr string) {
 			time.Sleep(500 * time.Millisecond)
 			continue
 		}
-		if !m.addPeer(addr, conn, st) {
-			Close(conn, st, "duplicate")
+		if !m.addPeer(addr, conn) {
+			Close(conn, "duplicate")
 			continue
 		}
-		m.startReader(ctx, conn, st)
+		m.startReader(ctx, conn)
 
 		select {
 		case <-ctx.Done():
-			Close(conn, st, "bye")
+			Close(conn, "bye")
 			m.removeByConn(conn)
 			return
 		case <-conn.Context().Done():
@@ -122,35 +120,28 @@ func (m *Manager) dialLoop(ctx context.Context, addr string) {
 	}
 }
 
-func (m *Manager) dialOnce(ctx context.Context, addr string) (*quic.Conn, *quic.Stream, error) {
+func (m *Manager) dialOnce(ctx context.Context, addr string) (*quic.Conn, error) {
 	attemptCtx, cancel := context.WithTimeout(ctx, dialTimeout)
 	defer cancel()
-	return Dial(attemptCtx, addr, m.quicConf, openStreamTimeout)
+	return Dial(attemptCtx, addr, m.quicConf)
 }
 
 func (m *Manager) handleIncoming(ctx context.Context, conn *quic.Conn) {
-	st, err := conn.AcceptStream(ctx)
-	if err != nil {
-		if ctx.Err() == nil {
-			log.Printf("p2p accept stream failed remote=%s: %v", conn.RemoteAddr().String(), err)
-		}
-		return
-	}
 	addr := conn.RemoteAddr().String()
-	if !m.addPeer(addr, conn, st) {
-		Close(conn, st, "duplicate")
+	if !m.addPeer(addr, conn) {
+		Close(conn, "duplicate")
 		return
 	}
-	m.startReader(ctx, conn, st)
+	m.startReader(ctx, conn)
 	go func(c *quic.Conn) {
 		<-c.Context().Done()
 		m.removeByConn(c)
 	}(conn)
 }
 
-func (m *Manager) startReader(ctx context.Context, conn *quic.Conn, st *quic.Stream) {
+func (m *Manager) startReader(ctx context.Context, conn *quic.Conn) {
 	go func() {
-		if err := ReadFixedFrames(ctx, st, m.frameSize, func(frame []byte) {
+		if err := ReadDatagrams(ctx, conn, m.frameSize, func(frame []byte) {
 			select {
 			case m.incoming <- frame:
 			case <-ctx.Done():
@@ -162,7 +153,7 @@ func (m *Manager) startReader(ctx context.Context, conn *quic.Conn, st *quic.Str
 	}()
 }
 
-func (m *Manager) addPeer(addr string, conn *quic.Conn, st *quic.Stream) bool {
+func (m *Manager) addPeer(addr string, conn *quic.Conn) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	key := normalizePeerAddr(addr)
@@ -173,7 +164,7 @@ func (m *Manager) addPeer(addr string, conn *quic.Conn, st *quic.Stream) bool {
 			return false
 		}
 	}
-	m.peers[key] = &peer{addr: key, conn: conn, stream: st}
+	m.peers[key] = &peer{addr: key, conn: conn}
 	return true
 }
 
