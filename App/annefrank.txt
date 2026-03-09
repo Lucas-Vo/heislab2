@@ -13,7 +13,6 @@ Done and dusted:
 
 
 cleanup:
-    last function in elevator and look over for readability
     change to udp-broadcast
     fsmsync rewrite
     worldview reduce in size
