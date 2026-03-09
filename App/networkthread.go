@@ -77,7 +77,9 @@ func networkThread(
 			}
 
 		case <-broadcastTicker.C:
-			wv.BroadcastRequests()
+			if wv.JoinedNetwork() {
+				wv.BroadcastRequests()
+			}
 
 		case <-elevatorErrorTimer.C:
 			snap := wv.GetSnapshot()

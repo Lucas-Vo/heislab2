@@ -45,14 +45,17 @@ func fsmThread(
 
 	idleTicker := time.NewTicker(1 * time.Second)
 	defer idleTicker.Stop()
-
+	i := 0
 	for {
 		select {
 		case snap := <-netUpdateElevCh:
 			now = time.Now()
 			sync.HandleNetworkSnapshot(snap, now)
 			if sync.NetworkOnline(now) {
-				log.Printf("fsmThread: network snapshot received, elevator online. Coherent: %v, hasAlivePeer: %v", snap.Coherent, sync.HasAlivePeer())
+				if i%10 == 0 {
+					log.Printf("fsmThread: network snapshot received, elevator online. Coherent: %v, hasAlivePeer: %v", snap.Coherent, sync.HasAlivePeer())
+				}
+				i++
 				if snap.Coherent {
 					elevator.SetCabLights(sync.GetLocalCab())
 					elevator.SetHallLights(sync.GetNetHall())
@@ -100,7 +103,7 @@ func fsmThread(
 				}
 			}
 		default:
-			time.Sleep(10*time.Millisecond)
+			time.Sleep(10 * time.Millisecond)
 		}
 	}
 }
