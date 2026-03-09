@@ -226,6 +226,14 @@ func (wv *WorldView) MergeRemote(frame []byte) {
 	if msg.Origin == wv.selfKey || msg.Origin == "" {
 		return
 	}
+	switch msg.Origin {
+	case "1":
+		log.Printf("(((((((((((((((((((((((())))))))))))))))))))))))")
+	case "2":
+		log.Printf("nignignignignignignignignignignignignignignignignignignignig")
+	case "3":
+		log.Printf("###############################################")
+	}
 	now := time.Now()
 	prevCount, seen := wv.latestCount[msg.Origin]
 	prevHeard, heard := wv.lastHeard[msg.Origin]
