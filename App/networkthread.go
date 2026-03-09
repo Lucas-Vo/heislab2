@@ -14,7 +14,7 @@ const (
 	INITIAL_CONTACT_TIMEOUT = 9 * time.Second
 	ELEVATOR_ERROR_TIMEOUT  = 6 * time.Second
 	LOCAL_PUBLISH_PERIOD    = 50 * time.Millisecond
-	BROADCAST_PERIOD        = 2 * time.Second
+	BROADCAST_PERIOD        = 1 * time.Second
 )
 
 func networkThread(
