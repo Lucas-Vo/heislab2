@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"strings"
 	"sync"
 	"time"
 
@@ -74,6 +75,15 @@ func (m *Manager) Broadcast(payload []byte) {
 	m.mu.RUnlock()
 	for _, p := range peers {
 		if err := WriteDatagram(p.conn, payload, m.frameSize); err != nil {
+			if strings.Contains(err.Error(), "datagram support disabled") {
+				cs := p.conn.ConnectionState()
+				log.Printf(
+					"p2p datagram disabled peer=%s local=%v remote=%v",
+					p.addr,
+					cs.SupportsDatagrams.Local,
+					cs.SupportsDatagrams.Remote,
+				)
+			}
 			log.Printf("p2p broadcast write failed peer=%s: %v", p.addr, err)
 		}
 	}
