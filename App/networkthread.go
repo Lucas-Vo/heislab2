@@ -55,15 +55,13 @@ func networkThread(
 			wv.MergeRemote(frameToMerge)
 			if isFiltered {
 				wv.ResendServicedHalls(filteredHalls)
-			} else if !wv.JoinedNetwork() {
-				wv.BroadcastRequests()
 			}
 
 			wv.PublishLocally(netUpdateAssignerCh, netUpdateElevCh)
 
 		case <-localTicker.C:
 
-			if !wv.SnapshotsAreCoherent() && wv.JoinedNetwork() {
+			if !wv.SnapshotsAreCoherent() || !wv.JoinedNetwork() {
 				wv.BroadcastRequests()
 			}
 
