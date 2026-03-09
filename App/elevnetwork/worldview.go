@@ -228,11 +228,11 @@ func (wv *WorldView) MergeRemote(frame []byte) {
 	}
 	switch msg.Origin {
 	case "1":
-		log.Printf("(((((((((((((((((((((((())))))))))))))))))))))))")
+		log.Printf("(((((((((((((((((((((((((((((((((((((((((((((((())))))))))))))))))))))))))))))))))))))))))))))))")
 	case "2":
-		log.Printf("nignignignignignignignignignignignignignignignignignignignig")
+		log.Printf("nignignignignignignignignignignignignignignignignignignignignignignignignignignignignignignignignignignignignignignignig")
 	case "3":
-		log.Printf("###############################################")
+		log.Printf("##############################################################################################")
 	}
 	now := time.Now()
 	prevCount, seen := wv.latestCount[msg.Origin]
