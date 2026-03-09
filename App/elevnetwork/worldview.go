@@ -233,7 +233,7 @@ func (wv *WorldView) MergeRemote(frame []byte) {
 	prevHeard, heard := wv.lastHeard[msg.Origin]
 	wv.lastHeard[msg.Origin] = now
 
-	if !seen || msg.Counter > prevCount || !wv.inStartupPeriod || !heard || now.Sub(prevHeard) > wv.peerTimeout {
+	if !seen || msg.Counter > prevCount || wv.inStartupPeriod || !heard || now.Sub(prevHeard) > wv.peerTimeout {
 		wv.latestCount[msg.Origin] = msg.Counter
 	} else {
 		return
