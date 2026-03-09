@@ -55,6 +55,8 @@ func networkThread(
 			wv.MergeRemote(frameToMerge)
 			if isFiltered {
 				wv.ResendServicedHalls(filteredHalls)
+			} else if !wv.JoinedNetwork() {
+				wv.BroadcastRequests()
 			}
 
 			wv.PublishLocally(netUpdateAssignerCh, netUpdateElevCh)
