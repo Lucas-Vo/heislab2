@@ -39,6 +39,7 @@ func networkThread(
 
 	elevatorErrorTimer := time.NewTimer(ELEVATOR_ERROR_TIMEOUT)
 	defer elevatorErrorTimer.Stop()
+	var i = 0
 	for {
 		select {
 		case ns := <-elevUpdateCh:
@@ -60,7 +61,10 @@ func networkThread(
 			wv.PublishLocally(netUpdateAssignerCh, netUpdateElevCh)
 
 		case <-localTicker.C:
-
+			if i%100 == 0 {
+				log.Printf("%v", wv.CalculateAlive(time.Now()))
+			}
+			i++
 			if !wv.SnapshotsAreCoherent() || !wv.JoinedNetwork() {
 				wv.BroadcastRequests()
 			}

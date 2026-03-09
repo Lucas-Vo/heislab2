@@ -95,7 +95,6 @@ func (wv *WorldView) GetSnapshot() common.Snapshot {
 	wv.mu.Lock()
 	defer wv.mu.Unlock()
 	snap := common.DeepCopySnapshot(wv.snapshot)
-	log.Printf("%v", snap.Alive)
 	return snap
 }
 
