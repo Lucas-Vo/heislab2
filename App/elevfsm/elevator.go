@@ -75,10 +75,6 @@ func (e *Elevator) onRequestButtonPress(buttonFloor int, buttonType common.Butto
 		e.doorTimerEnd = time.Now().Add(doorOpenDuration)
 		return
 	}
-	if e.floor < 0 || e.floor >= common.N_FLOORS {
-		e.startFloorSearch()
-		return
-	}
 	if e.behaviour == EB_Idle {
 		pair := requests_chooseDirection(e.requests, e.floor, e.dirn)
 		e.dirn = pair.dirn
