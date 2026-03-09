@@ -76,7 +76,7 @@ func (wv *WorldView) SelfAlive() bool { return wv.selfAlive }
 
 func (wv *WorldView) PublishLocally(netSnap1Ch, netSnap2Ch chan<- common.Snapshot) {
 	snap := wv.GetSnapshot()
-	coherent := wv.JoinedNetwork() && (wv.SnapshotsAreCoherent() || snap.UpdateKind == common.UpdateServiced)
+	coherent := wv.JoinedNetwork() && wv.SnapshotsAreCoherent()
 	snap.Coherent = coherent
 	snap1 := common.DeepCopySnapshot(snap)
 	select {
