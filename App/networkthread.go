@@ -61,7 +61,7 @@ func networkThread(
 			wv.PublishLocally(netUpdateAssignerCh, netUpdateElevCh)
 
 		case <-localTicker.C:
-			if i%100 == 0 {
+			if i%20 == 0 {
 				log.Printf("%v", wv.CalculateAlive(time.Now()))
 			}
 			i++
