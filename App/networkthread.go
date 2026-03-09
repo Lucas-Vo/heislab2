@@ -70,7 +70,7 @@ func networkThread(
 			if i%10 == 0 {
 				log.Printf("%v", wv.GetSnapshot().Alive)
 			}
-
+			i++
 			if wv.JoinedNetwork() {
 				wv.PublishLocally(netUpdateAssignerCh, netUpdateElevCh)
 			}
