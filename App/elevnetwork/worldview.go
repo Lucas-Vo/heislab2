@@ -95,7 +95,6 @@ func (wv *WorldView) GetSnapshot() common.Snapshot {
 	wv.mu.Lock()
 	defer wv.mu.Unlock()
 	snap := common.DeepCopySnapshot(wv.snapshot)
-	snap.Alive = wv.CalculateAlive(time.Now())
 	log.Printf("%v", snap.Alive)
 	return snap
 }
@@ -317,10 +316,12 @@ func (wv *WorldView) mergeWorldView(fromKey string, ns common.Snapshot) { //TODO
 	}
 
 	wv.snapshot.HallRequests = common.MergeHallRequests(wv.snapshot.HallRequests, ns.HallRequests, ns.UpdateKind)
+	wv.snapshot.Alive = wv.CalculateAlive(time.Now())
 	for k, st := range ns.States {
 		if k == wv.selfKey && fromKey != wv.selfKey && !wv.inStartupPeriod {
 			continue
 		}
+
 		wv.snapshot.States[k] = st
 	}
 }
