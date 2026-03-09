@@ -197,6 +197,7 @@ func (wv *WorldView) FilterRecentlyServicedHalls(
 	}
 	encoded, err := json.Marshal(msg)
 	if err != nil {
+		log.Printf("FilterRecentlyServicedHalls: marshal failed origin=%s counter=%d: %v", msg.Origin, msg.Counter, err)
 		return frame, [common.N_FLOORS][2]bool{}, false
 	}
 	return encoded, serviced, true
@@ -242,6 +243,7 @@ func (wv *WorldView) MergeRemote(frame []byte) {
 	if !seen || msg.Counter > prevCount || wv.inStartupPeriod || !heard || now.Sub(prevHeard) > wv.peerTimeout {
 		wv.latestCount[msg.Origin] = msg.Counter
 	} else {
+		log.Printf("drop stale/duplicate frame origin=%s counter=%d prevCounter=%d dt=%s", msg.Origin, msg.Counter, prevCount, now.Sub(prevHeard))
 		return
 	}
 	log.Printf("merge 1  %v", msg.Snapshot.States["1"])
@@ -292,15 +294,18 @@ func (wv *WorldView) sendOverNetwork(snap common.Snapshot) {
 	wv.lastHeard[wv.selfKey] = time.Now()
 	wv.lastSnapshot[wv.selfKey] = common.DeepCopySnapshot(snap)
 	wv.mu.Unlock()
-	if b, err := json.Marshal(msg); err == nil {
-		wv.pm.Broadcast(b)
+	b, err := json.Marshal(msg)
+	if err != nil {
+		log.Printf("sendOverNetwork: marshal failed origin=%s counter=%d kind=%v: %v", msg.Origin, msg.Counter, snap.UpdateKind, err)
+		return
 	}
+	wv.pm.Broadcast(b)
 }
 
 func decodeNetMsg(frame []byte) netMsg {
 	var msg netMsg
 	if err := json.Unmarshal(common.TrimZeros(frame), &msg); err != nil {
-		log.Printf("Failed to decode NetMsg")
+		log.Printf("Failed to decode NetMsg: %v", err)
 		return netMsg{}
 	}
 	return msg

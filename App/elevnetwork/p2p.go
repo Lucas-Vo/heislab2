@@ -5,6 +5,7 @@ import (
 	"elevator/common"
 	"fmt"
 	"log"
+	"net"
 	"sync"
 	"time"
 
@@ -30,6 +31,7 @@ type Manager struct {
 }
 
 type peer struct {
+	addr   string
 	conn   *quic.Conn
 	stream *quic.Stream
 }
@@ -73,15 +75,19 @@ func (m *Manager) Broadcast(payload []byte) {
 	}
 	m.mu.RUnlock()
 	for _, p := range peers {
-		_, _ = WriteFixedFrame(p.stream, payload, m.frameSize, writeTimeout)
+		if _, err := WriteFixedFrame(p.stream, payload, m.frameSize, writeTimeout); err != nil {
+			log.Printf("p2p broadcast write failed peer=%s: %v", p.addr, err)
+		}
 	}
 	log.Printf("BROADCAST")
 }
 
 func (m *Manager) listen(ctx context.Context, addr string) {
-	_ = Listen(ctx, addr, m.quicConf, func(conn *quic.Conn) {
+	if err := Listen(ctx, addr, m.quicConf, func(conn *quic.Conn) {
 		m.handleIncoming(ctx, conn)
-	})
+	}); err != nil && ctx.Err() == nil {
+		log.Printf("p2p listen failed addr=%s: %v", addr, err)
+	}
 }
 
 func (m *Manager) dialLoop(ctx context.Context, addr string) {
@@ -92,6 +98,9 @@ func (m *Manager) dialLoop(ctx context.Context, addr string) {
 		}
 		conn, st, err := m.dialOnce(ctx, addr)
 		if err != nil {
+			if ctx.Err() == nil {
+				log.Printf("p2p dial failed addr=%s: %v", addr, err)
+			}
 			time.Sleep(500 * time.Millisecond)
 			continue
 		}
@@ -122,6 +131,9 @@ func (m *Manager) dialOnce(ctx context.Context, addr string) (*quic.Conn, *quic.
 func (m *Manager) handleIncoming(ctx context.Context, conn *quic.Conn) {
 	st, err := conn.AcceptStream(ctx)
 	if err != nil {
+		if ctx.Err() == nil {
+			log.Printf("p2p accept stream failed remote=%s: %v", conn.RemoteAddr().String(), err)
+		}
 		return
 	}
 	addr := conn.RemoteAddr().String()
@@ -138,12 +150,14 @@ func (m *Manager) handleIncoming(ctx context.Context, conn *quic.Conn) {
 
 func (m *Manager) startReader(ctx context.Context, conn *quic.Conn, st *quic.Stream) {
 	go func() {
-		_ = ReadFixedFrames(ctx, st, m.frameSize, func(frame []byte) {
+		if err := ReadFixedFrames(ctx, st, m.frameSize, func(frame []byte) {
 			select {
 			case m.incoming <- frame:
 			case <-ctx.Done():
 			}
-		})
+		}); err != nil && ctx.Err() == nil {
+			log.Printf("p2p read failed remote=%s: %v", conn.RemoteAddr().String(), err)
+		}
 		m.removeByConn(conn)
 	}()
 }
@@ -151,21 +165,22 @@ func (m *Manager) startReader(ctx context.Context, conn *quic.Conn, st *quic.Str
 func (m *Manager) addPeer(addr string, conn *quic.Conn, st *quic.Stream) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if existing, ok := m.peers[addr]; ok && existing != nil && existing.conn != nil {
+	key := normalizePeerAddr(addr)
+	if existing, ok := m.peers[key]; ok && existing != nil && existing.conn != nil {
 		select {
 		case <-existing.conn.Context().Done():
 		default:
 			return false
 		}
 	}
-	m.peers[addr] = &peer{conn: conn, stream: st}
+	m.peers[key] = &peer{addr: key, conn: conn, stream: st}
 	return true
 }
 
 func (m *Manager) hasPeer(addr string) bool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	p := m.peers[addr]
+	p := m.peers[normalizePeerAddr(addr)]
 	if p == nil || p.conn == nil {
 		return false
 	}
@@ -175,6 +190,14 @@ func (m *Manager) hasPeer(addr string) bool {
 	default:
 		return true
 	}
+}
+
+func normalizePeerAddr(addr string) string {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return addr
+	}
+	return host
 }
 
 func (m *Manager) removeByConn(conn *quic.Conn) {
