@@ -112,9 +112,10 @@ func (m *Manager) dialLoop(ctx context.Context, addr string) {
 			time.Sleep(500 * time.Millisecond)
 			continue
 		}
-		if !m.addPeer(addr, conn) {
-			Close(conn, "duplicate")
-			continue
+		replaced := m.addPeer(addr, conn)
+		if replaced != nil {
+			log.Printf("p2p replacing existing connection peer=%s", normalizePeerAddr(addr))
+			Close(replaced, "replaced")
 		}
 		m.startReader(ctx, conn)
 
@@ -138,9 +139,10 @@ func (m *Manager) dialOnce(ctx context.Context, addr string) (*quic.Conn, error)
 
 func (m *Manager) handleIncoming(ctx context.Context, conn *quic.Conn) {
 	addr := conn.RemoteAddr().String()
-	if !m.addPeer(addr, conn) {
-		Close(conn, "duplicate")
-		return
+	replaced := m.addPeer(addr, conn)
+	if replaced != nil {
+		log.Printf("p2p replacing existing connection peer=%s", normalizePeerAddr(addr))
+		Close(replaced, "replaced")
 	}
 	m.startReader(ctx, conn)
 	go func(c *quic.Conn) {
@@ -163,19 +165,20 @@ func (m *Manager) startReader(ctx context.Context, conn *quic.Conn) {
 	}()
 }
 
-func (m *Manager) addPeer(addr string, conn *quic.Conn) bool {
+func (m *Manager) addPeer(addr string, conn *quic.Conn) *quic.Conn {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	key := normalizePeerAddr(addr)
+	var replaced *quic.Conn
 	if existing, ok := m.peers[key]; ok && existing != nil && existing.conn != nil {
 		select {
 		case <-existing.conn.Context().Done():
 		default:
-			return false
+			replaced = existing.conn
 		}
 	}
 	m.peers[key] = &peer{addr: key, conn: conn}
-	return true
+	return replaced
 }
 
 func (m *Manager) hasPeer(addr string) bool {
