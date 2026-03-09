@@ -9,3 +9,15 @@ Reduce size of implementation of holding onto servicedcalls too long
 
 Done and dusted:
     E1 and E2 should not fight over E3s state, this is a private matter between E1 and E3, and E2 and E3
+
+
+
+cleanup:
+    last function in elevator and look over for readability
+    change to udp-broadcast
+    fsmsync rewrite
+    worldview reduce in size
+    idle ticker/ heartbeat in fsmthread instead of network
+    rename of fsmthread
+    fsmthread rewrite
+

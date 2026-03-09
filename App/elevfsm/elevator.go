@@ -55,15 +55,11 @@ func NewElevator(ioAddress string) *Elevator {
 	return e
 }
 
-func (e *Elevator) InjectRequest(buttonFloor int, buttonType common.ButtonType) {
-	e.onRequestButtonPress(buttonFloor, buttonType)
-}
-
 func (e *Elevator) ApplyInjectRequests(requests Requests) {
 	for floor := range common.N_FLOORS {
 		for button := range common.ButtonType(common.N_BUTTONS) {
 			if requests[floor][button] {
-				e.InjectRequest(floor, button)
+				e.onRequestButtonPress(floor, button)
 			}
 		}
 	}
@@ -178,13 +174,9 @@ func (e *Elevator) onDoorTimerExpiry(now time.Time) (servicedFloor int, serviced
 	return servicedFloor, servicedCalls
 }
 
-func (e *Elevator) CurrentFloor() int {
-	return e.prevFloor
-}
+func (e *Elevator) CurrentFloor() int { return e.prevFloor }
 
-func (e *Elevator) FloorSensor() int {
-	return e.inputDevice.FloorSensor()
-}
+func (e *Elevator) FloorSensor() int { return e.inputDevice.FloorSensor() }
 
 func (e *Elevator) SetHallLights(hallRequests [common.N_FLOORS][2]bool) {
 	for floor := range common.N_FLOORS {

@@ -71,7 +71,7 @@ func fsmThread(
 
 			edgePresses, newButtonPressed := elevator.PollButtonPresses()
 			toInject := sync.HandleLocalButtonPresses(edgePresses, elevator.FloorSensor(), now, online)
-			elevator.ApplyInjectRequests(toInject)
+			elevator.ApplyInjectRequests(toInject) // why is this called 2 times, this shit is craaaaazyyy
 
 			elevStateChange, servicedFloor, servicedCalls := elevator.Tick(now)
 			sync.ClearServicedRequests(servicedFloor, servicedCalls, online)
