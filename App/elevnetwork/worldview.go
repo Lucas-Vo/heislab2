@@ -229,11 +229,11 @@ func (wv *WorldView) MergeRemote(frame []byte) {
 	}
 	switch msg.Origin {
 	case "1":
-		log.Printf("(((((((((((((((((((((((((((((((((((((((((((((((())))))))))))))))))))))))))))))))))))))))))))))))")
+		log.Printf("((((((((((((((((((((((((((((((((((((((((((((((((((((()))))))))))))))))))))))))))))))))))))))))))))))))))))")
 	case "2":
-		log.Printf("nignignignignignignignignignignignignignignignignignignignignignignignignignignignignignignignignignignignignignignignig")
+		log.Printf("nignignignignignignignignignignignignignignignignignignignignignignignignignignignignignignignignignignignignignignignignignignignignignignignignignignignig")
 	case "3":
-		log.Printf("##############################################################################################")
+		log.Printf("####################################################################################################################################")
 	}
 	now := time.Now()
 	prevCount, seen := wv.latestCount[msg.Origin]
@@ -279,7 +279,6 @@ func (wv *WorldView) CalculateAlive(now time.Time) map[string]bool {
 		}
 		alive[id] = startupGrace
 	}
-	log.Printf("%v", alive)
 	return alive
 }
 

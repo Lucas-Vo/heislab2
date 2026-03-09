@@ -39,6 +39,8 @@ func networkThread(
 
 	elevatorErrorTimer := time.NewTimer(ELEVATOR_ERROR_TIMEOUT)
 	defer elevatorErrorTimer.Stop()
+
+	i := 0
 	for {
 		now := time.Now()
 		select {
@@ -64,6 +66,9 @@ func networkThread(
 
 			if !wv.SnapshotsAreCoherent() || !wv.JoinedNetwork() {
 				wv.BroadcastRequests()
+			}
+			if i%10 == 0 {
+				log.Printf("%v", wv.GetSnapshot().Alive)
 			}
 
 			if wv.JoinedNetwork() {
