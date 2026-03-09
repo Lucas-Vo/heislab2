@@ -57,11 +57,24 @@ func (m *Manager) Start(ctx context.Context, cfg common.Config, port int) <-chan
 
 	go m.listen(ctx, listenAddr)
 	for peerID, peerAddr := range peers {
-		if selfID < peerID {
+		if shouldDialPeer(selfID, peerID) {
 			go m.dialLoop(ctx, peerAddr)
 		}
 	}
 	return m.incoming
+}
+
+func shouldDialPeer(selfID int, peerID int) bool {
+	switch selfID {
+	case 1:
+		return peerID == 2
+	case 2:
+		return peerID == 3
+	case 3:
+		return peerID == 1
+	default:
+		return selfID < peerID
+	}
 }
 
 func (m *Manager) Broadcast(payload []byte) {
