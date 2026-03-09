@@ -269,6 +269,7 @@ func (wv *WorldView) CalculateAlive(now time.Time) map[string]bool {
 		}
 		alive[id] = startupGrace
 	}
+	log.Printf("%v", alive)
 	return alive
 }
 

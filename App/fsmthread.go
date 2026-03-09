@@ -47,9 +47,9 @@ func fsmThread(
 	defer idleTicker.Stop()
 	i := 0
 	for {
+		now = time.Now()
 		select {
 		case snap := <-netUpdateElevCh:
-			now = time.Now()
 			sync.HandleNetworkSnapshot(snap, now)
 			if sync.NetworkOnline(now) {
 				if i%10 == 0 {
@@ -63,12 +63,10 @@ func fsmThread(
 			}
 
 		case task := <-assignerOutputCh:
-			now = time.Now()
 			toClear := sync.HandleAssignerTask(task)
 			elevator.ApplyClearRequests(toClear)
 
 		case <-ticker.C:
-			now = time.Now()
 			online = sync.NetworkOnline(now)
 
 			edgePresses, newButtonPressed := elevator.PollButtonPresses()
