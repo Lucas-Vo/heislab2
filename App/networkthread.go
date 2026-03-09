@@ -13,7 +13,7 @@ import (
 const (
 	INITIAL_CONTACT_TIMEOUT = 7 * time.Second
 	ELEVATOR_ERROR_TIMEOUT  = 6 * time.Second
-	LOCAL_PUBLISH_PERIOD    = 200 * time.Millisecond
+	LOCAL_PUBLISH_PERIOD    = 50 * time.Millisecond
 	BROADCAST_PERIOD        = 2 * time.Second
 )
 
@@ -97,6 +97,9 @@ func networkThread(
 		case <-startupTimer.C:
 			log.Printf("networkThread: forcing end of startup phase")
 			wv.EndStartupPeriod()
+		default:
+			time.Sleep(10*time.Millisecond)
 		}
+		
 	}
 }

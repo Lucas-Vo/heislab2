@@ -1,7 +1,9 @@
 Moving elev while on floor and then giving requests leads to crash. Dont make me crash please
 Self init from crash is hella dependent on timing andthe goodwill of God
-    Make a reconnect reset the counter. Then we have victory
+    Make a reconnect reset the counter. Then we have victory. This is lowkey not an issue as long as you wait a bit
     Cab lights use wayy too long
+The elevators sometime switch direction while between f1 & f2, moving out of bounds, rendering all of the elevators unusable.
+
 
 Reduce size of implementation of holding onto servicedcalls too long
 

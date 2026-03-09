@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"elevator/common"
-	. "elevator/common"
 	"fmt"
 	"os"
 	"os/signal"
@@ -20,15 +19,14 @@ func main() {
 		cancel()
 	}()
 
-	elevUpdateCh := make(chan Snapshot, 8)
-	netSnapElevCh := make(chan Snapshot, 8)
-	netSnapAssignerCh := make(chan Snapshot, 8)
-	assignerOutCh := make(chan ElevInput, 4)
+	elevUpdateCh := make(chan common.Snapshot, 8)
+	netSnapElevCh := make(chan common.Snapshot, 8)
+	netSnapAssignerCh := make(chan common.Snapshot, 8)
+	assignerOutCh := make(chan common.ElevInput, 4)
 
 	config, _, err := common.DefaultConfig()
 	if err != nil {
 		fmt.Println("Error loading config")
-
 	}
 
 	go networkThread(ctx, config, elevUpdateCh, netSnapAssignerCh, netSnapElevCh)
@@ -36,5 +34,4 @@ func main() {
 	go fsmThread(config, assignerOutCh, elevUpdateCh, netSnapElevCh)
 	<-ctx.Done()
 	fmt.Println("Shutting down")
-
 }

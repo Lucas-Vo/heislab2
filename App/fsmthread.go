@@ -51,9 +51,7 @@ func fsmThread(
 		case snap := <-netUpdateElevCh:
 			now = time.Now()
 			sync.HandleNetworkSnapshot(snap, now)
-			online = sync.NetworkOnline(now)
-
-			if online {
+			if sync.NetworkOnline(now) {
 				log.Printf("fsmThread: network snapshot received, elevator online. Coherent: %v, hasAlivePeer: %v", snap.Coherent, sync.HasAlivePeer())
 				if snap.Coherent {
 					elevator.SetCabLights(sync.GetLocalCab())
@@ -101,18 +99,8 @@ func fsmThread(
 					log.Printf("fsmThread: elevUpdateCh is full, skipping snapshot update")
 				}
 			}
-
-		case <-idleTicker.C:
-			behaviour, direction := elevator.MotionStrings()
-			if behaviour != "idle" {
-				continue
-			}
-			snapshot := sync.BuildSnapshot(elevator.CurrentFloor(), common.UpdateRequests, elevfsm.Requests{}, online, behaviour, direction)
-			select {
-			case elevUpdateNetCh <- snapshot:
-			default:
-				log.Printf("fsmThread: elevUpdateCh is full, skipping snapshot update")
-			}
+		default:
+			time.Sleep(10*time.Millisecond)
 		}
 	}
 }
