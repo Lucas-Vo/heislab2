@@ -20,7 +20,7 @@ type Elevator struct {
 	prevFloor     int
 	prevBehaviour ElevatorBehaviour
 	prevDirection common.MotorDirection
-	doorTimerEnd  time.Time
+	doorTimer     time.Time
 	announceDir   common.MotorDirection
 }
 
@@ -60,7 +60,7 @@ func (e *Elevator) ApplyInjectRequests(requests Requests) {
 func (e *Elevator) onRequestButtonPress(buttonFloor int, buttonType common.ButtonType) {
 	e.requests[buttonFloor][buttonType] = true
 	if e.behaviour == EB_DoorOpen && buttonFloor == e.floor {
-		e.doorTimerEnd = time.Now().Add(doorOpenDuration)
+		e.doorTimer = time.Now()
 		return
 	}
 	if e.behaviour == EB_Idle {
@@ -70,7 +70,7 @@ func (e *Elevator) onRequestButtonPress(buttonFloor int, buttonType common.Butto
 		switch pair.behaviour {
 		case EB_DoorOpen:
 			e.outputDevice.DoorLight(true)
-			e.doorTimerEnd = time.Now().Add(doorOpenDuration)
+			e.doorTimer = time.Now()
 		case EB_Moving:
 			e.outputDevice.MotorDirection(e.dirn)
 		}
@@ -129,18 +129,18 @@ func (e *Elevator) Tick(now time.Time) (stateChanged bool, servicedFloor int, se
 	}
 
 	if obstructed && newBehaviour == EB_DoorOpen {
-		e.doorTimerEnd = now.Add(doorOpenDuration)
+		e.doorTimer = now
 	}
 
 	if e.prevBehaviour != newBehaviour && newBehaviour == EB_DoorOpen {
 		arrivalDirection := e.dirn
 		e.announceDir = e.chooseNewDirAtFloor(e.prevFloor, arrivalDirection)
-		e.doorTimerEnd = now.Add(doorOpenDuration)
+		e.doorTimer = now
 	}
 	e.prevBehaviour = newBehaviour
 	e.prevDirection = newDirection
 
-	if now.After(e.doorTimerEnd) && e.prevBehaviour == EB_DoorOpen {
+	if e.prevBehaviour == EB_DoorOpen && now.Sub(e.doorTimer) >= doorOpenDuration {
 		servicedFloor, servicedCalls = e.onDoorTimerExpiry(now)
 	}
 	return stateChanged, servicedFloor, servicedCalls
@@ -150,7 +150,7 @@ func (e *Elevator) onDoorTimerExpiry(now time.Time) (servicedFloor int, serviced
 	servicedFloor = -1
 	servicedCalls = Requests{}
 
-	e.doorTimerEnd = now
+	e.doorTimer = now
 	if e.prevFloor < 0 || e.prevFloor >= common.N_FLOORS {
 		return servicedFloor, servicedCalls
 	}
@@ -159,7 +159,7 @@ func (e *Elevator) onDoorTimerExpiry(now time.Time) (servicedFloor int, serviced
 	servicedCalls, nextAnnounceDirection, restartDoorTimer := e.OnDoorClose(e.prevFloor, e.announceDir, true)
 	e.announceDir = nextAnnounceDirection
 	if restartDoorTimer {
-		e.doorTimerEnd = now.Add(doorOpenDuration)
+		e.doorTimer = now
 	}
 	return servicedFloor, servicedCalls
 }
