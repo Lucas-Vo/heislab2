@@ -11,9 +11,10 @@ import (
 )
 
 const (
-	wvTimeout              = 6 * time.Second
-	recentlyServicedWindow = 2 * time.Second
-	networkChanSize        = 128
+	WV_TIMEOUT           = 6 * time.Second
+	VALID_SERVICE_WINDOW = 2 * time.Second
+	NETWORK_CHAN_SIZE    = 128
+	VALID_COUNTER_WINDOW = 20
 )
 
 type netMsg struct {
@@ -22,42 +23,36 @@ type netMsg struct {
 	Snapshot common.Snapshot `json:"snapshot"`
 }
 
-type servicedFloorTimestamp struct {
-	Hall [common.N_FLOORS][2]time.Time
-}
-
 type WorldView struct {
-	mu              sync.Mutex
-	peers           []string
-	snapshot        common.Snapshot
-	servicedHall    servicedFloorTimestamp
-	lastHeard       map[string]time.Time
-	lastSnapshot    map[string]common.Snapshot
-	peerTimeout     time.Duration
-	startTime       time.Time
-	inStartupPeriod bool
-	selfKey         string
-	selfAlive       bool
-	counter         uint64
-	latestCount     map[string]uint64
-	msgTx           chan<- netMsg
+	mu               sync.Mutex
+	peers            []string
+	snapshot         common.Snapshot
+	lastServicedHall [common.N_FLOORS][2]time.Time
+	lastHeard        map[string]time.Time
+	lastSnapshot     map[string]common.Snapshot
+	peerTimeout      time.Duration
+	startTime        time.Time
+	inStartupPeriod  bool
+	selfKey          string
+	selfAlive        bool
+	msgCounter       uint64
+	latestCount      map[string]uint64
+	msgTxCh          chan<- netMsg
 }
 
 func InitWorldView(
 	ctx context.Context,
 	cfg common.Config,
-	peerPort int,
-	msgPort int,
 ) (*WorldView, <-chan netMsg, <-chan peers.PeerUpdate) {
-	incoming := make(chan netMsg, networkChanSize)
-	outgoing := make(chan netMsg, networkChanSize)
-	peerUpdateCh := make(chan peers.PeerUpdate, networkChanSize)
+	incoming := make(chan netMsg, NETWORK_CHAN_SIZE)
+	outgoing := make(chan netMsg, NETWORK_CHAN_SIZE)
+	peerUpdateCh := make(chan peers.PeerUpdate, NETWORK_CHAN_SIZE)
 	peerTxEnable := make(chan bool, 1)
 
-	go peers.Transmitter(peerPort, cfg.SelfKey, peerTxEnable)
-	go peers.Receiver(peerPort, peerUpdateCh)
-	go bcast.Transmitter(msgPort, outgoing)
-	go bcast.Receiver(msgPort, incoming)
+	go peers.Transmitter(cfg.PeerPort, cfg.SelfKey, peerTxEnable)
+	go peers.Receiver(cfg.PeerPort, peerUpdateCh)
+	go bcast.Transmitter(cfg.MsgPort, outgoing)
+	go bcast.Receiver(cfg.MsgPort, incoming)
 
 	go func() {
 		<-ctx.Done()
@@ -75,13 +70,13 @@ func InitWorldView(
 		},
 		lastHeard:       make(map[string]time.Time),
 		lastSnapshot:    make(map[string]common.Snapshot),
-		peerTimeout:     wvTimeout,
+		peerTimeout:     WV_TIMEOUT,
 		startTime:       time.Now(),
 		selfKey:         cfg.SelfKey,
 		selfAlive:       true,
 		latestCount:     make(map[string]uint64),
 		inStartupPeriod: true,
-		msgTx:           outgoing,
+		msgTxCh:         outgoing,
 	}
 	wv.snapshot.Alive = wv.CalculateAlive(time.Now())
 	// Broadcast an initial requests snapshot to seed local/remote bookkeeping early.
@@ -223,7 +218,7 @@ func (wv *WorldView) MarkRecentlyServicedHalls(ns common.Snapshot, now time.Time
 	for floor := range common.N_FLOORS {
 		for button := 0; button < 2; button++ {
 			if wv.snapshot.HallRequests[floor][button] && !ns.HallRequests[floor][button] {
-				wv.servicedHall.Hall[floor][button] = now
+				wv.lastServicedHall[floor][button] = now
 			}
 		}
 	}
@@ -292,16 +287,14 @@ func (wv *WorldView) MergeRemote(msg netMsg) {
 		log.Printf("####################################################################################################################################")
 	}
 	now := time.Now()
-	prevCount, seen := wv.latestCount[msg.Origin]
-	prevHeard, heard := wv.lastHeard[msg.Origin]
+	prevCounter := wv.latestCount[msg.Origin]
+	prevHeard := wv.lastHeard[msg.Origin]
 	wv.lastHeard[msg.Origin] = now
-
-	if !seen || msg.Counter > prevCount || wv.inStartupPeriod || !heard || now.Sub(prevHeard) > wv.peerTimeout {
-		wv.latestCount[msg.Origin] = msg.Counter
-	} else {
-		log.Printf("drop stale/duplicate frame origin=%s counter=%d prevCounter=%d dt=%s", msg.Origin, msg.Counter, prevCount, now.Sub(prevHeard))
+	if now.Sub(prevHeard) < wv.peerTimeout && msg.Counter < prevCounter && msg.Counter > prevCounter-VALID_COUNTER_WINDOW {
+		log.Printf("drop stale/duplicate frame origin=%s counter=%d prevCounter=%d dt=%s", msg.Origin, msg.Counter, prevCounter, now.Sub(prevHeard))
 		return
 	}
+	wv.latestCount[msg.Origin] = msg.Counter
 	wv.mergeWorldView(msg.Origin, msg.Snapshot)
 }
 
@@ -336,29 +329,29 @@ func (wv *WorldView) CalculateAlive(now time.Time) map[string]bool {
 
 func (wv *WorldView) sendOverNetwork(snap common.Snapshot) {
 	wv.mu.Lock()
-	if !wv.selfAlive || wv.msgTx == nil {
+	if !wv.selfAlive || wv.msgTxCh == nil {
 		wv.mu.Unlock()
 		return
 	}
-	wv.counter++
-	msg := netMsg{Origin: wv.selfKey, Counter: wv.counter, Snapshot: snap}
+	wv.msgCounter++
+	msg := netMsg{Origin: wv.selfKey, Counter: wv.msgCounter, Snapshot: snap}
 	wv.lastHeard[wv.selfKey] = time.Now()
 	wv.lastSnapshot[wv.selfKey] = common.DeepCopySnapshot(snap)
 	wv.mu.Unlock()
 
 	select {
-	case wv.msgTx <- msg:
+	case wv.msgTxCh <- msg:
 	default:
 		log.Printf("sendOverNetwork: dropping frame origin=%s counter=%d kind=%v (tx queue full)", msg.Origin, msg.Counter, snap.UpdateKind)
 	}
 }
 
 func (wv *WorldView) wasRecentlyServicedLocked(floor int, button int, now time.Time) bool {
-	lastServiced := wv.servicedHall.Hall[floor][button]
+	lastServiced := wv.lastServicedHall[floor][button]
 	if lastServiced.IsZero() {
 		return false
 	}
-	return now.Sub(lastServiced) <= recentlyServicedWindow
+	return now.Sub(lastServiced) <= VALID_SERVICE_WINDOW
 }
 
 func (wv *WorldView) mergeWorldView(fromKey string, ns common.Snapshot) { //TODO: maybe since we copy ns, use the new copy to keep synchronizing good

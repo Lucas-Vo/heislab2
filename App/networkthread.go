@@ -15,8 +15,6 @@ const (
 	ELEVATOR_ERROR_TIMEOUT  = 6 * time.Second
 	LOCAL_PUBLISH_PERIOD    = 50 * time.Millisecond
 	BROADCAST_PERIOD        = 1 * time.Second
-	defaultPeerPort         = 4242
-	defaultMsgPort          = 4243
 )
 
 func networkThread(
@@ -28,16 +26,7 @@ func networkThread(
 ) {
 	selfKey := cfg.SelfKey
 
-	peerPort := defaultPeerPort
-	msgPort := defaultMsgPort
-	if len(cfg.Ports) >= 1 {
-		peerPort = cfg.Ports[0]
-	}
-	if len(cfg.Ports) >= 2 {
-		msgPort = cfg.Ports[1]
-	}
-
-	wv, incoming, peerUpdates := elevnetwork.InitWorldView(ctx, cfg, peerPort, msgPort)
+	wv, incoming, peerUpdates := elevnetwork.InitWorldView(ctx, cfg)
 
 	localTicker := time.NewTicker(LOCAL_PUBLISH_PERIOD)
 	defer localTicker.Stop()
