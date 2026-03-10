@@ -24,8 +24,6 @@ func networkThread(
 	netUpdateAssignerCh chan<- common.Snapshot,
 	netUpdateElevCh chan<- common.Snapshot,
 ) {
-	selfKey := cfg.SelfKey
-
 	wv, incoming, peerUpdates := elevnetwork.InitWorldView(ctx, cfg)
 
 	localTicker := time.NewTicker(LOCAL_PUBLISH_PERIOD)
@@ -40,7 +38,6 @@ func networkThread(
 	elevatorErrorTimer := time.NewTimer(ELEVATOR_ERROR_TIMEOUT)
 	defer elevatorErrorTimer.Stop()
 
-	i := 0
 	for {
 		now := time.Now()
 		select {
@@ -51,6 +48,10 @@ func networkThread(
 				wv.MarkRecentlyServicedHalls(ns, now)
 			}
 			wv.MergeLocal(ns)
+			if !wv.SnapshotsAreCoherent() {
+				wv.BroadcastRequests()
+			}
+
 			wv.PublishLocally(netUpdateAssignerCh, netUpdateElevCh)
 
 		case msg := <-incoming:
@@ -67,44 +68,28 @@ func networkThread(
 			wv.PublishLocally(netUpdateAssignerCh, netUpdateElevCh)
 
 		case <-localTicker.C:
-
-			if !wv.SnapshotsAreCoherent() || !wv.JoinedNetwork() {
+			wv.CalculateAlive(now)
+			if !wv.SnapshotsAreCoherent() {
 				wv.BroadcastRequests()
 			}
-			if i%10 == 0 {
-				log.Printf("%v", wv.GetSnapshot().Alive)
-			}
-			i++
-			if wv.JoinedNetwork() {
+			wv.PublishLocally(netUpdateAssignerCh, netUpdateElevCh)
+
+		case <-broadcastTicker.C:
+			wv.BroadcastRequests()
+
+		case <-elevatorErrorTimer.C:
+			if wv.GetSelfAlive() {
+				wv.SetSelfAlive(false)
+				log.Printf("No behavior change detected for 6 seconds, marking Elevator as stale")
 				wv.PublishLocally(netUpdateAssignerCh, netUpdateElevCh)
 			}
 
-		case <-broadcastTicker.C:
-			if wv.JoinedNetwork() {
-				wv.BroadcastRequests()
-			}
-
-		case <-elevatorErrorTimer.C:
-			snap := wv.GetSnapshot()
-			if snap.States[selfKey].Behavior != "idle" {
-				if wv.SelfAlive() {
-					wv.SetSelfAlive(false)
-					log.Printf("No behavior change detected for 6 seconds, marking Elevator as stale")
-					wv.PublishLocally(netUpdateAssignerCh, netUpdateElevCh)
-				}
-			} else {
-				if !wv.SelfAlive() {
-					wv.SetSelfAlive(true)
-					wv.PublishLocally(netUpdateAssignerCh, netUpdateElevCh)
-				}
-				elevatorErrorTimer.Reset(ELEVATOR_ERROR_TIMEOUT)
-			}
 		case <-startupTimer.C:
 			log.Printf("networkThread: forcing end of startup phase")
 			wv.EndStartupPeriod()
+
 		default:
 			time.Sleep(10 * time.Millisecond)
 		}
-
 	}
 }

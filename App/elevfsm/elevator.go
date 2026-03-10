@@ -6,17 +6,20 @@ import (
 	"time"
 )
 
-const doorOpenDuration = 3 * time.Second
+const (
+	DOOR_OPEN_DURATION = 3 * time.Second
+	IO_ADDRESS         = "localhost:15657"
+)
 
 type Elevator struct {
 	inputDevice  common.ElevInputDevice
 	outputDevice common.ElevOutputDevice
 
-	floor        int
-	dirn         common.MotorDirection
-	behaviour    ElevatorBehaviour
-	requests     Requests
-	
+	floor     int
+	dirn      common.MotorDirection
+	behaviour ElevatorBehaviour
+	requests  Requests
+
 	prevFloor     int
 	prevBehaviour ElevatorBehaviour
 	prevDirection common.MotorDirection
@@ -24,8 +27,8 @@ type Elevator struct {
 	announceDir   common.MotorDirection
 }
 
-func NewElevator(ioAddress string) *Elevator {
-	common.ElevioInit(ioAddress)
+func NewElevator() *Elevator {
+	common.ElevioInit(IO_ADDRESS)
 	e := new(Elevator)
 	e.floor = -1
 	e.dirn = common.MD_Stop
@@ -140,7 +143,7 @@ func (e *Elevator) Tick(now time.Time) (stateChanged bool, servicedFloor int, se
 	e.prevBehaviour = newBehaviour
 	e.prevDirection = newDirection
 
-	if e.prevBehaviour == EB_DoorOpen && now.Sub(e.doorTimer) >= doorOpenDuration {
+	if e.prevBehaviour == EB_DoorOpen && now.Sub(e.doorTimer) >= DOOR_OPEN_DURATION {
 		servicedFloor, servicedCalls = e.onDoorTimerExpiry(now)
 	}
 	return stateChanged, servicedFloor, servicedCalls

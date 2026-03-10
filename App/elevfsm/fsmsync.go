@@ -5,7 +5,10 @@ import (
 	"time"
 )
 
-const netOfflineTimeout = 5 * time.Second
+const (
+	NET_OFFLINE_TIMEOUT = 5 * time.Second
+	NEW_REQUEST_TIMEOUT  = 200 * time.Millisecond
+)
 
 type FsmSync struct {
 	selfKey string
@@ -111,7 +114,7 @@ func (sync *FsmSync) HandleLocalButtonPresses(edgePresses Requests, currentFloor
 	return toInject
 }
 
-func (sync *FsmSync) ReadyInjects(now time.Time, confirmTimeout time.Duration, online bool) (toInject Requests) {
+func (sync *FsmSync) ReadyInjects(now time.Time, online bool) (toInject Requests) {
 	distributedOnline := online && sync.hasAlivePeer
 	for floor := range common.N_FLOORS {
 		for button := range common.ButtonType(common.N_BUTTONS) {
@@ -126,7 +129,7 @@ func (sync *FsmSync) ReadyInjects(now time.Time, confirmTimeout time.Duration, o
 			}
 
 			hasTimestamp := !sync.callTime[floor][button].IsZero()
-			timedOut := hasTimestamp && now.Sub(sync.callTime[floor][button]) >= confirmTimeout
+			timedOut := hasTimestamp && now.Sub(sync.callTime[floor][button]) >= NEW_REQUEST_TIMEOUT
 			shouldInject := (online && (button == common.BT_Cab || sync.assignedHall[floor][button])) ||
 				(!online && (!hasTimestamp || timedOut))
 			if distributedOnline && button != common.BT_Cab {
@@ -206,7 +209,7 @@ func (sync *FsmSync) BuildSnapshot( //TODO: Change the callsCleared to the thing
 }
 
 func (sync *FsmSync) NetworkOnline(now time.Time) bool {
-	return !sync.lastNetSeen.IsZero() && now.Sub(sync.lastNetSeen) < netOfflineTimeout
+	return !sync.lastNetSeen.IsZero() && now.Sub(sync.lastNetSeen) < NET_OFFLINE_TIMEOUT
 }
 
 func (sync *FsmSync) HasAlivePeer() bool {

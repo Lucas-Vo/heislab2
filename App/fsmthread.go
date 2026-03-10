@@ -9,8 +9,7 @@ import (
 )
 
 const (
-	inputPollRateMs = 25
-	confirmTimeout  = 200 * time.Millisecond
+	POLL_RATE_MS = 25 *time.Millisecond
 )
 
 func fsmThread(
@@ -19,10 +18,8 @@ func fsmThread(
 	elevUpdateNetCh chan<- common.Snapshot, // elev -> network
 	netUpdateElevCh <-chan common.Snapshot, // network -> elev
 ) {
-	log.Printf("fsmThread started (self=%s)", config.SelfKey)
-
 	sync := elevfsm.NewFsmSync(config)
-	elevator := elevfsm.NewElevator("localhost:15657")
+	elevator := elevfsm.NewElevator()
 	online := false
 	now := time.Now()
 
@@ -40,11 +37,12 @@ func fsmThread(
 	default:
 	}
 
-	ticker := time.NewTicker(time.Duration(inputPollRateMs) * time.Millisecond)
+	ticker := time.NewTicker(POLL_RATE_MS)
 	defer ticker.Stop()
 
 	idleTicker := time.NewTicker(1 * time.Second)
 	defer idleTicker.Stop()
+
 	i := 0
 	for {
 		now = time.Now()
@@ -75,7 +73,7 @@ func fsmThread(
 
 			elevStateChange, servicedFloor, servicedCalls := elevator.Tick(now)
 			sync.ClearServicedRequests(servicedFloor, servicedCalls, online)
-			elevator.ApplyInjectRequests(sync.ReadyInjects(now, confirmTimeout, online))
+			elevator.ApplyInjectRequests(sync.ReadyInjects(now, online))
 
 			if !online {
 				elevator.SetHallLights(sync.GetLocalHall())
@@ -100,8 +98,18 @@ func fsmThread(
 					log.Printf("fsmThread: elevUpdateCh is full, skipping snapshot update")
 				}
 			}
+		case <-idleTicker.C:
+			behaviour, direction := elevator.MotionStrings()
+			if behaviour == "idle" {
+				snapshot := sync.BuildSnapshot(elevator.CurrentFloor(), common.UpdateRequests, elevfsm.Requests{}, online, behaviour, direction)
+				select {
+				case elevUpdateNetCh <- snapshot:
+				default:
+					log.Printf("fsmThread: elevUpdateCh is full, skipping snapshot update")
+				}
+			}
 		default:
-			time.Sleep(10 * time.Millisecond)
+			time.Sleep(50 * time.Millisecond)
 		}
 	}
 }

@@ -59,6 +59,7 @@ func InitWorldView(
 		snapshot: common.Snapshot{
 			HallRequests: [common.N_FLOORS][2]bool{},
 			States:       make(map[string]common.ElevState),
+			Alive:        make(map[string]bool),
 		},
 		lastHeard:       make(map[string]time.Time),
 		lastSnapshot:    make(map[string]common.Snapshot),
@@ -70,36 +71,28 @@ func InitWorldView(
 		inStartupPeriod: true,
 		msgTxCh:         outgoing,
 	}
-	wv.snapshot.Alive = wv.CalculateAlive(time.Now())
-	// Broadcast an initial requests snapshot to seed local/remote bookkeeping early.
+	wv.CalculateAlive(time.Now())
+
 	initialSnapshot := common.DeepCopySnapshot(wv.snapshot)
 	initialSnapshot.UpdateKind = common.UpdateRequests
 	wv.sendOverNetwork(initialSnapshot)
-	return wv, incoming, peerUpdateCh
-}
 
-func (wv *WorldView) JoinedNetwork() bool {
-	wv.mu.Lock()
-	defer wv.mu.Unlock()
-	return !wv.inStartupPeriod
+	return wv, incoming, peerUpdateCh
 }
 
 func (wv *WorldView) EndStartupPeriod() {
 	wv.mu.Lock()
+	defer wv.mu.Unlock()
 	wv.inStartupPeriod = false
-	wv.mu.Unlock()
 }
 
 func (wv *WorldView) SetSelfAlive(alive bool) {
 	wv.mu.Lock()
+	defer wv.mu.Unlock()
 	wv.selfAlive = alive
-	wv.snapshot.Alive = wv.CalculateAlive(time.Now())
-	wv.mu.Unlock()
 }
 
-func (wv *WorldView) SelfAlive() bool {
-	wv.mu.Lock()
-	defer wv.mu.Unlock()
+func (wv *WorldView) GetSelfAlive() bool {
 	return wv.selfAlive
 }
 
@@ -122,12 +115,13 @@ func (wv *WorldView) HandlePeerUpdate(update peers.PeerUpdate, now time.Time) {
 		}
 		delete(wv.lastHeard, id)
 	}
-	wv.snapshot.Alive = wv.CalculateAlive(now)
 }
 
 func (wv *WorldView) PublishLocally(netSnap1Ch, netSnap2Ch chan<- common.Snapshot) {
-	snap := wv.GetSnapshot()
-	coherent := wv.JoinedNetwork() && wv.SnapshotsAreCoherent()
+	wv.mu.Lock()
+	defer wv.mu.Unlock()
+	snap := common.DeepCopySnapshot(wv.snapshot)
+	coherent := !wv.inStartupPeriod && wv.SnapshotsAreCoherent()
 	snap.Coherent = coherent
 	snap1 := common.DeepCopySnapshot(snap)
 	select {
@@ -141,18 +135,7 @@ func (wv *WorldView) PublishLocally(netSnap1Ch, netSnap2Ch chan<- common.Snapsho
 	}
 }
 
-func (wv *WorldView) GetSnapshot() common.Snapshot {
-	wv.mu.Lock()
-	defer wv.mu.Unlock()
-	wv.snapshot.Alive = wv.CalculateAlive(time.Now())
-	snap := common.DeepCopySnapshot(wv.snapshot)
-	return snap
-}
-
 func (wv *WorldView) SnapshotsAreCoherent() bool {
-	wv.mu.Lock()
-	defer wv.mu.Unlock()
-	alivePeers := wv.CalculateAlive(time.Now())
 	selfSnapshot, hasSelfSnapshot := wv.lastSnapshot[wv.selfKey]
 	if !hasSelfSnapshot {
 		return false
@@ -162,7 +145,7 @@ func (wv *WorldView) SnapshotsAreCoherent() bool {
 		return false
 	}
 	for _, peerID := range wv.peers {
-		if peerID == wv.selfKey || !alivePeers[peerID] {
+		if peerID == wv.selfKey || !wv.snapshot.Alive[peerID] {
 			continue
 		}
 		peerSnapshot, hasPeerSnapshot := wv.lastSnapshot[peerID]
@@ -193,15 +176,9 @@ func (wv *WorldView) SnapshotsAreCoherent() bool {
 }
 func (wv *WorldView) MergeLocal(ns common.Snapshot) {
 	wv.mu.Lock()
+	defer wv.mu.Unlock()
 	wv.mergeWorldView(wv.selfKey, ns)
-	inStartupPeriod, alive, kind := wv.inStartupPeriod, wv.selfAlive, ns.UpdateKind
-	snap := common.DeepCopySnapshot(wv.snapshot)
-	wv.mu.Unlock()
-	if !alive || (kind == common.UpdateRequests && inStartupPeriod) {
-		return
-	}
-	snap.UpdateKind = kind
-	wv.sendOverNetwork(snap)
+	wv.snapshot.UpdateKind = ns.UpdateKind
 }
 
 func (wv *WorldView) MarkRecentlyServicedHalls(ns common.Snapshot, now time.Time) {
@@ -295,28 +272,28 @@ func (wv *WorldView) BroadcastRequests() {
 	alive := wv.selfAlive
 	snap := common.DeepCopySnapshot(wv.snapshot)
 	wv.mu.Unlock()
-	if !alive {
+	if !alive || (snap.UpdateKind == common.UpdateRequests && wv.inStartupPeriod) {
 		return
 	}
 	snap.UpdateKind = common.UpdateRequests
 	wv.sendOverNetwork(snap)
 }
 
-func (wv *WorldView) CalculateAlive(now time.Time) map[string]bool {
-	alive := make(map[string]bool, len(wv.peers))
+func (wv *WorldView) CalculateAlive(now time.Time) {
+	wv.mu.Lock()
+	defer wv.mu.Unlock()
 	startupGrace := now.Sub(wv.startTime) <= wv.peerTimeout
 	for _, id := range wv.peers {
 		if id == wv.selfKey {
-			alive[id] = wv.selfAlive
+			wv.snapshot.Alive[id] = wv.selfAlive
 			continue
 		}
 		if t, ok := wv.lastHeard[id]; ok {
-			alive[id] = now.Sub(t) <= wv.peerTimeout
+			wv.snapshot.Alive[id] = now.Sub(t) <= wv.peerTimeout
 			continue
 		}
-		alive[id] = startupGrace
+		wv.snapshot.Alive[id] = startupGrace
 	}
-	return alive
 }
 
 func (wv *WorldView) sendOverNetwork(snap common.Snapshot) {
@@ -356,12 +333,10 @@ func (wv *WorldView) mergeWorldView(fromKey string, ns common.Snapshot) { //TODO
 	}
 
 	wv.mergeHallRequests(ns.HallRequests, ns.UpdateKind)
-	wv.snapshot.Alive = wv.CalculateAlive(time.Now())
 	for k, st := range ns.States {
 		if k == wv.selfKey && fromKey != wv.selfKey && !wv.inStartupPeriod {
 			continue
 		}
-
 		wv.snapshot.States[k] = st
 	}
 }
@@ -371,6 +346,7 @@ func (wv *WorldView) recoverCabRequests(ns common.Snapshot) {
 	if !ok {
 		return
 	}
+
 	localSelf := wv.snapshot.States[wv.selfKey]
 	if len(localSelf.CabRequests) != common.N_FLOORS {
 		localSelf.CabRequests = [common.N_FLOORS]bool{}
