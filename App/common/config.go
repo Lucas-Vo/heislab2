@@ -18,11 +18,11 @@ func DefaultConfig() (Config, string, error) {
 		Ports: []int{4242, 4243},
 		HostByID: map[int]string{
 			1: "10.100.23.32",
-			2: "10.100.23.29",
-			3: "10.100.23.172",
+			// 2: "10.100.23.29",
+			// 3: "10.100.23.172",
 			//4: "192.168.0.197", // filip ip
 			//5: "10.22.135.140", // veetel ip
-			//6: "10.24.64.186",  // lucas ip
+			6: "10.24.64.186", // lucas ip
 		},
 	}
 	if err := config.initSelf(); err != nil {

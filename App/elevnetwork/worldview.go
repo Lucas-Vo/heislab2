@@ -157,6 +157,7 @@ func (wv *WorldView) PublishLocally(netSnap1Ch, netSnap2Ch chan<- common.Snapsho
 func (wv *WorldView) GetSnapshot() common.Snapshot {
 	wv.mu.Lock()
 	defer wv.mu.Unlock()
+	wv.snapshot.Alive = wv.CalculateAlive(time.Now())
 	snap := common.DeepCopySnapshot(wv.snapshot)
 	return snap
 }
