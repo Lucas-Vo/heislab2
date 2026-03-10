@@ -1,9 +1,10 @@
 package elevnetwork
 
 import (
+	"Network-go/network/bcast"
+	"Network-go/network/peers"
 	"context"
 	"elevator/common"
-	"encoding/json"
 	"log"
 	"sync"
 	"time"
@@ -12,6 +13,7 @@ import (
 const (
 	wvTimeout              = 6 * time.Second
 	recentlyServicedWindow = 4 * time.Second
+	networkChanSize        = 128
 )
 
 type netMsg struct {
@@ -38,12 +40,33 @@ type WorldView struct {
 	selfAlive       bool
 	counter         uint64
 	latestCount     map[string]uint64
-	pm              *Manager
+	msgTx           chan<- netMsg
 }
 
-func InitWorldView(ctx context.Context, cfg common.Config, port int) (*WorldView, <-chan []byte) {
-	pm := NewPeerManager()
-	incoming := pm.Start(ctx, cfg, port)
+func InitWorldView(
+	ctx context.Context,
+	cfg common.Config,
+	peerPort int,
+	msgPort int,
+) (*WorldView, <-chan netMsg, <-chan peers.PeerUpdate) {
+	incoming := make(chan netMsg, networkChanSize)
+	outgoing := make(chan netMsg, networkChanSize)
+	peerUpdateCh := make(chan peers.PeerUpdate, networkChanSize)
+	peerTxEnable := make(chan bool, 1)
+
+	go peers.Transmitter(peerPort, cfg.SelfKey, peerTxEnable)
+	go peers.Receiver(peerPort, peerUpdateCh)
+	go bcast.Transmitter(msgPort, outgoing)
+	go bcast.Receiver(msgPort, incoming)
+
+	go func() {
+		<-ctx.Done()
+		select {
+		case peerTxEnable <- false:
+		default:
+		}
+	}()
+
 	wv := &WorldView{
 		peers: cfg.ExpectedKeys(),
 		snapshot: common.Snapshot{
@@ -58,22 +81,62 @@ func InitWorldView(ctx context.Context, cfg common.Config, port int) (*WorldView
 		selfAlive:       true,
 		latestCount:     make(map[string]uint64),
 		inStartupPeriod: true,
-		pm:              pm,
+		msgTx:           outgoing,
 	}
+	wv.snapshot.Alive = wv.CalculateAlive(time.Now())
 	// Broadcast an initial requests snapshot to seed local/remote bookkeeping early.
 	initialSnapshot := common.DeepCopySnapshot(wv.snapshot)
 	initialSnapshot.UpdateKind = common.UpdateRequests
 	wv.sendOverNetwork(initialSnapshot)
-	return wv, incoming
+	return wv, incoming, peerUpdateCh
 }
 
-func (wv *WorldView) JoinedNetwork() bool { return !wv.inStartupPeriod }
+func (wv *WorldView) JoinedNetwork() bool {
+	wv.mu.Lock()
+	defer wv.mu.Unlock()
+	return !wv.inStartupPeriod
+}
 
-func (wv *WorldView) EndStartupPeriod() { wv.inStartupPeriod = false }
+func (wv *WorldView) EndStartupPeriod() {
+	wv.mu.Lock()
+	wv.inStartupPeriod = false
+	wv.mu.Unlock()
+}
 
-func (wv *WorldView) SetSelfAlive(alive bool) { wv.selfAlive = alive }
+func (wv *WorldView) SetSelfAlive(alive bool) {
+	wv.mu.Lock()
+	wv.selfAlive = alive
+	wv.snapshot.Alive = wv.CalculateAlive(time.Now())
+	wv.mu.Unlock()
+}
 
-func (wv *WorldView) SelfAlive() bool { return wv.selfAlive }
+func (wv *WorldView) SelfAlive() bool {
+	wv.mu.Lock()
+	defer wv.mu.Unlock()
+	return wv.selfAlive
+}
+
+func (wv *WorldView) HandlePeerUpdate(update peers.PeerUpdate, now time.Time) {
+	wv.mu.Lock()
+	defer wv.mu.Unlock()
+
+	if update.New != "" && update.New != wv.selfKey {
+		wv.lastHeard[update.New] = now
+	}
+	for _, id := range update.Peers {
+		if id == "" || id == wv.selfKey {
+			continue
+		}
+		wv.lastHeard[id] = now
+	}
+	for _, id := range update.Lost {
+		if id == "" || id == wv.selfKey {
+			continue
+		}
+		delete(wv.lastHeard, id)
+	}
+	wv.snapshot.Alive = wv.CalculateAlive(now)
+}
 
 func (wv *WorldView) PublishLocally(netSnap1Ch, netSnap2Ch chan<- common.Snapshot) {
 	snap := wv.GetSnapshot()
@@ -144,11 +207,11 @@ func (wv *WorldView) MergeLocal(ns common.Snapshot) {
 	wv.mu.Lock()
 	wv.mergeWorldView(wv.selfKey, ns)
 	inStartupPeriod, alive, kind := wv.inStartupPeriod, wv.selfAlive, ns.UpdateKind
+	snap := common.DeepCopySnapshot(wv.snapshot)
 	wv.mu.Unlock()
 	if !alive || (kind == common.UpdateRequests && inStartupPeriod) {
 		return
 	}
-	snap := common.DeepCopySnapshot(wv.snapshot)
 	snap.UpdateKind = kind
 	wv.sendOverNetwork(snap)
 }
@@ -166,12 +229,11 @@ func (wv *WorldView) MarkRecentlyServicedHalls(ns common.Snapshot, now time.Time
 }
 
 func (wv *WorldView) FilterRecentlyServicedHalls(
-	frame []byte,
+	msg netMsg,
 	now time.Time,
-) ([]byte, [common.N_FLOORS][2]bool, bool) {
-	msg := decodeNetMsg(frame)
+) (netMsg, [common.N_FLOORS][2]bool, bool) {
 	if msg.Origin == "" || msg.Origin == wv.selfKey {
-		return frame, [common.N_FLOORS][2]bool{}, false
+		return msg, [common.N_FLOORS][2]bool{}, false
 	}
 
 	var serviced [common.N_FLOORS][2]bool
@@ -193,14 +255,9 @@ func (wv *WorldView) FilterRecentlyServicedHalls(
 	wv.mu.Unlock()
 
 	if !mutated {
-		return frame, serviced, false
+		return msg, serviced, false
 	}
-	encoded, err := json.Marshal(msg)
-	if err != nil {
-		log.Printf("FilterRecentlyServicedHalls: marshal failed origin=%s counter=%d: %v", msg.Origin, msg.Counter, err)
-		return frame, [common.N_FLOORS][2]bool{}, false
-	}
-	return encoded, serviced, true
+	return msg, serviced, true
 }
 
 func (wv *WorldView) ResendServicedHalls(serviced [common.N_FLOORS][2]bool) {
@@ -219,21 +276,11 @@ func (wv *WorldView) ResendServicedHalls(serviced [common.N_FLOORS][2]bool) {
 	wv.sendOverNetwork(snap)
 }
 
-func (wv *WorldView) MergeRemote(frame []byte) {
-	msg := decodeNetMsg(frame)
-
+func (wv *WorldView) MergeRemote(msg netMsg) {
 	wv.mu.Lock()
 	defer wv.mu.Unlock()
 	if msg.Origin == wv.selfKey || msg.Origin == "" {
 		return
-	}
-	switch msg.Origin {
-	case "1":
-		log.Printf("((((((((((((((((((((((((((((((((((((((((((((((((((((()))))))))))))))))))))))))))))))))))))))))))))))))))))")
-	case "2":
-		log.Printf("nignignignignignignignignignignignignignignignignignignignignignignignignignignignignignignignignignignignignignignignignignignignignignignignignignignignig")
-	case "3":
-		log.Printf("####################################################################################################################################")
 	}
 	now := time.Now()
 	prevCount, seen := wv.latestCount[msg.Origin]
@@ -246,23 +293,19 @@ func (wv *WorldView) MergeRemote(frame []byte) {
 		log.Printf("drop stale/duplicate frame origin=%s counter=%d prevCounter=%d dt=%s", msg.Origin, msg.Counter, prevCount, now.Sub(prevHeard))
 		return
 	}
-	log.Printf("merge 1  %v", msg.Snapshot.States["1"])
-	log.Printf("merge 2  %v", msg.Snapshot.States["2"])
-	log.Printf("merge 3  %v", msg.Snapshot.States["3"])
 	wv.mergeWorldView(msg.Origin, msg.Snapshot)
 }
 
 func (wv *WorldView) BroadcastRequests() {
+	wv.mu.Lock()
 	alive := wv.selfAlive
-	if alive {
-		snap := common.DeepCopySnapshot(wv.snapshot)
-		log.Printf("broadcast 1  %v", snap.States["1"])
-		log.Printf("broadcast 2  %v", snap.States["2"])
-		log.Printf("broadcast 3  %v", snap.States["3"])
-		snap.UpdateKind = common.UpdateRequests
-
-		wv.sendOverNetwork(snap)
+	snap := common.DeepCopySnapshot(wv.snapshot)
+	wv.mu.Unlock()
+	if !alive {
+		return
 	}
+	snap.UpdateKind = common.UpdateRequests
+	wv.sendOverNetwork(snap)
 }
 
 func (wv *WorldView) CalculateAlive(now time.Time) map[string]bool {
@@ -284,7 +327,7 @@ func (wv *WorldView) CalculateAlive(now time.Time) map[string]bool {
 
 func (wv *WorldView) sendOverNetwork(snap common.Snapshot) {
 	wv.mu.Lock()
-	if !wv.selfAlive || wv.pm == nil {
+	if !wv.selfAlive || wv.msgTx == nil {
 		wv.mu.Unlock()
 		return
 	}
@@ -293,21 +336,12 @@ func (wv *WorldView) sendOverNetwork(snap common.Snapshot) {
 	wv.lastHeard[wv.selfKey] = time.Now()
 	wv.lastSnapshot[wv.selfKey] = common.DeepCopySnapshot(snap)
 	wv.mu.Unlock()
-	b, err := json.Marshal(msg)
-	if err != nil {
-		log.Printf("sendOverNetwork: marshal failed origin=%s counter=%d kind=%v: %v", msg.Origin, msg.Counter, snap.UpdateKind, err)
-		return
-	}
-	wv.pm.Broadcast(b)
-}
 
-func decodeNetMsg(frame []byte) netMsg {
-	var msg netMsg
-	if err := json.Unmarshal(common.TrimZeros(frame), &msg); err != nil {
-		log.Printf("Failed to decode NetMsg: %v", err)
-		return netMsg{}
+	select {
+	case wv.msgTx <- msg:
+	default:
+		log.Printf("sendOverNetwork: dropping frame origin=%s counter=%d kind=%v (tx queue full)", msg.Origin, msg.Counter, snap.UpdateKind)
 	}
-	return msg
 }
 
 func (wv *WorldView) wasRecentlyServicedLocked(floor int, button int, now time.Time) bool {

@@ -1,10 +1,9 @@
 package common
 
 import (
+	"Network-go/network/localip"
 	"fmt"
-	"os/exec"
 	"sort"
-	"strings"
 )
 
 type Config struct {
@@ -43,13 +42,10 @@ func (c *Config) initSelf() error {
 }
 
 func (c Config) detectSelfID() (int, error) {
-	out, _ := exec.Command("hostname", "-I").Output()
-
-	fields := strings.Fields(string(out))
-	if len(fields) == 0 {
-		return 0, fmt.Errorf("hostname -I returned no IPs")
+	ip, err := localip.LocalIP()
+	if err != nil {
+		return 0, fmt.Errorf("localip lookup failed: %w", err)
 	}
-	ip := fields[0]
 	for elevID, host := range c.HostByID {
 		if host == ip {
 			return elevID, nil

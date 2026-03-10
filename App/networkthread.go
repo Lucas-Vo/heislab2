@@ -15,6 +15,8 @@ const (
 	ELEVATOR_ERROR_TIMEOUT  = 6 * time.Second
 	LOCAL_PUBLISH_PERIOD    = 50 * time.Millisecond
 	BROADCAST_PERIOD        = 1 * time.Second
+	defaultPeerPort         = 4242
+	defaultMsgPort          = 4243
 )
 
 func networkThread(
@@ -26,7 +28,16 @@ func networkThread(
 ) {
 	selfKey := cfg.SelfKey
 
-	wv, incoming := elevnetwork.InitWorldView(ctx, cfg, 4242)
+	peerPort := defaultPeerPort
+	msgPort := defaultMsgPort
+	if len(cfg.Ports) >= 1 {
+		peerPort = cfg.Ports[0]
+	}
+	if len(cfg.Ports) >= 2 {
+		msgPort = cfg.Ports[1]
+	}
+
+	wv, incoming, peerUpdates := elevnetwork.InitWorldView(ctx, cfg, peerPort, msgPort)
 
 	localTicker := time.NewTicker(LOCAL_PUBLISH_PERIOD)
 	defer localTicker.Stop()
@@ -53,13 +64,17 @@ func networkThread(
 			wv.MergeLocal(ns)
 			wv.PublishLocally(netUpdateAssignerCh, netUpdateElevCh)
 
-		case frame := <-incoming:
-			frameToMerge, filteredHalls, isFiltered := wv.FilterRecentlyServicedHalls(frame, now)
-			wv.MergeRemote(frameToMerge)
+		case msg := <-incoming:
+			msgToMerge, filteredHalls, isFiltered := wv.FilterRecentlyServicedHalls(msg, now)
+			wv.MergeRemote(msgToMerge)
 			if isFiltered {
 				wv.ResendServicedHalls(filteredHalls)
 			}
 
+			wv.PublishLocally(netUpdateAssignerCh, netUpdateElevCh)
+
+		case peerUpdate := <-peerUpdates:
+			wv.HandlePeerUpdate(peerUpdate, now)
 			wv.PublishLocally(netUpdateAssignerCh, netUpdateElevCh)
 
 		case <-localTicker.C:
