@@ -54,14 +54,6 @@ func InitWorldView(
 	go bcast.Transmitter(cfg.MsgPort, outgoing)
 	go bcast.Receiver(cfg.MsgPort, incoming)
 
-	go func() {
-		<-ctx.Done()
-		select {
-		case peerTxEnable <- false:
-		default:
-		}
-	}()
-
 	wv := &WorldView{
 		peers: cfg.ExpectedKeys(),
 		snapshot: common.Snapshot{
