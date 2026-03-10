@@ -8,7 +8,6 @@ const (
 type ElevInputDevice struct {
 	FloorSensor   func() int
 	RequestButton func(int, ButtonType) int
-	stopButton    func() int
 	obstruction   func() int
 }
 
@@ -16,7 +15,6 @@ type ElevOutputDevice struct {
 	FloorIndicator     func(int)
 	RequestButtonLight func(int, ButtonType, bool)
 	DoorLight          func(bool)
-	stopButtonLight    func(bool)
 	MotorDirection     func(MotorDirection)
 }
 
@@ -35,12 +33,6 @@ func ElevioGetInputDevice() ElevInputDevice {
 			}
 			return 0
 		},
-		stopButton: func() int {
-			if GetStop() {
-				return 1
-			}
-			return 0
-		},
 		obstruction: func() int {
 			if GetObstruction() {
 				return 1
@@ -48,13 +40,6 @@ func ElevioGetInputDevice() ElevInputDevice {
 			return 0
 		},
 	}
-}
-
-func (d ElevInputDevice) StopButton() int {
-	if d.stopButton == nil {
-		return 0
-	}
-	return d.stopButton()
 }
 
 func (d ElevInputDevice) Obstruction() int {
@@ -74,9 +59,6 @@ func ElevioGetOutputDevice() ElevOutputDevice {
 		},
 		DoorLight: func(v bool) {
 			SetDoorOpenLamp(v)
-		},
-		stopButtonLight: func(v bool) {
-			SetStopLamp(v)
 		},
 		MotorDirection: func(d MotorDirection) {
 			SetMotorDirection(d)
