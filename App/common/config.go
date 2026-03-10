@@ -25,7 +25,7 @@ func DefaultConfig() (Config, error) {
 			// 6: "10.24.64.186", // lucas ip
 		},
 	}
-	if err = config.initSelf(); err != nil {
+	if err := config.initSelf(); err != nil {
 		return Config{}, err
 	}
 	return config, nil
