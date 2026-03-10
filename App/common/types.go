@@ -23,10 +23,5 @@ type Snapshot struct {
 }
 
 type ElevInput struct {
-	HallTask     [N_FLOORS][2]bool `json:"HallTask"`
-
-}
-
-type HRAOutput struct {
-	HallTasks []ElevInput `json:"HallTasks"`
+	HallTask [N_FLOORS][2]bool `json:"HallTask"`
 }

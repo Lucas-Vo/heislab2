@@ -2,14 +2,6 @@ package common
 
 import "maps"
 
-func TrimZeros(b []byte) []byte {
-	i := len(b)
-	for i > 0 && b[i-1] == 0 {
-		i--
-	}
-	return b[:i]
-}
-
 func DeepCopySnapshot(ns Snapshot) Snapshot {
 	snapshotCopy := Snapshot{
 		HallRequests: ns.HallRequests,
@@ -37,19 +29,4 @@ func GetCabCalls(in [N_FLOORS][N_BUTTONS]bool) [N_FLOORS]bool {
 		out[i] = row[2]
 	}
 	return out
-}
-
-func MergeHallRequests(current, incoming [N_FLOORS][2]bool, kind UpdateKind) [N_FLOORS][2]bool {
-	merged := [N_FLOORS][2]bool{}
-	for i := range N_FLOORS {
-		switch kind {
-		case UpdateServiced:
-			merged[i][0] = current[i][0] && incoming[i][0]
-			merged[i][1] = current[i][1] && incoming[i][1]
-		case UpdateRequests:
-			merged[i][0] = current[i][0] || incoming[i][0]
-			merged[i][1] = current[i][1] || incoming[i][1]
-		}
-	}
-	return merged
 }

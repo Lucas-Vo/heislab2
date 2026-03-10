@@ -370,7 +370,7 @@ func (wv *WorldView) mergeWorldView(fromKey string, ns common.Snapshot) { //TODO
 		}
 	}
 
-	wv.snapshot.HallRequests = common.MergeHallRequests(wv.snapshot.HallRequests, ns.HallRequests, ns.UpdateKind)
+	wv.mergeHallRequests(ns.HallRequests, ns.UpdateKind)
 	wv.snapshot.Alive = wv.CalculateAlive(time.Now())
 	for k, st := range ns.States {
 		if k == wv.selfKey && fromKey != wv.selfKey && !wv.inStartupPeriod {
@@ -394,4 +394,17 @@ func (wv *WorldView) recoverCabRequests(ns common.Snapshot) {
 		localSelf.CabRequests[i] = localSelf.CabRequests[i] || peerSelf.CabRequests[i]
 	}
 	wv.snapshot.States[wv.selfKey] = localSelf
+}
+
+func (wv *WorldView) mergeHallRequests(incoming [common.N_FLOORS][2]bool, kind common.UpdateKind) {
+	for i := range common.N_FLOORS {
+		switch kind {
+		case common.UpdateServiced:
+			wv.snapshot.HallRequests[i][0] = wv.snapshot.HallRequests[i][0] && incoming[i][0]
+			wv.snapshot.HallRequests[i][1] = wv.snapshot.HallRequests[i][1] && incoming[i][1]
+		case common.UpdateRequests:
+			wv.snapshot.HallRequests[i][0] = wv.snapshot.HallRequests[i][0] || incoming[i][0]
+			wv.snapshot.HallRequests[i][1] = wv.snapshot.HallRequests[i][1] || incoming[i][1]
+		}
+	}
 }
