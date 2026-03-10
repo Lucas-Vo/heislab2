@@ -13,7 +13,7 @@ type Config struct {
 	SelfKey  string
 }
 
-func DefaultConfig() (Config, string, error) {
+func DefaultConfig() (Config, error) {
 	config := Config{
 		Ports: []int{4242, 4243},
 		HostByID: map[int]string{
@@ -25,10 +25,10 @@ func DefaultConfig() (Config, string, error) {
 			// 6: "10.24.64.186", // lucas ip
 		},
 	}
-	if err := config.initSelf(); err != nil {
-		return Config{}, "", err
+	if err = config.initSelf(); err != nil {
+		return Config{}, err
 	}
-	return config, config.SelfKey, nil
+	return config, nil
 }
 
 func (c *Config) initSelf() error {
@@ -52,30 +52,6 @@ func (c Config) detectSelfID() (int, error) {
 		}
 	}
 	return 0, fmt.Errorf("host IP %q not found in config", ip)
-}
-
-func (c Config) PeerAddrsForPort(port int) (map[int]string, int, error) {
-	selfID := c.SelfID
-	if selfID == 0 {
-		var err error
-		selfID, err = c.detectSelfID()
-		if err != nil {
-			return nil, 0, err
-		}
-	}
-
-	addrByID := make(map[int]string, len(c.HostByID))
-	for elevID, host := range c.HostByID {
-		addrByID[elevID] = fmt.Sprintf("%s:%d", host, port)
-	}
-
-	peers := make(map[int]string, len(addrByID)-1)
-	for elevID, addr := range addrByID {
-		if elevID != selfID {
-			peers[elevID] = addr
-		}
-	}
-	return peers, selfID, nil
 }
 
 func (c Config) ExpectedKeys() []string {

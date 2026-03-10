@@ -24,7 +24,7 @@ func main() {
 	netSnapAssignerCh := make(chan common.Snapshot, 8)
 	assignerOutCh := make(chan common.ElevInput, 4)
 
-	config, _, err := common.DefaultConfig()
+	config, err := common.DefaultConfig()
 	if err != nil {
 		fmt.Println("Error loading config")
 	}
