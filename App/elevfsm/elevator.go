@@ -6,25 +6,17 @@ import (
 	"time"
 )
 
-type ElevatorBehaviour int
-
-const (
-	EB_Idle ElevatorBehaviour = iota
-	EB_DoorOpen
-	EB_Moving
-)
-
 const doorOpenDuration = 3 * time.Second
 
 type Elevator struct {
+	inputDevice  common.ElevInputDevice
+	outputDevice common.ElevOutputDevice
+
 	floor        int
 	dirn         common.MotorDirection
 	behaviour    ElevatorBehaviour
 	requests     Requests
-	buttonLevels [common.N_FLOORS][common.N_BUTTONS]int
-	inputDevice  common.ElevInputDevice
-	outputDevice common.ElevOutputDevice
-
+	
 	prevFloor     int
 	prevBehaviour ElevatorBehaviour
 	prevDirection common.MotorDirection
@@ -103,15 +95,13 @@ func (e *Elevator) PollButtonPresses() (buttonPresses Requests, hadPress bool) {
 	buttonPresses, hadPress = Requests{}, false
 
 	for floor := range common.N_FLOORS {
-		for button := range common.N_BUTTONS {
-			value := e.inputDevice.RequestButton(floor, common.ButtonType(button))
-			isEdge := value != 0 && value != e.buttonLevels[floor][button]
-			if isEdge {
+		for button := range common.ButtonType(common.N_BUTTONS) {
+			isPressed := e.inputDevice.RequestButton(floor, button)
+			if isPressed != 0 {
 				hadPress = true
-				buttonType := common.ButtonType(button)
+				buttonType := button
 				buttonPresses[floor][buttonType] = true
 			}
-			e.buttonLevels[floor][button] = value
 		}
 	}
 	return buttonPresses, hadPress
@@ -131,7 +121,7 @@ func (e *Elevator) Tick(now time.Time) (stateChanged bool, servicedFloor int, se
 		newDirection != e.prevDirection {
 		stateChanged = true
 	}
-	e.floor = newFloor
+	e.floor = newFloor //Gjøres i onfloorarrival
 
 	if newFloor != -1 && e.prevFloor != newFloor {
 		e.onFloorArrival(newFloor)
@@ -287,27 +277,21 @@ func (e *Elevator) OnDoorClose(floor int, announceDir common.MotorDirection, cle
 	nextAnnounceDir = announceDir
 
 	if announceDir == common.MD_Up && upRequestAtFloor {
-		e.requests, cleared = requests_clearAtCurrentFloorDir(e.requests, e.floor, common.MD_Up, clearCab)
+		e.requests, cleared = requests_clearAtFloorDir(e.requests, e.floor, common.MD_Up, clearCab)
 		if downRequestAtFloor && e.shouldSwitchDirection() {
 			return cleared, common.MD_Down, true
 		}
-		e.onDoorTimeout()
-		return cleared, announceDir, false
-	}
 
-	if announceDir == common.MD_Down && downRequestAtFloor {
-		e.requests, cleared = requests_clearAtCurrentFloorDir(e.requests, e.floor, common.MD_Down, clearCab)
+	} else if announceDir == common.MD_Down && downRequestAtFloor {
+		e.requests, cleared = requests_clearAtFloorDir(e.requests, e.floor, common.MD_Down, clearCab)
 		if upRequestAtFloor && e.shouldSwitchDirection() {
 			return cleared, common.MD_Up, true
 		}
-		e.onDoorTimeout()
-		return cleared, announceDir, false
-	}
 
-	if upRequestAtFloor || downRequestAtFloor {
+	} else if upRequestAtFloor || downRequestAtFloor {
 		arrivalDir := e.dirn
 		nextAnnounceDir = e.chooseNewDirAtFloor(floor, arrivalDir)
-		e.requests, cleared = requests_clearAtCurrentFloorDir(e.requests, e.floor, nextAnnounceDir, clearCab)
+		e.requests, cleared = requests_clearAtFloorDir(e.requests, e.floor, nextAnnounceDir, clearCab)
 
 		if nextAnnounceDir == common.MD_Up && downRequestAtFloor && e.shouldSwitchDirection() {
 			return cleared, common.MD_Down, true
@@ -315,11 +299,11 @@ func (e *Elevator) OnDoorClose(floor int, announceDir common.MotorDirection, cle
 		if nextAnnounceDir == common.MD_Down && upRequestAtFloor && e.shouldSwitchDirection() {
 			return cleared, common.MD_Up, true
 		}
-		e.onDoorTimeout()
-		return cleared, nextAnnounceDir, false
-	}
 
-	e.requests, cleared = requests_clearAtCurrentFloorDir(e.requests, e.floor, common.MD_Stop, clearCab)
+	} else {
+		e.requests, cleared = requests_clearAtFloorDir(e.requests, e.floor, common.MD_Stop, clearCab)
+		nextAnnounceDir = common.MD_Stop
+	}
 	e.onDoorTimeout()
-	return cleared, common.MD_Stop, false
+	return cleared, nextAnnounceDir, false
 }

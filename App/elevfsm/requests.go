@@ -4,6 +4,14 @@ import (
 	"elevator/common"
 )
 
+type ElevatorBehaviour int
+
+const (
+	EB_Idle ElevatorBehaviour = iota
+	EB_DoorOpen
+	EB_Moving
+)
+
 type DirnBehaviourPair struct {
 	dirn      common.MotorDirection
 	behaviour ElevatorBehaviour
@@ -76,7 +84,7 @@ func requests_shouldStop(requests Requests, floor int, dirn common.MotorDirectio
 	}
 }
 
-func requests_clearAtCurrentFloorDir(requests Requests, floor int, announceDir common.MotorDirection, clearCab bool) (updated Requests, cleared Requests) {
+func requests_clearAtFloorDir(requests Requests, floor int, announceDir common.MotorDirection, clearCab bool) (updated Requests, cleared Requests) {
 	updated = requests
 	if clearCab {
 		if updated[floor][common.BT_Cab] {
