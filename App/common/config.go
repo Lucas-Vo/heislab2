@@ -3,7 +3,9 @@ package common
 import (
 	"Network-go/network/localip"
 	"fmt"
-	"sort"
+	"maps"
+	"slices"
+	"strconv"
 )
 
 type Config struct {
@@ -55,15 +57,10 @@ func (c Config) detectSelfID() (int, error) {
 }
 
 func (c Config) ExpectedKeys() []string {
-	ids := make([]int, 0, len(c.HostByID))
-	for elevID := range c.HostByID {
-		ids = append(ids, elevID)
+	ids := slices.Sorted(maps.Keys(c.HostByID))
+	keys := make([]string, len(ids))
+	for i, elevID := range ids {
+		keys[i] = strconv.Itoa(elevID)
 	}
-	sort.Ints(ids)
-
-	keyStrings := make([]string, 0, len(ids))
-	for _, elevID := range ids {
-		keyStrings = append(keyStrings, fmt.Sprintf("%d", elevID))
-	}
-	return keyStrings
+	return keys
 }
