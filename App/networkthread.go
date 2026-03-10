@@ -58,6 +58,7 @@ func networkThread(
 			msgToMerge, filteredHalls, isFiltered := wv.FilterRecentlyServicedHalls(msg, now)
 			wv.MergeRemote(msgToMerge)
 			if isFiltered {
+				wv.CalculateAlive(now)
 				wv.ResendServicedHalls(filteredHalls)
 			}
 

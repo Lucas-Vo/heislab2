@@ -193,36 +193,25 @@ func (wv *WorldView) MarkRecentlyServicedHalls(ns common.Snapshot, now time.Time
 	}
 }
 
-func (wv *WorldView) FilterRecentlyServicedHalls(
-	msg netMsg,
-	now time.Time,
-) (netMsg, [common.N_FLOORS][2]bool, bool) {
+func (wv *WorldView) FilterRecentlyServicedHalls(msg netMsg, now time.Time) (netMsg, [common.N_FLOORS][2]bool, bool) {
+	var serviced [common.N_FLOORS][2]bool
+	msgIsFiltered := false
 	if msg.Origin == "" || msg.Origin == wv.selfKey {
-		return msg, [common.N_FLOORS][2]bool{}, false
+		return msg, serviced, msgIsFiltered
 	}
 
-	var serviced [common.N_FLOORS][2]bool
-	mutated := false
-
 	wv.mu.Lock()
+	defer wv.mu.Unlock()
 	for floor := range common.N_FLOORS {
 		for button := 0; button < 2; button++ {
-			if !msg.Snapshot.HallRequests[floor][button] {
-				continue
-			}
-			if wv.wasRecentlyServicedLocked(floor, button, now) {
+			if msg.Snapshot.HallRequests[floor][button] && wv.wasRecentlyServicedLocked(floor, button, now) {
 				msg.Snapshot.HallRequests[floor][button] = false
 				serviced[floor][button] = true
-				mutated = true
+				msgIsFiltered = true
 			}
 		}
 	}
-	wv.mu.Unlock()
-
-	if !mutated {
-		return msg, serviced, false
-	}
-	return msg, serviced, true
+	return msg, serviced, msgIsFiltered
 }
 
 func (wv *WorldView) ResendServicedHalls(serviced [common.N_FLOORS][2]bool) {
