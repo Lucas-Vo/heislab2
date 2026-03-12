@@ -45,7 +45,9 @@ func NewElevator() *Elevator {
 	if newFloor != -1 {
 		e.onFloorArrival(newFloor)
 	} else {
-		e.startFloorSearch()
+		e.outputDevice.MotorDirection(common.MD_Down)
+		e.dirn = common.MD_Down
+		e.behaviour = EB_Moving
 	}
 	e.prevFloor = e.floor
 	e.prevDirection = e.dirn
@@ -152,15 +154,10 @@ func (e *Elevator) Tick(now time.Time) (stateChanged bool, servicedFloor int, se
 }
 
 func (e *Elevator) onDoorTimerExpiry(now time.Time) (servicedFloor int, servicedCalls Requests) {
-	servicedFloor = -1
 	servicedCalls = Requests{}
-
-	e.doorTimer = now
-	if e.prevFloor < 0 || e.prevFloor >= common.N_FLOORS {
-		return servicedFloor, servicedCalls
-	}
-
 	servicedFloor = e.prevFloor
+	e.doorTimer = now
+
 	servicedCalls, nextAnnounceDirection, restartDoorTimer := e.OnDoorClose(e.prevFloor, e.announceDir, true)
 	e.announceDir = nextAnnounceDirection
 	if restartDoorTimer {
@@ -169,9 +166,9 @@ func (e *Elevator) onDoorTimerExpiry(now time.Time) (servicedFloor int, serviced
 	return servicedFloor, servicedCalls
 }
 
-func (e *Elevator) GetPrevFloor() int { return e.prevFloor}
+func (e *Elevator) GetPrevFloor() int { return e.prevFloor }
 
-func (e *Elevator) GetFloor() int { return e.inputDevice.FloorSensor()}
+func (e *Elevator) GetFloor() int { return e.inputDevice.FloorSensor() }
 
 func (e *Elevator) SetHallLights(hallRequests [common.N_FLOORS][2]bool) {
 	for floor := range common.N_FLOORS {
@@ -197,7 +194,6 @@ func (e *Elevator) MotionStrings() (behavior string, direction string) {
 	default:
 		behavior = "idle"
 	}
-
 	switch e.dirn {
 	case common.MD_Up:
 		direction = "up"
@@ -208,7 +204,6 @@ func (e *Elevator) MotionStrings() (behavior string, direction string) {
 	default:
 		direction = "stop"
 	}
-
 	return behavior, direction
 }
 
@@ -234,12 +229,6 @@ func (e *Elevator) onDoorTimeout() {
 		e.outputDevice.DoorLight(false)
 		e.outputDevice.MotorDirection(e.dirn)
 	}
-}
-
-func (e *Elevator) startFloorSearch() {
-	e.outputDevice.MotorDirection(common.MD_Down)
-	e.dirn = common.MD_Down
-	e.behaviour = EB_Moving
 }
 
 func (e *Elevator) chooseNewDirAtFloor(floor int, fallback common.MotorDirection) common.MotorDirection {
@@ -276,7 +265,7 @@ func (e *Elevator) OnDoorClose(floor int, announceDir common.MotorDirection, cle
 	e.floor = floor
 	upRequestAtFloor, downRequestAtFloor := requests_hallRequestsAtFloor(e.requests, e.floor)
 	nextAnnounceDir = announceDir
-
+	//TODO: add comments to describe the different cases
 	if announceDir == common.MD_Up && upRequestAtFloor {
 		e.requests, cleared = requests_clearAtFloorDir(e.requests, e.floor, common.MD_Up, clearCab)
 		if downRequestAtFloor && e.shouldSwitchDirection() {
