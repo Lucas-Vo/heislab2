@@ -171,7 +171,7 @@ func (e *Elevator) onDoorTimerExpiry(now time.Time) (servicedFloor int, serviced
 
 func (e *Elevator) GetPrevFloor() int { return e.prevFloor}
 
-func (e *Elevator) GetFloor() int { return e.floor}
+func (e *Elevator) GetFloor() int { return e.inputDevice.FloorSensor()}
 
 func (e *Elevator) SetHallLights(hallRequests [common.N_FLOORS][2]bool) {
 	for floor := range common.N_FLOORS {
