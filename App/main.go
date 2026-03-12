@@ -29,7 +29,7 @@ func main() {
 		fmt.Println("Error loading config")
 	}
 
-	go networkThread(ctx, config, elevUpdateCh, netSnapAssignerCh, netSnapElevCh)
+	go networkThread(config, elevUpdateCh, netSnapAssignerCh, netSnapElevCh)
 	go assignerThread(config, netSnapAssignerCh, assignerOutCh)
 	go fsmThread(config, assignerOutCh, elevUpdateCh, netSnapElevCh)
 	<-ctx.Done()

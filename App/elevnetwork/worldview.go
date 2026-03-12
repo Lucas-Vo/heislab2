@@ -40,10 +40,7 @@ type WorldView struct {
 	msgTxCh          chan<- netMsg
 }
 
-func InitWorldView(
-	ctx context.Context,
-	cfg common.Config,
-) (*WorldView, <-chan netMsg, <-chan peers.PeerUpdate) {
+func InitWorldView(cfg common.Config) (*WorldView, <-chan netMsg, <-chan peers.PeerUpdate) {
 	incoming := make(chan netMsg, NETWORK_CHAN_SIZE)
 	outgoing := make(chan netMsg, NETWORK_CHAN_SIZE)
 	peerUpdateCh := make(chan peers.PeerUpdate, NETWORK_CHAN_SIZE)

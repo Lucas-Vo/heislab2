@@ -2,7 +2,6 @@
 package main
 
 import (
-	"context"
 	"log"
 	"time"
 
@@ -18,13 +17,12 @@ const (
 )
 
 func networkThread(
-	ctx context.Context,
 	cfg common.Config,
 	elevUpdateCh <-chan common.Snapshot,
 	netUpdateAssignerCh chan<- common.Snapshot,
 	netUpdateElevCh chan<- common.Snapshot,
 ) {
-	wv, incoming, peerUpdates := elevnetwork.InitWorldView(ctx, cfg)
+	wv, incoming, peerUpdates := elevnetwork.InitWorldView(cfg)
 
 	localTicker := time.NewTicker(LOCAL_PUBLISH_PERIOD)
 	defer localTicker.Stop()

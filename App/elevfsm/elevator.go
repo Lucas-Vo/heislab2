@@ -37,6 +37,8 @@ func NewElevator() *Elevator {
 	e.inputDevice = common.ElevioGetInputDevice()
 	e.outputDevice = common.ElevioGetOutputDevice()
 	e.outputDevice.DoorLight(false)
+	e.SetHallLights([common.N_FLOORS][2]bool{})
+	e.SetCabLights([common.N_FLOORS]bool{})
 	newFloor := e.FloorSensor()
 
 	if newFloor != -1 {
