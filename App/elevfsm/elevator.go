@@ -21,10 +21,11 @@ type Elevator struct {
 	requests  Requests
 
 	prevFloor     int
-	prevBehaviour ElevatorBehaviour
 	prevDirection common.MotorDirection
-	doorTimer     time.Time
-	announceDir   common.MotorDirection
+	prevBehaviour ElevatorBehaviour
+
+	doorTimer   time.Time
+	announceDir common.MotorDirection
 }
 
 func NewElevator() *Elevator {
@@ -39,7 +40,7 @@ func NewElevator() *Elevator {
 	e.outputDevice.DoorLight(false)
 	e.SetHallLights([common.N_FLOORS][2]bool{})
 	e.SetCabLights([common.N_FLOORS]bool{})
-	newFloor := e.FloorSensor()
+	newFloor := e.inputDevice.FloorSensor()
 
 	if newFloor != -1 {
 		e.onFloorArrival(newFloor)
@@ -116,34 +117,33 @@ func (e *Elevator) Tick(now time.Time) (stateChanged bool, servicedFloor int, se
 	servicedFloor = -1
 	servicedCalls = Requests{}
 
-	newFloor := e.FloorSensor()
-	newBehaviour := e.behaviour
-	newDirection := e.dirn
-	obstructed := e.obstruction()
+	isObstructed := e.inputDevice.Obstruction()
+	newFloor := e.inputDevice.FloorSensor()
 
-	if newFloor != e.floor ||
-		newBehaviour != e.prevBehaviour ||
-		newDirection != e.prevDirection {
+	if e.floor != newFloor ||
+		e.behaviour != e.prevBehaviour ||
+		e.dirn != e.prevDirection {
 		stateChanged = true
 	}
-	e.floor = newFloor //Gjøres i onfloorarrival
 
-	if newFloor != -1 && e.prevFloor != newFloor {
-		e.onFloorArrival(newFloor)
-		e.prevFloor = newFloor
+	e.floor = newFloor
+
+	if e.floor != -1 && e.prevFloor != e.floor {
+		e.onFloorArrival(e.floor)
+		e.prevFloor = e.floor
 	}
 
-	if obstructed && newBehaviour == EB_DoorOpen {
+	if isObstructed != 0 && e.behaviour == EB_DoorOpen {
 		e.doorTimer = now
 	}
 
-	if e.prevBehaviour != newBehaviour && newBehaviour == EB_DoorOpen {
+	if e.prevBehaviour != e.behaviour && e.behaviour == EB_DoorOpen {
 		arrivalDirection := e.dirn
 		e.announceDir = e.chooseNewDirAtFloor(e.prevFloor, arrivalDirection)
 		e.doorTimer = now
 	}
-	e.prevBehaviour = newBehaviour
-	e.prevDirection = newDirection
+	e.prevBehaviour = e.behaviour
+	e.prevDirection = e.dirn
 
 	if e.prevBehaviour == EB_DoorOpen && now.Sub(e.doorTimer) >= DOOR_OPEN_DURATION {
 		servicedFloor, servicedCalls = e.onDoorTimerExpiry(now)
@@ -169,9 +169,9 @@ func (e *Elevator) onDoorTimerExpiry(now time.Time) (servicedFloor int, serviced
 	return servicedFloor, servicedCalls
 }
 
-func (e *Elevator) CurrentFloor() int { return e.prevFloor }
+func (e *Elevator) GetPrevFloor() int { return e.prevFloor}
 
-func (e *Elevator) FloorSensor() int { return e.inputDevice.FloorSensor() }
+func (e *Elevator) GetFloor() int { return e.floor}
 
 func (e *Elevator) SetHallLights(hallRequests [common.N_FLOORS][2]bool) {
 	for floor := range common.N_FLOORS {
@@ -234,10 +234,6 @@ func (e *Elevator) onDoorTimeout() {
 		e.outputDevice.DoorLight(false)
 		e.outputDevice.MotorDirection(e.dirn)
 	}
-}
-
-func (e *Elevator) obstruction() bool {
-	return e.inputDevice.Obstruction() != 0
 }
 
 func (e *Elevator) startFloorSearch() {

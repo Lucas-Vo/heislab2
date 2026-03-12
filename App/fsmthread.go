@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	POLL_RATE_MS = 25 *time.Millisecond
+	POLL_RATE_MS = 25 * time.Millisecond
 )
 
 func fsmThread(
@@ -25,7 +25,7 @@ func fsmThread(
 
 	initialBehaviour, initialDirection := elevator.MotionStrings()
 	initialSnapshot := sync.BuildSnapshot(
-		elevator.CurrentFloor(),
+		1,
 		common.UpdateRequests,
 		elevfsm.Requests{},
 		online,
@@ -68,7 +68,7 @@ func fsmThread(
 			online = sync.NetworkOnline(now)
 
 			edgePresses, newButtonPressed := elevator.PollButtonPresses()
-			toInject := sync.HandleLocalButtonPresses(edgePresses, elevator.FloorSensor(), now, online)
+			toInject := sync.HandleLocalButtonPresses(edgePresses, elevator.GetFloor(), now, online)
 			elevator.ApplyInjectRequests(toInject) // why is this called 2 times, this shit is craaaaazyyy
 
 			elevStateChange, servicedFloor, servicedCalls := elevator.Tick(now)
@@ -91,7 +91,7 @@ func fsmThread(
 				elevUpdateNetCh <- snapshot
 			}
 			if elevStateChange || newButtonPressed {
-				snapshot := sync.BuildSnapshot(elevator.CurrentFloor(), common.UpdateRequests, elevfsm.Requests{}, online, behaviour, direction)
+				snapshot := sync.BuildSnapshot(elevator.GetPrevFloor(), common.UpdateRequests, elevfsm.Requests{}, online, behaviour, direction)
 				select {
 				case elevUpdateNetCh <- snapshot:
 				default:
@@ -101,7 +101,7 @@ func fsmThread(
 		case <-idleTicker.C:
 			behaviour, direction := elevator.MotionStrings()
 			if behaviour == "idle" {
-				snapshot := sync.BuildSnapshot(elevator.CurrentFloor(), common.UpdateRequests, elevfsm.Requests{}, online, behaviour, direction)
+				snapshot := sync.BuildSnapshot(elevator.GetPrevFloor(), common.UpdateRequests, elevfsm.Requests{}, online, behaviour, direction)
 				select {
 				case elevUpdateNetCh <- snapshot:
 				default:
