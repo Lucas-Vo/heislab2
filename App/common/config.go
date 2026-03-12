@@ -7,8 +7,8 @@ import (
 )
 
 type Config struct {
-	PeerPort    int
-	MsgPort    int
+	PeerPort int
+	MsgPort  int
 	HostByID map[int]string
 	SelfID   int
 	SelfKey  string
@@ -21,7 +21,7 @@ func DefaultConfig() (Config, error) {
 		HostByID: map[int]string{
 			1: "10.100.23.19",
 			2: "10.100.23.20",
-			3: "10.100.23.22",
+			3: "10.24.67.170",
 			//4: "192.168.0.197", // filip ip
 			//5: "10.22.135.140", // veetel ip
 			// 6: "10.24.64.186", // lucas ip
