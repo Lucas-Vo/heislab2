@@ -52,7 +52,7 @@ func fsmThread(
 
 		case task := <-assignerOutputCh:
 			toClear := sync.HandleAssignerTask(task)
-			elevator.ApplyClearRequests(toClear)
+			elevator.ClearRequests(toClear)
 
 		case <-ticker.C:
 			buttonPresses, newButtonPressed := elevator.PollButtonPresses()

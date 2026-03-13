@@ -93,7 +93,7 @@ func (e *Elevator) onRequest(buttonFloor int, buttonType common.ButtonType) {
 	}
 }
 
-func (e *Elevator) ApplyClearRequests(requests common.Requests) {
+func (e *Elevator) ClearRequests(requests common.Requests) {
 	for floor := range common.N_FLOORS {
 		for button := range common.ButtonType(common.N_BUTTONS) {
 			if requests[floor][button] {
