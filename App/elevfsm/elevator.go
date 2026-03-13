@@ -227,6 +227,10 @@ func (e *Elevator) onDoorTimeout() { //TODO: 3 onDoor____ er forjævlig. Spesiel
 	}
 }
 
+func (e *Elevator) SetStopLight(online bool) {
+	e.outputDevice.StopButtonLight(!online)
+}
+
 func (e *Elevator) chooseNewDirAtFloor(floor int, fallback common.MotorDirection) common.MotorDirection {
 	up, down := requests_hallRequestsAtFloor(e.requests, floor)
 	if up && !down {

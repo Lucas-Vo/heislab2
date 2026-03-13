@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	INITIAL_CONTACT_TIMEOUT = 9 * time.Second
+	INITIAL_CONTACT_TIMEOUT = 5 * time.Second
 	ELEVATOR_ERROR_TIMEOUT  = 6 * time.Second
 	LOCAL_PUBLISH_PERIOD    = 50 * time.Millisecond
 	BROADCAST_PERIOD        = 1 * time.Second
@@ -49,7 +49,7 @@ func networkThread(
 			if !wv.SnapshotsAreCoherent() {
 				wv.BroadcastRequests()
 			}
-
+			log.Printf("JESPER 1")
 			wv.PublishLocally(netUpdateAssignerCh, netUpdateElevCh)
 
 		case msg := <-incoming:
@@ -59,7 +59,7 @@ func networkThread(
 				wv.CalculateAlive(now)
 				wv.ResendServicedHalls(filteredHalls)
 			}
-
+			log.Printf("JESPER 2")
 			wv.PublishLocally(netUpdateAssignerCh, netUpdateElevCh)
 
 		case peerUpdate := <-peerUpdates:
@@ -71,7 +71,6 @@ func networkThread(
 			if !wv.SnapshotsAreCoherent() {
 				wv.BroadcastRequests()
 			}
-			wv.PublishLocally(netUpdateAssignerCh, netUpdateElevCh)
 
 		case <-broadcastTicker.C:
 			wv.BroadcastRequests()
@@ -80,6 +79,7 @@ func networkThread(
 			if wv.GetSelfAlive() {
 				wv.SetSelfAlive(false)
 				log.Printf("No behavior change detected for 6 seconds, marking Elevator as stale")
+				log.Printf("JESPER 3")
 				wv.PublishLocally(netUpdateAssignerCh, netUpdateElevCh)
 			}
 

@@ -15,6 +15,7 @@ type ElevOutputDevice struct {
 	FloorIndicator     func(int)
 	RequestButtonLight func(int, ButtonType, bool)
 	DoorLight          func(bool)
+	StopButtonLight    func(bool)
 	MotorDirection     func(MotorDirection)
 }
 
@@ -56,6 +57,9 @@ func ElevioGetOutputDevice() ElevOutputDevice {
 		},
 		RequestButtonLight: func(f int, b ButtonType, v bool) {
 			SetButtonLamp(b, f, v)
+		},
+		StopButtonLight: func(v bool) {
+			SetStopLamp(v)
 		},
 		DoorLight: func(v bool) {
 			SetDoorOpenLamp(v)

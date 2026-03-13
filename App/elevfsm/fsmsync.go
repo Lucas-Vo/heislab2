@@ -6,7 +6,7 @@ import (
 )
 
 const (
-	NET_OFFLINE_TIMEOUT = 5 * time.Second
+	NET_OFFLINE_TIMEOUT = 3 * time.Second
 	NEW_REQUEST_TIMEOUT = 200 * time.Millisecond
 )
 
@@ -14,7 +14,6 @@ type FsmSync struct {
 	selfKey string
 
 	initFromNetwork bool
-	lastNetSeen     time.Time
 	hasAlivePeer    bool
 	coherent        bool
 
@@ -31,7 +30,6 @@ func NewFsmSync(config common.Config) *FsmSync {
 }
 
 func (sync *FsmSync) HandleNetworkSnapshot(snapshot common.Snapshot, now time.Time) {
-	sync.lastNetSeen = now
 	sync.hasAlivePeer = false
 	sync.coherent = snapshot.Coherent
 	for key, alive := range snapshot.Alive {
@@ -96,8 +94,7 @@ func (sync *FsmSync) HandleAssignerTask(task common.ElevInput) (toClear Requests
 	return toClear
 }
 
-func (sync *FsmSync) HandleLocalButtonPresses(edgePresses Requests, currentFloor int, now time.Time, online bool) (toInject Requests) {
-	distributedOnline := online && sync.hasAlivePeer
+func (sync *FsmSync) HandleLocalButtonPresses(edgePresses Requests, currentFloor int, now time.Time) (toInject Requests) {
 	for floor := range common.N_FLOORS {
 		for button := range common.ButtonType(common.N_BUTTONS) {
 			if !edgePresses[floor][button] {
@@ -105,7 +102,7 @@ func (sync *FsmSync) HandleLocalButtonPresses(edgePresses Requests, currentFloor
 			}
 			sync.callTime[floor][button] = now
 			sync.localCalls[floor][button] = true
-			allowImmediateHallInject := !distributedOnline
+			allowImmediateHallInject := !sync.hasAlivePeer
 			if button == common.BT_Cab || (currentFloor == floor && allowImmediateHallInject) {
 				toInject[floor][button] = true
 				sync.markInjected(floor, button)
@@ -115,25 +112,21 @@ func (sync *FsmSync) HandleLocalButtonPresses(edgePresses Requests, currentFloor
 	return toInject
 }
 
-func (sync *FsmSync) ReadyInjects(now time.Time, online bool) (toInject Requests) {
-	distributedOnline := online && sync.hasAlivePeer
+func (sync *FsmSync) ReadyInjects(now time.Time) (toInject Requests) {
 	for floor := range common.N_FLOORS {
 		for button := range common.ButtonType(common.N_BUTTONS) {
 			callActive := sync.localCalls[floor][button]
-			if distributedOnline && button != common.BT_Cab {
+			if sync.hasAlivePeer && button != common.BT_Cab {
 				callActive = sync.coherent && sync.netCalls[floor][button]
-			} else if online && button != common.BT_Cab {
+			} else if button != common.BT_Cab {
 				callActive = sync.netCalls[floor][button] || sync.localCalls[floor][button]
 			}
 			if !callActive || sync.injected[floor][button] {
 				continue
 			}
 
-			hasTimestamp := !sync.callTime[floor][button].IsZero()
-			timedOut := hasTimestamp && now.Sub(sync.callTime[floor][button]) >= NEW_REQUEST_TIMEOUT
-			shouldInject := (online && (button == common.BT_Cab || sync.assignedHall[floor][button])) ||
-				(!online && (!hasTimestamp || timedOut))
-			if distributedOnline && button != common.BT_Cab {
+			shouldInject := button == common.BT_Cab || sync.assignedHall[floor][button]
+			if sync.hasAlivePeer && button != common.BT_Cab {
 				shouldInject = sync.coherent && sync.assignedHall[floor][button]
 			}
 			if shouldInject {
@@ -146,7 +139,7 @@ func (sync *FsmSync) ReadyInjects(now time.Time, online bool) (toInject Requests
 	return toInject
 }
 
-func (sync *FsmSync) ClearServicedRequests(floor int, serviced Requests, online bool) {
+func (sync *FsmSync) ClearServicedRequests(floor int, serviced Requests) {
 	if floor < 0 || floor >= common.N_FLOORS {
 		return
 	}
@@ -166,14 +159,10 @@ func (sync *FsmSync) BuildSnapshot( //TODO: Change the callsCleared to the thing
 	floor int,
 	kind common.UpdateKind,
 	callsCleared Requests,
-	online bool,
 	behavior string,
 	direction string,
 ) common.Snapshot {
-	outCalls := sync.localCalls
-	if online {
-		outCalls = sync.netCalls
-	}
+	outCalls := sync.netCalls
 	if kind == common.UpdateRequests {
 		for f := range common.N_FLOORS {
 			if sync.localCalls[f][common.BT_HallUp] && !sync.confirmed[f][common.BT_HallUp] {
@@ -207,10 +196,6 @@ func (sync *FsmSync) BuildSnapshot( //TODO: Change the callsCleared to the thing
 		},
 		UpdateKind: kind,
 	}
-}
-
-func (sync *FsmSync) NetworkOnline(now time.Time) bool {
-	return !sync.lastNetSeen.IsZero() && now.Sub(sync.lastNetSeen) < NET_OFFLINE_TIMEOUT
 }
 
 func (sync *FsmSync) HasAlivePeer() bool {
