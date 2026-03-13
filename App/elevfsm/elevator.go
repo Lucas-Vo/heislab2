@@ -65,6 +65,12 @@ func (e *Elevator) ApplyInjectRequests(requests common.Requests) {
 }
 
 func (e *Elevator) onRequest(buttonFloor int, buttonType common.ButtonType) {
+	// Ignore duplicate injects for an already queued request.
+	// This keeps door timer behavior stable when sync logic re-sends active calls.
+	if e.requests[buttonFloor][buttonType] {
+		return
+	}
+
 	e.requests[buttonFloor][buttonType] = true
 	if e.behaviour == EB_DoorOpen && buttonFloor == e.floor {
 		e.doorTimer = time.Now()

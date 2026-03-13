@@ -60,15 +60,17 @@ func fsmThread(
 			elevator.ApplyInjectRequests(toInject) // why is this called 2 times, this shit is craaaaazyyy
 
 			elevStateChange, servicedCalls, isServiced := elevator.Tick(now)
-
-			elevator.ApplyInjectRequests(sync.ReadyInjects(now))
 			sync.ClearServicedRequests(elevator.GetPrevFloor(), servicedCalls)
 
 			if isServiced {
 				snapshot := sync.BuildSnapshot(elevator, common.UpdateServiced, servicedCalls)
 				elevUpdateNetCh <- snapshot
+				continue
+			}
 
-			} else if elevStateChange || newButtonPressed {
+			elevator.ApplyInjectRequests(sync.ReadyInjects(now))
+
+			if elevStateChange || newButtonPressed {
 				snapshot := sync.BuildSnapshot(elevator, common.UpdateRequests, common.Requests{})
 				select {
 				case elevUpdateNetCh <- snapshot:

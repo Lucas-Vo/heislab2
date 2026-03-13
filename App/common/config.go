@@ -19,12 +19,12 @@ func DefaultConfig() (Config, error) {
 		PeerPort: 4242,
 		MsgPort:  4243,
 		HostByID: map[int]string{
-			1: "10.100.23.34",
-			2: "10.100.23.35",
-			3: "10.100.23.37",
+			// 1: "10.100.23.34",
+			// 2: "10.100.23.35",
+			// 3: "10.100.23.37",
 			//4: "192.168.0.197", // filip ip
 			//5: "10.22.135.140", // veetel ip
-			// 6: "10.24.64.186", // lucas ip
+			6: "10.24.67.170", // lucas ip
 		},
 	}
 	if err := config.initSelf(); err != nil {
