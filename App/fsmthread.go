@@ -37,6 +37,8 @@ func fsmThread(
 	default:
 	}
 
+	//elevfsm, fsmthread.go
+
 	ticker := time.NewTicker(POLL_RATE_MS)
 	defer ticker.Stop()
 
