@@ -10,6 +10,7 @@ import (
 
 const (
 	POLL_RATE_MS = 25 * time.Millisecond
+	IDLE_RATE_MS = 1 * time.Second
 )
 
 func fsmThread(
@@ -40,7 +41,7 @@ func fsmThread(
 	ticker := time.NewTicker(POLL_RATE_MS)
 	defer ticker.Stop()
 
-	idleTicker := time.NewTicker(1 * time.Second)
+	idleTicker := time.NewTicker(IDLE_RATE_MS)
 	defer idleTicker.Stop()
 
 	i := 0
@@ -67,14 +68,14 @@ func fsmThread(
 		case <-ticker.C:
 			online = sync.NetworkOnline(now)
 
-			edgePresses, newButtonPressed := elevator.PollButtonPresses()
-			toInject := sync.HandleLocalButtonPresses(edgePresses, elevator.GetFloor(), now, online)
+			buttonPresses, newButtonPressed := elevator.PollButtonPresses()
+			toInject := sync.HandleLocalButtonPresses(buttonPresses, elevator.GetFloor(), now, online)
 			elevator.ApplyInjectRequests(toInject) // why is this called 2 times, this shit is craaaaazyyy
 
 			elevStateChange, servicedFloor, servicedCalls := elevator.Tick(now)
-			sync.ClearServicedRequests(servicedFloor, servicedCalls, online)
-			elevator.ApplyInjectRequests(sync.ReadyInjects(now, online))
 
+			elevator.ApplyInjectRequests(sync.ReadyInjects(now, online))
+			sync.ClearServicedRequests(servicedFloor, servicedCalls, online)
 			if !online {
 				elevator.SetHallLights(sync.GetLocalHall())
 				elevator.SetCabLights(sync.GetLocalCab())
@@ -89,8 +90,8 @@ func fsmThread(
 			if floorWasServiced {
 				snapshot := sync.BuildSnapshot(servicedFloor, common.UpdateServiced, servicedCalls, online, behaviour, direction)
 				elevUpdateNetCh <- snapshot
-			}
-			if elevStateChange || newButtonPressed {
+
+			} else if elevStateChange || newButtonPressed {
 				snapshot := sync.BuildSnapshot(elevator.GetPrevFloor(), common.UpdateRequests, elevfsm.Requests{}, online, behaviour, direction)
 				select {
 				case elevUpdateNetCh <- snapshot:
@@ -100,16 +101,15 @@ func fsmThread(
 			}
 		case <-idleTicker.C:
 			behaviour, direction := elevator.MotionStrings()
-			if behaviour == "idle" {
-				snapshot := sync.BuildSnapshot(elevator.GetPrevFloor(), common.UpdateRequests, elevfsm.Requests{}, online, behaviour, direction)
-				select {
-				case elevUpdateNetCh <- snapshot:
-				default:
-					log.Printf("fsmThread: elevUpdateCh is full, skipping snapshot update")
-				}
+			if behaviour != "idle" {
+				continue
 			}
-		default:
-			time.Sleep(50 * time.Millisecond)
+			snapshot := sync.BuildSnapshot(elevator.GetPrevFloor(), common.UpdateRequests, elevfsm.Requests{}, online, behaviour, direction)
+			select {
+			case elevUpdateNetCh <- snapshot:
+			default:
+				log.Printf("fsmThread: elevUpdateCh is full, skipping snapshot update")
+			}
 		}
 	}
 }

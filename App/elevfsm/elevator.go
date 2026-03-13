@@ -59,13 +59,13 @@ func (e *Elevator) ApplyInjectRequests(requests Requests) {
 	for floor := range common.N_FLOORS {
 		for button := range common.ButtonType(common.N_BUTTONS) {
 			if requests[floor][button] {
-				e.onRequestButtonPress(floor, button)
+				e.onRequest(floor, button)
 			}
 		}
 	}
 }
 
-func (e *Elevator) onRequestButtonPress(buttonFloor int, buttonType common.ButtonType) {
+func (e *Elevator) onRequest(buttonFloor int, buttonType common.ButtonType) {
 	e.requests[buttonFloor][buttonType] = true
 	if e.behaviour == EB_DoorOpen && buttonFloor == e.floor {
 		e.doorTimer = time.Now()
@@ -85,15 +85,11 @@ func (e *Elevator) onRequestButtonPress(buttonFloor int, buttonType common.Butto
 	}
 }
 
-func (e *Elevator) ClearRequest(floor int, button common.ButtonType) {
-	e.requests = requests_clear(e.requests, floor, button)
-}
-
 func (e *Elevator) ApplyClearRequests(requests Requests) {
 	for floor := range common.N_FLOORS {
 		for button := range common.ButtonType(common.N_BUTTONS) {
 			if requests[floor][button] {
-				e.ClearRequest(floor, button)
+				e.requests = requests_clear(e.requests, floor, button)
 			}
 		}
 	}
@@ -218,7 +214,7 @@ func (e *Elevator) onFloorArrival(newFloor int) {
 	}
 }
 
-func (e *Elevator) onDoorTimeout() {
+func (e *Elevator) onDoorTimeout() { //TODO: 3 onDoor____ er forjævlig. Spesielt når vi har onDoorTimeout og onDoorTimerExpiry
 	if e.behaviour != EB_DoorOpen {
 		return
 	}

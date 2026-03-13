@@ -7,7 +7,7 @@ import (
 
 const (
 	NET_OFFLINE_TIMEOUT = 5 * time.Second
-	NEW_REQUEST_TIMEOUT  = 200 * time.Millisecond
+	NEW_REQUEST_TIMEOUT = 200 * time.Millisecond
 )
 
 type FsmSync struct {
@@ -43,7 +43,8 @@ func (sync *FsmSync) HandleNetworkSnapshot(snapshot common.Snapshot, now time.Ti
 		}
 	}
 	for floor := range common.N_FLOORS {
-		sync.netCalls[floor][0], sync.netCalls[floor][1] = snapshot.HallRequests[floor][0], snapshot.HallRequests[floor][1]
+		sync.netCalls[floor][0] = snapshot.HallRequests[floor][0]
+		sync.netCalls[floor][1] = snapshot.HallRequests[floor][1]
 		sync.netCalls[floor][common.BT_Cab] = false
 	}
 	if state, ok := snapshot.States[sync.selfKey]; ok {
