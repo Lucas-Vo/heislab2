@@ -15,7 +15,7 @@ func DeepCopySnapshot(ns Snapshot) Snapshot {
 	return snapshotCopy
 }
 
-func GetHallCalls(in [N_FLOORS][N_BUTTONS]bool) [N_FLOORS][2]bool {
+func GetHallCalls(in Requests) [N_FLOORS][2]bool {
 	var out [N_FLOORS][2]bool
 	for i, row := range in {
 		out[i] = [2]bool{row[0], row[1]}
@@ -23,7 +23,7 @@ func GetHallCalls(in [N_FLOORS][N_BUTTONS]bool) [N_FLOORS][2]bool {
 	return out
 }
 
-func GetCabCalls(in [N_FLOORS][N_BUTTONS]bool) [N_FLOORS]bool {
+func GetCabCalls(in Requests) [N_FLOORS]bool {
 	var out [N_FLOORS]bool
 	for i, row := range in {
 		out[i] = row[2]

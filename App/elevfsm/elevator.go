@@ -18,7 +18,7 @@ type Elevator struct {
 	floor     int
 	dirn      common.MotorDirection
 	behaviour ElevatorBehaviour
-	requests  Requests
+	requests  common.Requests
 
 	prevFloor     int
 	prevDirection common.MotorDirection
@@ -38,8 +38,7 @@ func NewElevator() *Elevator {
 	e.inputDevice = common.ElevioGetInputDevice()
 	e.outputDevice = common.ElevioGetOutputDevice()
 	e.outputDevice.DoorLight(false)
-	e.SetHallLights([common.N_FLOORS][2]bool{})
-	e.SetCabLights([common.N_FLOORS]bool{})
+	e.SetLights(common.Requests{})
 	newFloor := e.inputDevice.FloorSensor()
 
 	if newFloor != -1 {
@@ -55,7 +54,7 @@ func NewElevator() *Elevator {
 	return e
 }
 
-func (e *Elevator) ApplyInjectRequests(requests Requests) {
+func (e *Elevator) ApplyInjectRequests(requests common.Requests) {
 	for floor := range common.N_FLOORS {
 		for button := range common.ButtonType(common.N_BUTTONS) {
 			if requests[floor][button] {
@@ -85,7 +84,7 @@ func (e *Elevator) onRequest(buttonFloor int, buttonType common.ButtonType) {
 	}
 }
 
-func (e *Elevator) ApplyClearRequests(requests Requests) {
+func (e *Elevator) ApplyClearRequests(requests common.Requests) {
 	for floor := range common.N_FLOORS {
 		for button := range common.ButtonType(common.N_BUTTONS) {
 			if requests[floor][button] {
@@ -95,8 +94,8 @@ func (e *Elevator) ApplyClearRequests(requests Requests) {
 	}
 }
 
-func (e *Elevator) PollButtonPresses() (buttonPresses Requests, hadPress bool) {
-	buttonPresses, hadPress = Requests{}, false
+func (e *Elevator) PollButtonPresses() (buttonPresses common.Requests, hadPress bool) {
+	buttonPresses, hadPress = common.Requests{}, false
 
 	for floor := range common.N_FLOORS {
 		for button := range common.ButtonType(common.N_BUTTONS) {
@@ -111,9 +110,9 @@ func (e *Elevator) PollButtonPresses() (buttonPresses Requests, hadPress bool) {
 	return buttonPresses, hadPress
 }
 
-func (e *Elevator) Tick(now time.Time) (stateChanged bool, servicedFloor int, servicedCalls Requests) {
-	servicedFloor = -1
-	servicedCalls = Requests{}
+func (e *Elevator) Tick(now time.Time) (stateChanged bool, servicedCalls common.Requests, isServiced bool) {
+	servicedCalls = common.Requests{}
+	isServiced = false
 
 	isObstructed := e.inputDevice.Obstruction()
 	newFloor := e.inputDevice.FloorSensor()
@@ -144,14 +143,14 @@ func (e *Elevator) Tick(now time.Time) (stateChanged bool, servicedFloor int, se
 	e.prevDirection = e.dirn
 
 	if e.prevBehaviour == EB_DoorOpen && now.Sub(e.doorTimer) >= DOOR_OPEN_DURATION {
-		servicedFloor, servicedCalls = e.onDoorTimerExpiry(now)
+		servicedCalls = e.onDoorTimerExpiry(now)
+		isServiced = true
 	}
-	return stateChanged, servicedFloor, servicedCalls
+	return stateChanged, servicedCalls, isServiced
 }
 
-func (e *Elevator) onDoorTimerExpiry(now time.Time) (servicedFloor int, servicedCalls Requests) {
-	servicedCalls = Requests{}
-	servicedFloor = e.prevFloor
+func (e *Elevator) onDoorTimerExpiry(now time.Time) (servicedCalls common.Requests) {
+	servicedCalls = common.Requests{}
 	e.doorTimer = now
 
 	servicedCalls, nextAnnounceDirection, restartDoorTimer := e.OnDoorClose(e.prevFloor, e.announceDir, true)
@@ -159,27 +158,24 @@ func (e *Elevator) onDoorTimerExpiry(now time.Time) (servicedFloor int, serviced
 	if restartDoorTimer {
 		e.doorTimer = now
 	}
-	return servicedFloor, servicedCalls
+	return servicedCalls
 }
 
 func (e *Elevator) GetPrevFloor() int { return e.prevFloor }
 
 func (e *Elevator) GetFloor() int { return e.inputDevice.FloorSensor() }
 
-func (e *Elevator) SetHallLights(hallRequests [common.N_FLOORS][2]bool) {
+func (e *Elevator) IsIdle() bool { return e.behaviour == EB_Idle }
+
+func (e *Elevator) SetLights(calls common.Requests) {
 	for floor := range common.N_FLOORS {
-		e.outputDevice.RequestButtonLight(floor, common.BT_HallDown, hallRequests[floor][common.BT_HallDown])
-		e.outputDevice.RequestButtonLight(floor, common.BT_HallUp, hallRequests[floor][common.BT_HallUp])
+		for btn := range common.ButtonType(common.N_BUTTONS) {
+			e.outputDevice.RequestButtonLight(floor, btn, calls[floor][btn])
+		}
 	}
 }
 
-func (e *Elevator) SetCabLights(localCab [common.N_FLOORS]bool) {
-	for floor := range common.N_FLOORS {
-		e.outputDevice.RequestButtonLight(floor, common.BT_Cab, localCab[floor])
-	}
-}
-
-func (e *Elevator) MotionStrings() (behavior string, direction string) {
+func (e *Elevator) motionStrings() (behavior string, direction string) {
 	switch e.behaviour {
 	case EB_Idle:
 		behavior = "idle"
@@ -261,7 +257,7 @@ func (e *Elevator) shouldSwitchDirection() bool {
 
 // OnDoorClose decides local door-expiry behaviour and applies local FSM transitions.
 // Returns cleared requests at floor, the next announce direction, and whether to restart the door timer.
-func (e *Elevator) OnDoorClose(floor int, announceDir common.MotorDirection, clearCab bool) (cleared Requests, nextAnnounceDir common.MotorDirection, restartDoorTimer bool) {
+func (e *Elevator) OnDoorClose(floor int, announceDir common.MotorDirection, clearCab bool) (cleared common.Requests, nextAnnounceDir common.MotorDirection, restartDoorTimer bool) {
 	e.floor = floor
 	upRequestAtFloor, downRequestAtFloor := requests_hallRequestsAtFloor(e.requests, e.floor)
 	nextAnnounceDir = announceDir

@@ -17,9 +17,7 @@ type DirnBehaviourPair struct {
 	behaviour ElevatorBehaviour
 }
 
-type Requests [common.N_FLOORS][common.N_BUTTONS]bool
-
-func requests_chooseDirection(requests Requests, floor int, dirn common.MotorDirection) DirnBehaviourPair {
+func requests_chooseDirection(requests common.Requests, floor int, dirn common.MotorDirection) DirnBehaviourPair {
 	switch dirn {
 	case common.MD_Up:
 		if requests_above(requests, floor) != 0 {
@@ -59,7 +57,7 @@ func requests_chooseDirection(requests Requests, floor int, dirn common.MotorDir
 	}
 }
 
-func requests_shouldStop(requests Requests, floor int, dirn common.MotorDirection) int {
+func requests_shouldStop(requests common.Requests, floor int, dirn common.MotorDirection) int {
 	switch dirn {
 	case common.MD_Down:
 		if requests[floor][common.BT_HallDown] ||
@@ -84,7 +82,7 @@ func requests_shouldStop(requests Requests, floor int, dirn common.MotorDirectio
 	}
 }
 
-func requests_clearAtFloorDir(requests Requests, floor int, announceDir common.MotorDirection, clearCab bool) (updated Requests, cleared Requests) {
+func requests_clearAtFloorDir(requests common.Requests, floor int, announceDir common.MotorDirection, clearCab bool) (updated common.Requests, cleared common.Requests) {
 	updated = requests
 	if clearCab {
 		if updated[floor][common.BT_Cab] {
@@ -112,7 +110,7 @@ func requests_clearAtFloorDir(requests Requests, floor int, announceDir common.M
 	return updated, cleared
 }
 
-func requests_clear(requests Requests, floor int, btn common.ButtonType) Requests {
+func requests_clear(requests common.Requests, floor int, btn common.ButtonType) common.Requests {
 	if floor < 0 || floor >= common.N_FLOORS {
 		return requests
 	}
@@ -123,7 +121,7 @@ func requests_clear(requests Requests, floor int, btn common.ButtonType) Request
 	return requests
 }
 
-func requests_above(requests Requests, floor int) int {
+func requests_above(requests common.Requests, floor int) int {
 	for f := floor + 1; f < common.N_FLOORS; f++ {
 		for btn := range common.N_BUTTONS {
 			if requests[f][btn] {
@@ -134,7 +132,7 @@ func requests_above(requests Requests, floor int) int {
 	return 0
 }
 
-func requests_below(requests Requests, floor int) int {
+func requests_below(requests common.Requests, floor int) int {
 	for f := range floor {
 		for btn := range common.N_BUTTONS {
 			if requests[f][btn] {
@@ -145,7 +143,7 @@ func requests_below(requests Requests, floor int) int {
 	return 0
 }
 
-func requests_at_floor(requests Requests, floor int) int {
+func requests_at_floor(requests common.Requests, floor int) int {
 	for btn := range common.N_BUTTONS {
 		if requests[floor][btn] {
 			return 1
@@ -154,7 +152,7 @@ func requests_at_floor(requests Requests, floor int) int {
 	return 0
 }
 
-func request_at(requests Requests, floor int, btn common.ButtonType) bool {
+func request_at(requests common.Requests, floor int, btn common.ButtonType) bool {
 	if floor < 0 || floor >= common.N_FLOORS {
 		return false
 	}
@@ -164,7 +162,7 @@ func request_at(requests Requests, floor int, btn common.ButtonType) bool {
 	return requests[floor][btn]
 }
 
-func requests_hallRequestsAtFloor(requests Requests, floor int) (up bool, down bool) {
+func requests_hallRequestsAtFloor(requests common.Requests, floor int) (up bool, down bool) {
 	if floor < 0 || floor >= common.N_FLOORS {
 		return false, false
 	}

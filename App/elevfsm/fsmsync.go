@@ -18,11 +18,11 @@ type FsmSync struct {
 	coherent        bool
 
 	assignedHall [common.N_FLOORS][2]bool
-	netCalls     Requests
-	localCalls   Requests
+	netCalls     common.Requests
+	localCalls   common.Requests
 	callTime     [common.N_FLOORS][common.N_BUTTONS]time.Time
-	injected     Requests
-	confirmed    Requests
+	injected     common.Requests
+	confirmed    common.Requests
 }
 
 func NewFsmSync(config common.Config) *FsmSync {
@@ -71,7 +71,7 @@ func (sync *FsmSync) HandleNetworkSnapshot(snapshot common.Snapshot, now time.Ti
 	}
 }
 
-func (sync *FsmSync) HandleAssignerTask(task common.ElevInput) (toClear Requests) {
+func (sync *FsmSync) HandleAssignerTask(task common.ElevInput) (toClear common.Requests) {
 	previousAssignment := sync.assignedHall
 	sync.assignedHall = task.HallTask
 
@@ -94,7 +94,7 @@ func (sync *FsmSync) HandleAssignerTask(task common.ElevInput) (toClear Requests
 	return toClear
 }
 
-func (sync *FsmSync) HandleLocalButtonPresses(edgePresses Requests, currentFloor int, now time.Time) (toInject Requests) {
+func (sync *FsmSync) HandleLocalButtonPresses(edgePresses common.Requests, currentFloor int, now time.Time) (toInject common.Requests) {
 	for floor := range common.N_FLOORS {
 		for button := range common.ButtonType(common.N_BUTTONS) {
 			if !edgePresses[floor][button] {
@@ -112,7 +112,7 @@ func (sync *FsmSync) HandleLocalButtonPresses(edgePresses Requests, currentFloor
 	return toInject
 }
 
-func (sync *FsmSync) ReadyInjects(now time.Time) (toInject Requests) {
+func (sync *FsmSync) ReadyInjects(now time.Time) (toInject common.Requests) {
 	for floor := range common.N_FLOORS {
 		for button := range common.ButtonType(common.N_BUTTONS) {
 			callActive := sync.localCalls[floor][button]
@@ -139,7 +139,7 @@ func (sync *FsmSync) ReadyInjects(now time.Time) (toInject Requests) {
 	return toInject
 }
 
-func (sync *FsmSync) ClearServicedRequests(floor int, serviced Requests) {
+func (sync *FsmSync) ClearServicedRequests(floor int, serviced common.Requests) {
 	if floor < 0 || floor >= common.N_FLOORS {
 		return
 	}
@@ -156,11 +156,9 @@ func (sync *FsmSync) ClearServicedRequests(floor int, serviced Requests) {
 }
 
 func (sync *FsmSync) BuildSnapshot( //TODO: Change the callsCleared to the thing that we fill both serviced and requests with
-	floor int,
+	elevator *Elevator,
 	kind common.UpdateKind,
-	callsCleared Requests,
-	behavior string,
-	direction string,
+	callsCleared common.Requests,
 ) common.Snapshot {
 	outCalls := sync.netCalls
 	if kind == common.UpdateRequests {
@@ -183,13 +181,13 @@ func (sync *FsmSync) BuildSnapshot( //TODO: Change the callsCleared to the thing
 			}
 		}
 	}
-
+	behavior, direction := elevator.motionStrings()
 	return common.Snapshot{
 		HallRequests: common.GetHallCalls(outCalls),
 		States: map[string]common.ElevState{
 			sync.selfKey: {
 				Behavior:    behavior,
-				Floor:       floor,
+				Floor:       elevator.GetPrevFloor(),
 				Direction:   direction,
 				CabRequests: common.GetCabCalls(sync.localCalls),
 			},
@@ -198,13 +196,9 @@ func (sync *FsmSync) BuildSnapshot( //TODO: Change the callsCleared to the thing
 	}
 }
 
-func (sync *FsmSync) HasAlivePeer() bool {
-	return sync.hasAlivePeer
-}
+func (sync *FsmSync) HasAlivePeer() bool { return sync.hasAlivePeer }
 
-func (sync *FsmSync) IsInitFromNetwork() bool {
-	return sync.initFromNetwork
-}
+func (sync *FsmSync) IsInitFromNetwork() bool { return sync.initFromNetwork }
 
 func (sync *FsmSync) markInjected(floor int, button common.ButtonType) {
 	sync.injected[floor][button] = true
@@ -212,14 +206,6 @@ func (sync *FsmSync) markInjected(floor int, button common.ButtonType) {
 	sync.localCalls[floor][button] = true
 }
 
-func (sync *FsmSync) GetLocalCab() [common.N_FLOORS]bool {
-	return common.GetCabCalls(sync.localCalls)
-}
-
-func (sync *FsmSync) GetLocalHall() [common.N_FLOORS][2]bool {
-	return common.GetHallCalls(sync.localCalls)
-}
-
-func (sync *FsmSync) GetNetHall() [common.N_FLOORS][2]bool {
-	return common.GetHallCalls(sync.netCalls)
+func (sync *FsmSync) GetLocalCalls() [common.N_FLOORS][common.N_BUTTONS]bool {
+	return sync.localCalls
 }

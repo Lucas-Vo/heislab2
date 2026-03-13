@@ -25,3 +25,5 @@ type Snapshot struct {
 type ElevInput struct {
 	HallTask [N_FLOORS][2]bool `json:"HallTask"`
 }
+
+type Requests [N_FLOORS][N_BUTTONS]bool

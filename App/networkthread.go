@@ -49,7 +49,6 @@ func networkThread(
 			if !wv.SnapshotsAreCoherent() {
 				wv.BroadcastRequests()
 			}
-			log.Printf("JESPER 1")
 			wv.PublishLocally(netUpdateAssignerCh, netUpdateElevCh)
 
 		case msg := <-incoming:
@@ -59,7 +58,6 @@ func networkThread(
 				wv.CalculateAlive(now)
 				wv.ResendServicedHalls(filteredHalls)
 			}
-			log.Printf("JESPER 2")
 			wv.PublishLocally(netUpdateAssignerCh, netUpdateElevCh)
 
 		case peerUpdate := <-peerUpdates:
@@ -78,8 +76,7 @@ func networkThread(
 		case <-elevatorErrorTimer.C:
 			if wv.GetSelfAlive() {
 				wv.SetSelfAlive(false)
-				log.Printf("No behavior change detected for 6 seconds, marking Elevator as stale")
-				log.Printf("JESPER 3")
+				log.Printf("networkThread: No behavior change detected, marking Elevator as stale")
 				wv.PublishLocally(netUpdateAssignerCh, netUpdateElevCh)
 			}
 

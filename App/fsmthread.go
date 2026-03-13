@@ -23,14 +23,8 @@ func fsmThread(
 	elevator := elevfsm.NewElevator()
 	now := time.Now()
 
-	initialBehaviour, initialDirection := elevator.MotionStrings()
-	initialSnapshot := sync.BuildSnapshot(
-		1,
-		common.UpdateRequests,
-		elevfsm.Requests{},
-		initialBehaviour,
-		initialDirection,
-	)
+	//dummy
+	initialSnapshot := sync.BuildSnapshot(elevator, common.UpdateRequests, common.Requests{})
 	select {
 	case elevUpdateNetCh <- initialSnapshot:
 	default:
@@ -53,8 +47,7 @@ func fsmThread(
 			}
 			i++
 			if snap.Coherent {
-				elevator.SetCabLights(sync.GetLocalCab())
-				elevator.SetHallLights(sync.GetNetHall())
+				elevator.SetLights(sync.GetLocalCalls())
 			}
 
 		case task := <-assignerOutputCh:
@@ -66,23 +59,17 @@ func fsmThread(
 			toInject := sync.HandleLocalButtonPresses(buttonPresses, elevator.GetFloor(), now)
 			elevator.ApplyInjectRequests(toInject) // why is this called 2 times, this shit is craaaaazyyy
 
-			elevStateChange, servicedFloor, servicedCalls := elevator.Tick(now)
+			elevStateChange, servicedCalls, isServiced := elevator.Tick(now)
 
 			elevator.ApplyInjectRequests(sync.ReadyInjects(now))
-			sync.ClearServicedRequests(servicedFloor, servicedCalls)
+			sync.ClearServicedRequests(elevator.GetPrevFloor(), servicedCalls)
 
-			behaviour, direction := elevator.MotionStrings()
-			floorWasServiced := servicedFloor >= 0 &&
-				servicedFloor < common.N_FLOORS &&
-				(servicedCalls[servicedFloor][common.BT_HallUp] ||
-					servicedCalls[servicedFloor][common.BT_HallDown] ||
-					servicedCalls[servicedFloor][common.BT_Cab])
-			if floorWasServiced {
-				snapshot := sync.BuildSnapshot(servicedFloor, common.UpdateServiced, servicedCalls, behaviour, direction)
+			if isServiced {
+				snapshot := sync.BuildSnapshot(elevator, common.UpdateServiced, servicedCalls)
 				elevUpdateNetCh <- snapshot
 
 			} else if elevStateChange || newButtonPressed {
-				snapshot := sync.BuildSnapshot(elevator.GetPrevFloor(), common.UpdateRequests, elevfsm.Requests{}, behaviour, direction)
+				snapshot := sync.BuildSnapshot(elevator, common.UpdateRequests, common.Requests{})
 				select {
 				case elevUpdateNetCh <- snapshot:
 				default:
@@ -90,11 +77,10 @@ func fsmThread(
 				}
 			}
 		case <-idleTicker.C:
-			behaviour, direction := elevator.MotionStrings()
-			if behaviour != "idle" {
+			if elevator.IsIdle() {
 				continue
 			}
-			snapshot := sync.BuildSnapshot(elevator.GetPrevFloor(), common.UpdateRequests, elevfsm.Requests{}, behaviour, direction)
+			snapshot := sync.BuildSnapshot(elevator, common.UpdateRequests, common.Requests{})
 			select {
 			case elevUpdateNetCh <- snapshot:
 			default:
