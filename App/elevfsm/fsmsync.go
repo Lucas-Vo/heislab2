@@ -90,8 +90,7 @@ func (sync *FsmSync) HandleLocalButtonPresses(edgePresses common.Requests, curre
 				continue
 			}
 			sync.localCalls[floor][button] = true
-			allowImmediateHallInject := !sync.hasAlivePeer
-			if button == common.BT_Cab || (currentFloor == floor && allowImmediateHallInject) {
+			if button == common.BT_Cab  {
 				toInject[floor][button] = true
 				sync.markInjected(floor, button)
 			}
