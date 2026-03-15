@@ -58,6 +58,8 @@ func (sync *FsmSync) HandleNetworkSnapshot(snapshot common.Snapshot, now time.Ti
 				}
 				continue
 			}
+			sync.localCalls[floor][button] = false
+			sync.injected[floor][button] = false
 		}
 	}
 }
