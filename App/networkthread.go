@@ -45,7 +45,7 @@ func networkThread(
 			if ns.UpdateKind == common.UpdateServiced {
 				wv.MarkRecentlyServicedHalls(ns, now)
 			}
-			wv.Merge
+			wv.MergeLocal(ns)
 			if !wv.SnapshotsAreCoherent() {
 				wv.Broadcast()
 			}
