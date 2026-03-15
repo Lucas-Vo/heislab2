@@ -149,7 +149,7 @@ func (sync *FsmSync) ClearServicedRequests(floor int, serviced common.Requests) 
 	}
 }
 
-func (sync *FsmSync) BuildSnapshot( //TODO: Change the callsCleared to the thing that we fill both serviced and requests with
+func (sync *FsmSync) BuildSnapshot(
 	elevator *Elevator,
 	kind common.UpdateKind,
 	callsCleared common.Requests,
