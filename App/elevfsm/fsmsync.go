@@ -20,7 +20,6 @@ type FsmSync struct {
 	assignedHall [common.N_FLOORS][2]bool
 	netCalls     common.Requests
 	localCalls   common.Requests
-	callTime     [common.N_FLOORS][common.N_BUTTONS]time.Time
 	injected     common.Requests
 	confirmed    common.Requests
 }
@@ -57,7 +56,6 @@ func (sync *FsmSync) HandleNetworkSnapshot(snapshot common.Snapshot, now time.Ti
 			if sync.netCalls[floor][button] {
 				sync.confirmed[floor][button] = true
 				if button == common.BT_Cab {
-					sync.callTime[floor][button] = time.Time{}
 					sync.localCalls[floor][button] = true
 				}
 				continue
@@ -77,14 +75,12 @@ func (sync *FsmSync) HandleAssignerTask(task common.ElevInput) (toClear common.R
 
 	for floor := range previousAssignment {
 		if previousAssignment[floor][0] && !sync.assignedHall[floor][0] {
-			sync.callTime[floor][common.BT_HallUp] = time.Time{}
 			sync.injected[floor][common.BT_HallUp] = false
 			sync.confirmed[floor][common.BT_HallUp] = false
 			sync.localCalls[floor][common.BT_HallUp] = false
 			toClear[floor][common.BT_HallUp] = true
 		}
 		if previousAssignment[floor][1] && !sync.assignedHall[floor][1] {
-			sync.callTime[floor][common.BT_HallDown] = time.Time{}
 			sync.injected[floor][common.BT_HallDown] = false
 			sync.confirmed[floor][common.BT_HallDown] = false
 			sync.localCalls[floor][common.BT_HallDown] = false
@@ -100,7 +96,6 @@ func (sync *FsmSync) HandleLocalButtonPresses(edgePresses common.Requests, curre
 			if !edgePresses[floor][button] {
 				continue
 			}
-			sync.callTime[floor][button] = now
 			sync.localCalls[floor][button] = true
 			allowImmediateHallInject := !sync.hasAlivePeer
 			if button == common.BT_Cab || (currentFloor == floor && allowImmediateHallInject) {
@@ -150,7 +145,6 @@ func (sync *FsmSync) ClearServicedRequests(floor int, serviced common.Requests) 
 			sync.netCalls[floor][button] = false
 			sync.confirmed[floor][button] = false
 			sync.injected[floor][button] = false
-			sync.callTime[floor][button] = time.Time{}
 		}
 	}
 }
@@ -202,7 +196,6 @@ func (sync *FsmSync) IsInitFromNetwork() bool { return sync.initFromNetwork }
 
 func (sync *FsmSync) markInjected(floor int, button common.ButtonType) {
 	sync.injected[floor][button] = true
-	sync.callTime[floor][button] = time.Time{}
 	sync.localCalls[floor][button] = true
 }
 
