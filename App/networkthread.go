@@ -10,10 +10,10 @@ import (
 )
 
 const (
-	INITIAL_CONTACT_TIMEOUT = 5 * time.Second
-	ELEVATOR_ERROR_TIMEOUT  = 6 * time.Second
 	LOCAL_PUBLISH_PERIOD    = 50 * time.Millisecond
 	BROADCAST_PERIOD        = 1 * time.Second
+	INITIAL_CONTACT_TIMEOUT = 5 * time.Second
+	ELEVATOR_ERROR_TIMEOUT  = 6 * time.Second
 )
 
 func networkThread(
@@ -45,9 +45,9 @@ func networkThread(
 			if ns.UpdateKind == common.UpdateServiced {
 				wv.MarkRecentlyServicedHalls(ns, now)
 			}
-			wv.MergeLocal(ns)
+			wv.Merge
 			if !wv.SnapshotsAreCoherent() {
-				wv.BroadcastRequests()
+				wv.Broadcast()
 			}
 			wv.PublishLocally(netUpdateAssignerCh, netUpdateElevCh)
 
@@ -62,16 +62,15 @@ func networkThread(
 
 		case peerUpdate := <-peerUpdates:
 			wv.HandlePeerUpdate(peerUpdate, now)
-			wv.PublishLocally(netUpdateAssignerCh, netUpdateElevCh)
 
 		case <-localTicker.C:
 			wv.CalculateAlive(now)
 			if !wv.SnapshotsAreCoherent() {
-				wv.BroadcastRequests()
+				wv.Broadcast()
 			}
 
 		case <-broadcastTicker.C:
-			wv.BroadcastRequests()
+			wv.Broadcast()
 
 		case <-elevatorErrorTimer.C:
 			if wv.GetSelfAlive() {

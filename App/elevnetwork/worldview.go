@@ -12,6 +12,7 @@ import (
 const (
 	WV_TIMEOUT           = 6 * time.Second
 	VALID_SERVICE_WINDOW = 2 * time.Second
+
 	NETWORK_CHAN_SIZE    = 128
 	VALID_COUNTER_WINDOW = 20
 )
@@ -23,20 +24,22 @@ type netMsg struct {
 }
 
 type WorldView struct {
-	mu               sync.Mutex
-	peers            []string
-	snapshot         common.Snapshot
+	mu      sync.Mutex
+	peers   []string
+	selfKey string
+
+	localSnapshot common.Snapshot
+	lastSnapshot  map[string]common.Snapshot
+
 	lastServicedHall [common.N_FLOORS][2]time.Time
 	lastHeard        map[string]time.Time
-	lastSnapshot     map[string]common.Snapshot
-	peerTimeout      time.Duration
-	startTime        time.Time
-	inStartupPeriod  bool
-	selfKey          string
-	selfAlive        bool
-	msgCounter       uint64
-	latestCount      map[string]uint64
-	msgTxCh          chan<- netMsg
+
+	inStartupPeriod bool
+	selfAlive   bool
+	
+	msgCounter  uint64
+	latestCount map[string]uint64
+	msgTxCh     chan<- netMsg
 }
 
 func InitWorldView(cfg common.Config) (*WorldView, <-chan netMsg, <-chan peers.PeerUpdate) {
@@ -52,15 +55,13 @@ func InitWorldView(cfg common.Config) (*WorldView, <-chan netMsg, <-chan peers.P
 
 	wv := &WorldView{
 		peers: cfg.ExpectedKeys(),
-		snapshot: common.Snapshot{
+		localSnapshot: common.Snapshot{
 			HallRequests: [common.N_FLOORS][2]bool{},
 			States:       make(map[string]common.ElevState),
 			Alive:        make(map[string]bool),
 		},
 		lastHeard:       make(map[string]time.Time),
 		lastSnapshot:    make(map[string]common.Snapshot),
-		peerTimeout:     WV_TIMEOUT,
-		startTime:       time.Now(),
 		selfKey:         cfg.SelfKey,
 		selfAlive:       true,
 		latestCount:     make(map[string]uint64),
@@ -69,7 +70,7 @@ func InitWorldView(cfg common.Config) (*WorldView, <-chan netMsg, <-chan peers.P
 	}
 	wv.CalculateAlive(time.Now())
 
-	initialSnapshot := common.DeepCopySnapshot(wv.snapshot)
+	initialSnapshot := common.DeepCopySnapshot(wv.localSnapshot)
 	initialSnapshot.UpdateKind = common.UpdateRequests
 	wv.sendOverNetwork(initialSnapshot)
 
@@ -116,7 +117,7 @@ func (wv *WorldView) HandlePeerUpdate(update peers.PeerUpdate, now time.Time) {
 func (wv *WorldView) PublishLocally(netSnap1Ch, netSnap2Ch chan<- common.Snapshot) {
 	wv.mu.Lock()
 	defer wv.mu.Unlock()
-	snap := common.DeepCopySnapshot(wv.snapshot)
+	snap := common.DeepCopySnapshot(wv.localSnapshot)
 	coherent := !wv.inStartupPeriod && wv.SnapshotsAreCoherent()
 	snap.Coherent = coherent
 	snap1 := common.DeepCopySnapshot(snap)
@@ -132,24 +133,24 @@ func (wv *WorldView) PublishLocally(netSnap1Ch, netSnap2Ch chan<- common.Snapsho
 }
 
 func (wv *WorldView) SnapshotsAreCoherent() bool {
-	selfSnapshot, hasSelfSnapshot := wv.lastSnapshot[wv.selfKey]
-	if !hasSelfSnapshot {
+	selfSnapshot, ok := wv.lastSnapshot[wv.selfKey]
+	if !ok {
 		return false
 	}
-	selfViewOfSelf, hasSelfViewOfSelf := selfSnapshot.States[wv.selfKey]
-	if !hasSelfViewOfSelf {
+	selfViewOfSelf, ok := selfSnapshot.States[wv.selfKey]
+	if !ok {
 		return false
 	}
 	for _, peerID := range wv.peers {
-		if peerID == wv.selfKey || !wv.snapshot.Alive[peerID] {
+		if peerID == wv.selfKey || !wv.localSnapshot.Alive[peerID] {
 			continue
 		}
-		peerSnapshot, hasPeerSnapshot := wv.lastSnapshot[peerID]
-		if !hasPeerSnapshot {
+		peerSnapshot, ok := wv.lastSnapshot[peerID]
+		if !ok {
 			return false
 		}
-		peerViewOfSelf, hasPeerViewOfSelf := peerSnapshot.States[wv.selfKey]
-		if !hasPeerViewOfSelf {
+		peerViewOfSelf, ok := peerSnapshot.States[wv.selfKey]
+		if !ok {
 			return false
 		}
 
@@ -174,7 +175,6 @@ func (wv *WorldView) MergeLocal(ns common.Snapshot) {
 	wv.mu.Lock()
 	defer wv.mu.Unlock()
 	wv.mergeWorldView(wv.selfKey, ns)
-	wv.snapshot.UpdateKind = ns.UpdateKind
 }
 
 func (wv *WorldView) MarkRecentlyServicedHalls(ns common.Snapshot, now time.Time) {
@@ -182,7 +182,7 @@ func (wv *WorldView) MarkRecentlyServicedHalls(ns common.Snapshot, now time.Time
 	defer wv.mu.Unlock()
 	for floor := range common.N_FLOORS {
 		for button := 0; button < 2; button++ {
-			if wv.snapshot.HallRequests[floor][button] && !ns.HallRequests[floor][button] {
+			if wv.localSnapshot.HallRequests[floor][button] && !ns.HallRequests[floor][button] {
 				wv.lastServicedHall[floor][button] = now
 			}
 		}
@@ -212,7 +212,7 @@ func (wv *WorldView) FilterRecentlyServicedHalls(msg netMsg, now time.Time) (net
 
 func (wv *WorldView) ResendServicedHalls(serviced [common.N_FLOORS][2]bool) {
 	wv.mu.Lock()
-	snap := common.DeepCopySnapshot(wv.snapshot)
+	snap := common.DeepCopySnapshot(wv.localSnapshot)
 	wv.mu.Unlock()
 
 	snap.UpdateKind = common.UpdateServiced
@@ -232,7 +232,7 @@ func (wv *WorldView) MergeRemote(msg netMsg) {
 	if msg.Origin == wv.selfKey || msg.Origin == "" {
 		return
 	}
-	switch msg.Origin {
+	switch msg.Origin { //TODO: DELETE THIS SHIT
 	case "1":
 		log.Printf("((((((((((((((((((((((((((((((((((((((((((((((((((((()))))))))))))))))))))))))))))))))))))))))))))))))))))")
 	case "2":
@@ -244,7 +244,7 @@ func (wv *WorldView) MergeRemote(msg netMsg) {
 	prevCounter := wv.latestCount[msg.Origin]
 	prevHeard := wv.lastHeard[msg.Origin]
 	wv.lastHeard[msg.Origin] = now
-	if now.Sub(prevHeard) < wv.peerTimeout && msg.Counter < prevCounter && msg.Counter > prevCounter-VALID_COUNTER_WINDOW {
+	if now.Sub(prevHeard) < WV_TIMEOUT && msg.Counter < prevCounter && msg.Counter > prevCounter-VALID_COUNTER_WINDOW {
 		log.Printf("drop stale/duplicate frame origin=%s counter=%d prevCounter=%d dt=%s", msg.Origin, msg.Counter, prevCounter, now.Sub(prevHeard))
 		return
 	}
@@ -252,32 +252,29 @@ func (wv *WorldView) MergeRemote(msg netMsg) {
 	wv.mergeWorldView(msg.Origin, msg.Snapshot)
 }
 
-func (wv *WorldView) BroadcastRequests() {
+func (wv *WorldView) Broadcast() {
 	wv.mu.Lock()
-	alive := wv.selfAlive
-	snap := common.DeepCopySnapshot(wv.snapshot)
+	snap := common.DeepCopySnapshot(wv.localSnapshot)
 	wv.mu.Unlock()
-	if !alive || (snap.UpdateKind == common.UpdateRequests && wv.inStartupPeriod) {
+	if !wv.selfAlive || (snap.UpdateKind == common.UpdateRequests && wv.inStartupPeriod) {
 		return
 	}
-	snap.UpdateKind = common.UpdateRequests
 	wv.sendOverNetwork(snap)
 }
 
 func (wv *WorldView) CalculateAlive(now time.Time) {
 	wv.mu.Lock()
 	defer wv.mu.Unlock()
-	startupGrace := now.Sub(wv.startTime) <= wv.peerTimeout
 	for _, id := range wv.peers {
 		if id == wv.selfKey {
-			wv.snapshot.Alive[id] = wv.selfAlive
+			wv.localSnapshot.Alive[id] = wv.selfAlive
 			continue
 		}
 		if t, ok := wv.lastHeard[id]; ok {
-			wv.snapshot.Alive[id] = now.Sub(t) <= wv.peerTimeout
+			wv.localSnapshot.Alive[id] = now.Sub(t) <= WV_TIMEOUT
 			continue
 		}
-		wv.snapshot.Alive[id] = startupGrace
+		wv.localSnapshot.Alive[id] = wv.inStartupPeriod
 	}
 }
 
@@ -311,7 +308,7 @@ func (wv *WorldView) wasRecentlyServicedLocked(floor int, button int, now time.T
 func (wv *WorldView) mergeWorldView(fromKey string, ns common.Snapshot) { //TODO: maybe since we copy ns, use the new copy to keep synchronizing good
 	if fromKey != wv.selfKey {
 		wv.lastSnapshot[fromKey] = common.DeepCopySnapshot(ns)
-		if wv.inStartupPeriod && ns.UpdateKind == common.UpdateRequests {
+		if wv.inStartupPeriod {
 			wv.recoverCabRequests(ns)
 			wv.inStartupPeriod = false
 		}
@@ -322,8 +319,9 @@ func (wv *WorldView) mergeWorldView(fromKey string, ns common.Snapshot) { //TODO
 		if k == wv.selfKey && fromKey != wv.selfKey && !wv.inStartupPeriod {
 			continue
 		}
-		wv.snapshot.States[k] = st
+		wv.localSnapshot.States[k] = st
 	}
+	wv.localSnapshot.UpdateKind = ns.UpdateKind
 }
 
 func (wv *WorldView) recoverCabRequests(ns common.Snapshot) {
@@ -332,25 +330,22 @@ func (wv *WorldView) recoverCabRequests(ns common.Snapshot) {
 		return
 	}
 
-	localSelf := wv.snapshot.States[wv.selfKey]
-	if len(localSelf.CabRequests) != common.N_FLOORS {
-		localSelf.CabRequests = [common.N_FLOORS]bool{}
-	}
+	localSelf := wv.localSnapshot.States[wv.selfKey]
 	for i := range common.N_FLOORS {
 		localSelf.CabRequests[i] = localSelf.CabRequests[i] || peerSelf.CabRequests[i]
 	}
-	wv.snapshot.States[wv.selfKey] = localSelf
+	wv.localSnapshot.States[wv.selfKey] = localSelf
 }
 
 func (wv *WorldView) mergeHallRequests(incoming [common.N_FLOORS][2]bool, kind common.UpdateKind) {
 	for i := range common.N_FLOORS {
 		switch kind {
 		case common.UpdateServiced:
-			wv.snapshot.HallRequests[i][0] = wv.snapshot.HallRequests[i][0] && incoming[i][0]
-			wv.snapshot.HallRequests[i][1] = wv.snapshot.HallRequests[i][1] && incoming[i][1]
+			wv.localSnapshot.HallRequests[i][0] = wv.localSnapshot.HallRequests[i][0] && incoming[i][0]
+			wv.localSnapshot.HallRequests[i][1] = wv.localSnapshot.HallRequests[i][1] && incoming[i][1]
 		case common.UpdateRequests:
-			wv.snapshot.HallRequests[i][0] = wv.snapshot.HallRequests[i][0] || incoming[i][0]
-			wv.snapshot.HallRequests[i][1] = wv.snapshot.HallRequests[i][1] || incoming[i][1]
+			wv.localSnapshot.HallRequests[i][0] = wv.localSnapshot.HallRequests[i][0] || incoming[i][0]
+			wv.localSnapshot.HallRequests[i][1] = wv.localSnapshot.HallRequests[i][1] || incoming[i][1]
 		}
 	}
 }

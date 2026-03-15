@@ -157,10 +157,10 @@ func (sync *FsmSync) BuildSnapshot( //TODO: Change the callsCleared to the thing
 	outCalls := sync.netCalls
 	if kind == common.UpdateRequests {
 		for f := range common.N_FLOORS {
-			if sync.localCalls[f][common.BT_HallUp] && !sync.confirmed[f][common.BT_HallUp] {
+			if sync.localCalls[f][common.BT_HallUp] {
 				outCalls[f][common.BT_HallUp] = true
 			}
-			if sync.localCalls[f][common.BT_HallDown] && !sync.confirmed[f][common.BT_HallDown] {
+			if sync.localCalls[f][common.BT_HallDown] {
 				outCalls[f][common.BT_HallDown] = true
 			}
 		}
