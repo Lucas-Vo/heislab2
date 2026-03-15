@@ -49,7 +49,6 @@ func networkThread(
 			if !wv.SnapshotsAreCoherent() {
 				wv.Broadcast()
 			}
-			wv.PublishLocally(netUpdateAssignerCh, netUpdateElevCh)
 
 		case msg := <-incoming:
 			msgToMerge, filteredHalls, isFiltered := wv.FilterRecentlyServicedHalls(msg, now)
@@ -59,7 +58,6 @@ func networkThread(
 				wv.CalculateAlive(now)
 				wv.ResendServicedHalls(filteredHalls)
 			}
-			wv.PublishLocally(netUpdateAssignerCh, netUpdateElevCh)
 			wv.MergeWorldView(msgToMerge.Origin, msgToMerge.Snapshot)
 
 		case peerUpdate := <-peerUpdates:
@@ -70,6 +68,7 @@ func networkThread(
 			if !wv.SnapshotsAreCoherent() {
 				wv.Broadcast()
 			}
+			wv.PublishLocally(netUpdateAssignerCh, netUpdateElevCh)
 
 		case <-broadcastTicker.C:
 			wv.Broadcast()
@@ -78,7 +77,6 @@ func networkThread(
 			if wv.GetSelfAlive() {
 				wv.SetSelfAlive(false)
 				log.Printf("networkThread: No behavior change detected, marking Elevator as stale")
-				wv.PublishLocally(netUpdateAssignerCh, netUpdateElevCh)
 			}
 
 		case <-startupTimer.C:
