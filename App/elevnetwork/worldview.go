@@ -171,11 +171,6 @@ func (wv *WorldView) SnapshotsAreCoherent() bool {
 	}
 	return true
 }
-func (wv *WorldView) MergeLocal(ns common.Snapshot) {
-	wv.mu.Lock()
-	defer wv.mu.Unlock()
-	wv.mergeWorldView(wv.selfKey, ns)
-}
 
 func (wv *WorldView) MarkRecentlyServicedHalls(ns common.Snapshot, now time.Time) {
 	wv.mu.Lock()
@@ -249,7 +244,6 @@ func (wv *WorldView) MergeRemote(msg netMsg) {
 		return
 	}
 	wv.latestCount[msg.Origin] = msg.Counter
-	wv.mergeWorldView(msg.Origin, msg.Snapshot)
 }
 
 func (wv *WorldView) Broadcast() {
@@ -306,7 +300,7 @@ func (wv *WorldView) wasRecentlyServicedLocked(floor int, button int, now time.T
 	return now.Sub(lastServiced) <= VALID_SERVICE_WINDOW
 }
 
-func (wv *WorldView) mergeWorldView(fromKey string, ns common.Snapshot) { //TODO: maybe since we copy ns, use the new copy to keep synchronizing good
+func (wv *WorldView) MergeWorldView(fromKey string, ns common.Snapshot) { //TODO: maybe since we copy ns, use the new copy to keep synchronizing good
 	if fromKey != wv.selfKey {
 		wv.lastSnapshot[fromKey] = common.DeepCopySnapshot(ns)
 		if wv.inStartupPeriod {

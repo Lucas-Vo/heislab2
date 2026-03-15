@@ -45,7 +45,7 @@ func networkThread(
 			if ns.UpdateKind == common.UpdateServiced {
 				wv.MarkRecentlyServicedHalls(ns, now)
 			}
-			wv.MergeLocal(ns)
+			wv.MergeWorldView(cfg.SelfKey, ns)
 			if !wv.SnapshotsAreCoherent() {
 				wv.Broadcast()
 			}
@@ -53,12 +53,14 @@ func networkThread(
 
 		case msg := <-incoming:
 			msgToMerge, filteredHalls, isFiltered := wv.FilterRecentlyServicedHalls(msg, now)
+
 			wv.MergeRemote(msgToMerge)
 			if isFiltered {
 				wv.CalculateAlive(now)
 				wv.ResendServicedHalls(filteredHalls)
 			}
 			wv.PublishLocally(netUpdateAssignerCh, netUpdateElevCh)
+			wv.MergeWorldView(msgToMerge.Origin, msgToMerge.Snapshot)
 
 		case peerUpdate := <-peerUpdates:
 			wv.HandlePeerUpdate(peerUpdate, now)
