@@ -254,9 +254,10 @@ func (wv *WorldView) MergeRemote(msg netMsg) {
 
 func (wv *WorldView) Broadcast() {
 	wv.mu.Lock()
+	alive := wv.selfAlive
 	snap := common.DeepCopySnapshot(wv.localSnapshot)
 	wv.mu.Unlock()
-	if !wv.selfAlive || (snap.UpdateKind == common.UpdateRequests && wv.inStartupPeriod) {
+	if !alive || (snap.UpdateKind == common.UpdateRequests && wv.inStartupPeriod) {
 		return
 	}
 	wv.sendOverNetwork(snap)
