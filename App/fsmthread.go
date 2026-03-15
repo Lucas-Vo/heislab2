@@ -77,7 +77,7 @@ func fsmThread(
 				}
 			}
 		case <-idleTicker.C:
-			if elevator.IsIdle() {
+			if !elevator.IsIdle() {
 				continue
 			}
 			snapshot := sync.BuildSnapshot(elevator, common.UpdateRequests, common.Requests{})
