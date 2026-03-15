@@ -21,6 +21,7 @@ type FsmSync struct {
 	netCalls     common.Requests
 	localCalls   common.Requests
 	injected     common.Requests
+	confirmed    common.Requests
 }
 
 func NewFsmSync(config common.Config) *FsmSync {
@@ -53,13 +54,17 @@ func (sync *FsmSync) HandleNetworkSnapshot(snapshot common.Snapshot, now time.Ti
 	for floor := range common.N_FLOORS {
 		for button := range common.ButtonType(common.N_BUTTONS) {
 			if sync.netCalls[floor][button] {
+				sync.confirmed[floor][button] = true
 				if button == common.BT_Cab {
 					sync.localCalls[floor][button] = true
 				}
 				continue
 			}
-			sync.localCalls[floor][button] = false
-			sync.injected[floor][button] = false
+			if sync.confirmed[floor][button] {
+				sync.localCalls[floor][button] = false
+				sync.injected[floor][button] = false
+			}
+			sync.confirmed[floor][button] = false
 		}
 	}
 }
@@ -71,11 +76,13 @@ func (sync *FsmSync) HandleAssignerTask(task common.ElevInput) (toClear common.R
 	for floor := range previousAssignment {
 		if previousAssignment[floor][0] && !sync.assignedHall[floor][0] {
 			sync.injected[floor][common.BT_HallUp] = false
+			sync.confirmed[floor][common.BT_HallUp] = false
 			sync.localCalls[floor][common.BT_HallUp] = false
 			toClear[floor][common.BT_HallUp] = true
 		}
 		if previousAssignment[floor][1] && !sync.assignedHall[floor][1] {
 			sync.injected[floor][common.BT_HallDown] = false
+			sync.confirmed[floor][common.BT_HallDown] = false
 			sync.localCalls[floor][common.BT_HallDown] = false
 			toClear[floor][common.BT_HallDown] = true
 		}
@@ -136,12 +143,13 @@ func (sync *FsmSync) ClearServicedRequests(floor int, serviced common.Requests) 
 			sync.localCalls[floor][button] = false
 			// Ensure lamps and local world-view reflect service immediately.
 			sync.netCalls[floor][button] = false
+			sync.confirmed[floor][button] = false
 			sync.injected[floor][button] = false
 		}
 	}
 }
 
-func (sync *FsmSync) BuildSnapshot(
+func (sync *FsmSync) BuildSnapshot( //TODO: Change the callsCleared to the thing that we fill both serviced and requests with
 	elevator *Elevator,
 	kind common.UpdateKind,
 	callsCleared common.Requests,
@@ -149,10 +157,10 @@ func (sync *FsmSync) BuildSnapshot(
 	outCalls := sync.netCalls
 	if kind == common.UpdateRequests {
 		for f := range common.N_FLOORS {
-			if sync.localCalls[f][common.BT_HallUp] {
+			if sync.localCalls[f][common.BT_HallUp] && !sync.confirmed[f][common.BT_HallUp] {
 				outCalls[f][common.BT_HallUp] = true
 			}
-			if sync.localCalls[f][common.BT_HallDown] {
+			if sync.localCalls[f][common.BT_HallDown] && !sync.confirmed[f][common.BT_HallDown] {
 				outCalls[f][common.BT_HallDown] = true
 			}
 		}
