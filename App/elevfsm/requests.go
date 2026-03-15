@@ -82,14 +82,13 @@ func requests_shouldStop(requests common.Requests, floor int, dirn common.MotorD
 	}
 }
 
-func requests_clearAtFloorDir(requests common.Requests, floor int, announceDir common.MotorDirection, clearCab bool) (updated common.Requests, cleared common.Requests) {
+func requests_clearAtFloorDir(requests common.Requests, floor int, announceDir common.MotorDirection) (updated common.Requests, cleared common.Requests) {
 	updated = requests
-	if clearCab {
-		if updated[floor][common.BT_Cab] {
-			cleared[floor][common.BT_Cab] = true
-		}
-		updated[floor][common.BT_Cab] = false
+
+	if updated[floor][common.BT_Cab] {
+		cleared[floor][common.BT_Cab] = true
 	}
+	updated[floor][common.BT_Cab] = false
 
 	switch announceDir {
 	case common.MD_Up:

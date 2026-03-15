@@ -153,11 +153,19 @@ func (e *Elevator) onDoorTimerExpiry(now time.Time) (servicedCalls common.Reques
 	servicedCalls = common.Requests{}
 	e.doorTimer = now
 
-	servicedCalls, nextAnnounceDirection, restartDoorTimer := e.OnDoorClose(e.prevFloor, e.announceDir, true)
-	e.announceDir = nextAnnounceDirection
-	if restartDoorTimer {
-		e.doorTimer = now
+	servicedCalls, nextAnnounceDirection := e.OnDoorClose(e.prevFloor, e.announceDir)
+	if e.behaviour != EB_DoorOpen {
+		return
 	}
+	pair := requests_chooseDirection(e.requests, e.floor, e.dirn)
+	e.dirn = pair.dirn
+	e.behaviour = pair.behaviour
+	if e.behaviour == EB_Moving || e.behaviour == EB_Idle {
+		e.outputDevice.DoorLight(false)
+		e.outputDevice.MotorDirection(e.dirn)
+	}
+	e.announceDir = nextAnnounceDirection
+
 	return servicedCalls
 }
 
@@ -210,19 +218,6 @@ func (e *Elevator) onFloorArrival(newFloor int) {
 	}
 }
 
-func (e *Elevator) onDoorTimeout() { //TODO: 3 onDoor____ er forjævlig. Spesielt når vi har onDoorTimeout og onDoorTimerExpiry
-	if e.behaviour != EB_DoorOpen {
-		return
-	}
-	pair := requests_chooseDirection(e.requests, e.floor, e.dirn)
-	e.dirn = pair.dirn
-	e.behaviour = pair.behaviour
-	if e.behaviour == EB_Moving || e.behaviour == EB_Idle {
-		e.outputDevice.DoorLight(false)
-		e.outputDevice.MotorDirection(e.dirn)
-	}
-}
-
 func (e *Elevator) SetStopLight(online bool) {
 	e.outputDevice.StopButtonLight(!online)
 }
@@ -257,39 +252,38 @@ func (e *Elevator) shouldSwitchDirection() bool {
 
 // OnDoorClose decides local door-expiry behaviour and applies local FSM transitions.
 // Returns cleared requests at floor, the next announce direction, and whether to restart the door timer.
-func (e *Elevator) OnDoorClose(floor int, announceDir common.MotorDirection, clearCab bool) (cleared common.Requests, nextAnnounceDir common.MotorDirection, restartDoorTimer bool) {
+func (e *Elevator) OnDoorClose(floor int, announceDir common.MotorDirection) (cleared common.Requests, nextAnnounceDir common.MotorDirection) {
 	e.floor = floor
 	upRequestAtFloor, downRequestAtFloor := requests_hallRequestsAtFloor(e.requests, e.floor)
 	nextAnnounceDir = announceDir
 	//TODO: add comments to describe the different cases
 	if announceDir == common.MD_Up && upRequestAtFloor {
-		e.requests, cleared = requests_clearAtFloorDir(e.requests, e.floor, common.MD_Up, clearCab)
+		e.requests, cleared = requests_clearAtFloorDir(e.requests, e.floor, common.MD_Up)
 		if downRequestAtFloor && e.shouldSwitchDirection() {
-			return cleared, common.MD_Down, true
+			return cleared, common.MD_Down
 		}
 
 	} else if announceDir == common.MD_Down && downRequestAtFloor {
-		e.requests, cleared = requests_clearAtFloorDir(e.requests, e.floor, common.MD_Down, clearCab)
+		e.requests, cleared = requests_clearAtFloorDir(e.requests, e.floor, common.MD_Down)
 		if upRequestAtFloor && e.shouldSwitchDirection() {
-			return cleared, common.MD_Up, true
+			return cleared, common.MD_Up
 		}
 
 	} else if upRequestAtFloor || downRequestAtFloor {
 		arrivalDir := e.dirn
 		nextAnnounceDir = e.chooseNewDirAtFloor(floor, arrivalDir)
-		e.requests, cleared = requests_clearAtFloorDir(e.requests, e.floor, nextAnnounceDir, clearCab)
+		e.requests, cleared = requests_clearAtFloorDir(e.requests, e.floor, nextAnnounceDir)
 
 		if nextAnnounceDir == common.MD_Up && downRequestAtFloor && e.shouldSwitchDirection() {
-			return cleared, common.MD_Down, true
+			return cleared, common.MD_Down
 		}
 		if nextAnnounceDir == common.MD_Down && upRequestAtFloor && e.shouldSwitchDirection() {
-			return cleared, common.MD_Up, true
+			return cleared, common.MD_Up
 		}
 
 	} else {
-		e.requests, cleared = requests_clearAtFloorDir(e.requests, e.floor, common.MD_Stop, clearCab)
+		e.requests, cleared = requests_clearAtFloorDir(e.requests, e.floor, common.MD_Stop)
 		nextAnnounceDir = common.MD_Stop
 	}
-	e.onDoorTimeout()
-	return cleared, nextAnnounceDir, false
+	return cleared, nextAnnounceDir
 }
