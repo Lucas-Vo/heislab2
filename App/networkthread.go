@@ -62,6 +62,7 @@ func networkThread(
 
 		case peerUpdate := <-peerUpdates:
 			wv.HandlePeerUpdate(peerUpdate, now)
+			wv.PublishLocally(netUpdateAssignerCh, netUpdateElevCh)
 
 		case <-localTicker.C:
 			wv.CalculateAlive(now)
