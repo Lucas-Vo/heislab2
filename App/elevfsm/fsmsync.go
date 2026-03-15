@@ -190,6 +190,6 @@ func (sync *FsmSync) markInjected(floor int, button common.ButtonType) {
 	sync.localCalls[floor][button] = true
 }
 
-func (sync *FsmSync) GetLocalCalls() [common.N_FLOORS][common.N_BUTTONS]bool {
-	return sync.localCalls
+func (sync *FsmSync) GetNetCalls() [common.N_FLOORS][common.N_BUTTONS]bool {
+	return sync.netCalls
 }

@@ -47,7 +47,7 @@ func fsmThread(
 			}
 			i++
 			if snap.Coherent {
-				elevator.SetLights(sync.GetLocalCalls())
+				elevator.SetLights(sync.GetNetCalls())
 			}
 
 		case task := <-assignerOutputCh:

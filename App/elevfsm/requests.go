@@ -109,17 +109,6 @@ func requests_clearAtFloorDir(requests common.Requests, floor int, announceDir c
 	return updated, cleared
 }
 
-func requests_clear(requests common.Requests, floor int, btn common.ButtonType) common.Requests {
-	if floor < 0 || floor >= common.N_FLOORS {
-		return requests
-	}
-	if btn < 0 || btn >= common.N_BUTTONS {
-		return requests
-	}
-	requests[floor][btn] = false
-	return requests
-}
-
 func requests_above(requests common.Requests, floor int) int {
 	for f := floor + 1; f < common.N_FLOORS; f++ {
 		for btn := range common.N_BUTTONS {
