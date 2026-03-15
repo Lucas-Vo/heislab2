@@ -151,6 +151,7 @@ func (e *Elevator) Tick(now time.Time) (stateChanged bool, servicedCalls common.
 
 func (e *Elevator) onDoorTimerExpiry(now time.Time) (servicedCalls common.Requests) {
 	e.doorTimer = now
+	servicedCalls = common.Requests{}
 	servicedCalls, nextAnnounceDirection := e.OnDoorClose(e.prevFloor, e.announceDir)
 	if e.behaviour != EB_DoorOpen {
 		return
