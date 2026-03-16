@@ -1,4 +1,4 @@
-// This file is SOUP, and is from the driver-go repository.
+// Taken from https://github.com/TTK4145/driver-go
 package common
 
 import (

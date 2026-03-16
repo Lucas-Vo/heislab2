@@ -13,14 +13,14 @@ const (
 	HRA_EXECUTABLE_PATH = "./elevassigner/hall_request_assigner"
 )
 
-func assignerThread(config common.Config, netUpdateAssignerCh <-chan common.Snapshot, elevatorTasksCh chan<- common.ElevInput) {
+func assignerThread(config common.Config, netUpdateAssignerCh <-chan common.Snapshot, hallAssignmentCh chan<- common.HallAssignment) {
 	selfKey := config.SelfKey
 	if selfKey == "" {
 		log.Println("assignerThread: config.SelfKey is empty (did you call config.InitSelf()?)")
 		return
 	}
 
-	hallAssignment := common.ElevInput{HallTask: [common.N_FLOORS][2]bool{}}
+	hallAssignment := common.HallAssignment{}
 
 	networkTimeout := time.NewTimer(NET_SNAP_TIMEOUT)
 	defer networkTimeout.Stop()
@@ -50,14 +50,14 @@ func assignerThread(config common.Config, netUpdateAssignerCh <-chan common.Snap
 				log.Println(string(ret))
 				continue
 			}
-			var output map[string][common.N_FLOORS][2]bool
+			var output map[string]common.HallAssignment
 			if err := json.Unmarshal(ret, &output); err != nil {
 				log.Println("json.Unmarshal error:", err)
 				continue
 			}
 
-			hallAssignment = common.ElevInput{HallTask: output[selfKey]}
-			elevatorTasksCh <- hallAssignment
+			hallAssignment = output[selfKey]
+			hallAssignmentCh <- hallAssignment
 
 		case <-networkTimeout.C:
 			log.Println("Snapshot from network update timeout, withholding updates until next network ack")

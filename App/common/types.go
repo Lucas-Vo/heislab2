@@ -3,19 +3,19 @@ package common
 type UpdateKind int
 
 const (
-	UpdateRequests UpdateKind = iota // OR merge
-	UpdateServiced                   // AND merge
+	UK_Requests UpdateKind = iota // OR merge
+	UK_Serviced                   // AND merge
 )
 
 type ElevState struct {
-	Behavior    string         `json:"behaviour"`
-	Floor       int            `json:"floor"`
-	Direction   string         `json:"direction"`
-	CabRequests [N_FLOORS]bool `json:"cabRequests"`
+	Behavior    string      `json:"behaviour"`
+	Floor       int         `json:"floor"`
+	Direction   string      `json:"direction"`
+	CabRequests CabRequests `json:"cabRequests"`
 }
 
 type Snapshot struct {
-	HallRequests [N_FLOORS][2]bool    `json:"hallRequests"`
+	HallRequests HallRequests         `json:"hallRequests"`
 	States       map[string]ElevState `json:"states"`
 	Alive        map[string]bool      `json:"alive"`
 	Coherent     bool                 `json:"coherent,omitempty"`
@@ -28,8 +28,8 @@ type NetMsg struct {
 	Snapshot Snapshot `json:"snapshot"`
 }
 
-type ElevInput struct {
-	HallTask [N_FLOORS][2]bool `json:"HallTask"`
-}
-
 type Requests [N_FLOORS][N_BUTTONS]bool
+type CabRequests [N_FLOORS]bool
+type HallRequests [N_FLOORS][N_BUTTONS - 1]bool
+
+type HallAssignment [N_FLOORS][N_BUTTONS - 1]bool

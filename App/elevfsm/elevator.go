@@ -29,7 +29,7 @@ type Elevator struct {
 }
 
 func NewElevator() *Elevator {
-	common.ElevioInit(IO_ADDRESS)
+	common.InitElevio(IO_ADDRESS)
 	e := new(Elevator)
 	e.floor = -1
 	e.dirn = common.MD_Stop
@@ -115,7 +115,7 @@ func (e *Elevator) PollButtonPresses() (buttonPresses common.Requests, hadPress 
 	return buttonPresses, hadPress
 }
 
-func (e *Elevator) UpdateFSM(now time.Time) (stateChanged bool, servicedRequests common.Requests, isServiced bool) {
+func (e *Elevator) ElevUpdate(now time.Time) (stateChanged bool, servicedRequests common.Requests, isServiced bool) {
 	servicedRequests = common.Requests{}
 	isServiced = false
 
@@ -253,6 +253,7 @@ func (e *Elevator) shouldSwitchDirection() bool {
 
 // OnDoorClose decides local door-expiry behaviour and applies local FSM transitions.
 // Returns cleared requests at floor, the next announce direction, and whether to restart the door timer.
+// TODO: move into onDoorTimerExpiry
 func (e *Elevator) OnDoorClose(floor int, announceDir common.MotorDirection) (cleared common.Requests, nextAnnounceDir common.MotorDirection) {
 	e.floor = floor
 	upRequestAtFloor, downRequestAtFloor := requests_hallRequestsAtFloor(e.requests, e.floor)

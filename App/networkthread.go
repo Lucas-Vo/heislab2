@@ -22,12 +22,12 @@ func networkThread(
 	netUpdateElevCh chan<- common.Snapshot, // net -> elev
 ) {
 	wv := elevnetwork.InitWorldView(config)
-	network := elevnetwork.InitNetwork(config)
+	network := elevnetwork.InitPeerNetwork(config)
 
 	wv.CalculateAlive(time.Now())
 
 	initialSnapshot := common.DeepCopySnapshot(wv.SnapshotForBroadcast())
-	initialSnapshot.UpdateKind = common.UpdateRequests
+	initialSnapshot.UpdateKind = common.UK_Requests
 	network.SendSnapshot(initialSnapshot, wv.GetSelfAlive())
 
 	localTicker := time.NewTicker(LOCAL_PUBLISH_PERIOD)

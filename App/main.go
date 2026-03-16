@@ -22,7 +22,7 @@ func main() {
 	elevUpdateNetCh := make(chan common.Snapshot, 8)
 	netUpdateElevCh := make(chan common.Snapshot, 8)
 	netUpdateAssignerCh := make(chan common.Snapshot, 8)
-	assignerUpdateElevCh := make(chan common.ElevInput, 4)
+	assignerUpdateElevCh := make(chan common.HallAssignment, 4)
 
 	config, err := common.DefaultConfig()
 	if err != nil {

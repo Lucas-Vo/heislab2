@@ -33,7 +33,7 @@ func InitWorldView(config common.Config) *WorldView {
 	wv := &WorldView{
 		peers: config.ExpectedKeys(),
 		localSnapshot: common.Snapshot{
-			HallRequests: [common.N_FLOORS][2]bool{},
+			HallRequests: common.HallRequests{},
 			States:       make(map[string]common.ElevState),
 			Alive:        make(map[string]bool),
 		},
@@ -134,13 +134,13 @@ func (wv *WorldView) SnapshotsAreCoherent(selfSnapshot common.Snapshot) bool {
 
 func (wv *WorldView) HandleLocal(ns common.Snapshot, now time.Time) {
 	wv.SetSelfAlive(true)
-	if ns.UpdateKind == common.UpdateServiced {
+	if ns.UpdateKind == common.UK_Serviced {
 		wv.markRecentlyServicedHalls(ns, now)
 	}
 	wv.mergeWorldView(wv.selfKey, ns)
 }
 
-func (wv *WorldView) HandleRemote(msg common.NetMsg, now time.Time) ([common.N_FLOORS][2]bool, bool) {
+func (wv *WorldView) HandleRemote(msg common.NetMsg, now time.Time) (common.HallRequests, bool) {
 	msgToMerge, filteredHalls, isFiltered := wv.filterRecentlyServicedHalls(msg, now)
 	wv.mergeRemote(msgToMerge)
 	if isFiltered {
@@ -154,9 +154,9 @@ func (wv *WorldView) SnapshotForBroadcast() common.Snapshot {
 	return common.DeepCopySnapshot(wv.localSnapshot)
 }
 
-func (wv *WorldView) SnapshotForResend(serviced [common.N_FLOORS][2]bool) common.Snapshot {
+func (wv *WorldView) SnapshotForResend(serviced common.HallRequests) common.Snapshot {
 	snap := common.DeepCopySnapshot(wv.localSnapshot)
-	snap.UpdateKind = common.UpdateServiced
+	snap.UpdateKind = common.UK_Serviced
 	for floor := range common.N_FLOORS {
 		for button := 0; button < 2; button++ {
 			if serviced[floor][button] {
@@ -177,8 +177,8 @@ func (wv *WorldView) markRecentlyServicedHalls(ns common.Snapshot, now time.Time
 	}
 }
 
-func (wv *WorldView) filterRecentlyServicedHalls(msg common.NetMsg, now time.Time) (common.NetMsg, [common.N_FLOORS][2]bool, bool) {
-	var serviced [common.N_FLOORS][2]bool
+func (wv *WorldView) filterRecentlyServicedHalls(msg common.NetMsg, now time.Time) (common.NetMsg, common.HallRequests, bool) {
+	var serviced common.HallRequests
 	msgIsFiltered := false
 	if msg.Origin == "" || msg.Origin == wv.selfKey {
 		return msg, serviced, msgIsFiltered
@@ -275,13 +275,13 @@ func (wv *WorldView) recoverCabRequests(ns common.Snapshot) {
 	wv.localSnapshot.States[wv.selfKey] = localSelf
 }
 
-func (wv *WorldView) mergeHallRequests(incoming [common.N_FLOORS][2]bool, kind common.UpdateKind) {
+func (wv *WorldView) mergeHallRequests(incoming common.HallRequests, kind common.UpdateKind) {
 	for i := range common.N_FLOORS {
 		switch kind {
-		case common.UpdateServiced:
+		case common.UK_Serviced:
 			wv.localSnapshot.HallRequests[i][0] = wv.localSnapshot.HallRequests[i][0] && incoming[i][0]
 			wv.localSnapshot.HallRequests[i][1] = wv.localSnapshot.HallRequests[i][1] && incoming[i][1]
-		case common.UpdateRequests:
+		case common.UK_Requests:
 			wv.localSnapshot.HallRequests[i][0] = wv.localSnapshot.HallRequests[i][0] || incoming[i][0]
 			wv.localSnapshot.HallRequests[i][1] = wv.localSnapshot.HallRequests[i][1] || incoming[i][1]
 		}

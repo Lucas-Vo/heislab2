@@ -1,3 +1,5 @@
+// Based off of https://github.com/TTK4145/Project-resources/tree/master/elev_algo
+
 package common
 
 const (
@@ -19,7 +21,7 @@ type ElevOutputDevice struct {
 	MotorDirection     func(MotorDirection)
 }
 
-func ElevioInit(addr string) {
+func InitElevio(addr string) {
 	Init(addr, N_FLOORS)
 }
 

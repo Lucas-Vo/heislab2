@@ -5,24 +5,24 @@ import (
 	"time"
 )
 
-type Synchronizer struct {
+type RequestManager struct {
 	selfKey string
 
 	initFromNetwork bool
 	hasAlivePeer    bool
 	coherent        bool
 
-	assignedHall      [common.N_FLOORS][2]bool
+	assignedHall      common.HallAssignment
 	netRequests       common.Requests
 	localRequests     common.Requests
 	deliveredRequests common.Requests // prevents re-sending active requests to elevator each tick
 }
 
-func NewFsmSync(config common.Config) *Synchronizer {
-	return &Synchronizer{selfKey: config.SelfKey}
+func InitRequestManager(config common.Config) *RequestManager {
+	return &RequestManager{selfKey: config.SelfKey}
 }
 
-func (sync *Synchronizer) HandleNetworkSnapshot(snapshot common.Snapshot, now time.Time) {
+func (sync *RequestManager) HandleNetworkSnapshot(snapshot common.Snapshot, now time.Time) {
 	sync.hasAlivePeer = false
 	sync.coherent = snapshot.Coherent
 	for key, alive := range snapshot.Alive {
@@ -59,26 +59,26 @@ func (sync *Synchronizer) HandleNetworkSnapshot(snapshot common.Snapshot, now ti
 	}
 }
 
-func (sync *Synchronizer) HandleAssignerTask(task common.ElevInput) (toRevoke common.Requests) {
+func (sync *RequestManager) HandleAssignment(assignment common.HallAssignment) (revokedRequests common.Requests) {
 	previousAssignment := sync.assignedHall
-	sync.assignedHall = task.HallTask
+	sync.assignedHall = assignment
 
 	for floor := range previousAssignment {
 		if previousAssignment[floor][0] && !sync.assignedHall[floor][0] {
 			sync.localRequests[floor][common.BT_HallUp] = false
 			sync.deliveredRequests[floor][common.BT_HallUp] = false
-			toRevoke[floor][common.BT_HallUp] = true
+			revokedRequests[floor][common.BT_HallUp] = true
 		}
 		if previousAssignment[floor][1] && !sync.assignedHall[floor][1] {
 			sync.localRequests[floor][common.BT_HallDown] = false
 			sync.deliveredRequests[floor][common.BT_HallDown] = false
-			toRevoke[floor][common.BT_HallDown] = true
+			revokedRequests[floor][common.BT_HallDown] = true
 		}
 	}
-	return toRevoke
+	return revokedRequests
 }
 
-func (sync *Synchronizer) HandleButtonPresses(edgePresses common.Requests, currentFloor int, now time.Time) (newCabRequests common.Requests, newHallRequests common.Requests) {
+func (sync *RequestManager) HandleButtonPresses(edgePresses common.Requests, currentFloor int, now time.Time) (newCabRequests common.Requests, newHallRequests common.Requests) {
 	for floor := range common.N_FLOORS {
 		for button := range common.ButtonType(common.N_BUTTONS) {
 			if !edgePresses[floor][button] {
@@ -97,7 +97,7 @@ func (sync *Synchronizer) HandleButtonPresses(edgePresses common.Requests, curre
 	return newCabRequests, newHallRequests
 }
 
-func (sync *Synchronizer) TransferReadyRequests() (toTransfer common.Requests) {
+func (sync *RequestManager) TransferReadyRequests() (toTransfer common.Requests) {
 	for floor := range common.N_FLOORS {
 		if sync.localRequests[floor][common.BT_Cab] && !sync.deliveredRequests[floor][common.BT_Cab] {
 			toTransfer[floor][common.BT_Cab] = true
@@ -128,7 +128,7 @@ func (sync *Synchronizer) TransferReadyRequests() (toTransfer common.Requests) {
 	return toTransfer
 }
 
-func (sync *Synchronizer) ClearServicedRequests(floor int, serviced common.Requests) {
+func (sync *RequestManager) ClearServicedRequests(floor int, serviced common.Requests) {
 	if floor < 0 || floor >= common.N_FLOORS {
 		return
 	}
@@ -141,14 +141,14 @@ func (sync *Synchronizer) ClearServicedRequests(floor int, serviced common.Reque
 	}
 }
 
-func (sync *Synchronizer) HasAlivePeer() bool { return sync.hasAlivePeer }
+func (sync *RequestManager) HasAlivePeer() bool { return sync.hasAlivePeer }
 
-func (sync *Synchronizer) IsInitFromNetwork() bool { return sync.initFromNetwork }
+func (sync *RequestManager) IsInitFromNetwork() bool { return sync.initFromNetwork }
 
-func (sync *Synchronizer) GetLocalRequests() common.Requests {
+func (sync *RequestManager) GetLocalRequests() common.Requests {
 	return sync.localRequests
 }
 
-func (sync *Synchronizer) GetNetRequests() common.Requests {
+func (sync *RequestManager) GetNetRequests() common.Requests {
 	return sync.netRequests
 }

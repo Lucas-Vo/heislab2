@@ -18,16 +18,16 @@ func DeepCopySnapshot(snap Snapshot) Snapshot {
 	return snapshotCopy
 }
 
-func GetHallRequests(in Requests) [N_FLOORS][2]bool {
-	var out [N_FLOORS][2]bool
+func GetHallRequests(in Requests) HallRequests {
+	var out HallRequests
 	for i, row := range in {
 		out[i] = [2]bool{row[0], row[1]}
 	}
 	return out
 }
 
-func GetCabRequests(in Requests) [N_FLOORS]bool {
-	var out [N_FLOORS]bool
+func GetCabRequests(in Requests) CabRequests {
+	var out CabRequests
 	for i, row := range in {
 		out[i] = row[2]
 	}
@@ -45,7 +45,7 @@ func BuildSnapshot(
 	localRequests Requests,
 ) Snapshot {
 	outRequests := netRequests
-	if kind == UpdateRequests {
+	if kind == UK_Requests {
 		for floor := range N_FLOORS {
 			if localRequests[floor][BT_HallUp] {
 				outRequests[floor][BT_HallUp] = true
@@ -55,7 +55,7 @@ func BuildSnapshot(
 			}
 		}
 	}
-	if kind == UpdateServiced {
+	if kind == UK_Serviced {
 		for floor := range N_FLOORS {
 			if requestsCleared[floor][BT_HallUp] {
 				outRequests[floor][BT_HallUp] = false

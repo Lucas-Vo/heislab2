@@ -7,18 +7,17 @@ import (
 )
 
 type Config struct {
-	PeerPort int
-	MsgPort  int
-	HostByID map[int]string
-	SelfID   int
-	SelfKey  string
+	PeerPort  int
+	MsgPort   int
+	HostByKey map[int]string
+	SelfKey   string
 }
 
 func DefaultConfig() (Config, error) {
 	config := Config{
 		PeerPort: 4242,
 		MsgPort:  4243,
-		HostByID: map[int]string{
+		HostByKey: map[int]string{
 			1: "10.100.23.28",
 			2: "10.100.23.30",
 			// 3: "10.100.23.172",
@@ -38,7 +37,6 @@ func (c *Config) initSelf() error {
 	if err != nil {
 		return err
 	}
-	c.SelfID = elevID
 	c.SelfKey = fmt.Sprintf("%d", elevID)
 	return nil
 }
@@ -48,7 +46,7 @@ func (c Config) detectSelfID() (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("localip lookup failed: %w", err)
 	}
-	for elevID, host := range c.HostByID {
+	for elevID, host := range c.HostByKey {
 		if host == ip {
 			return elevID, nil
 		}
@@ -57,8 +55,8 @@ func (c Config) detectSelfID() (int, error) {
 }
 
 func (c Config) ExpectedKeys() []string {
-	ids := make([]int, 0, len(c.HostByID))
-	for elevID := range c.HostByID {
+	ids := make([]int, 0, len(c.HostByKey))
+	for elevID := range c.HostByKey {
 		ids = append(ids, elevID)
 	}
 	sort.Ints(ids)
