@@ -1,6 +1,9 @@
 package common
 
-import "maps"
+import (
+	"errors"
+	"maps"
+)
 
 func DeepCopySnapshot(snap Snapshot) Snapshot {
 	snapshotCopy := Snapshot{
@@ -78,21 +81,17 @@ func BuildSnapshot(
 }
 
 // RemoveDeadStates removes the elevator states for the nodes marked dead.
-func RemoveDeadStates(networkSnapshot *Snapshot, selfKey string) (isSelfAlive bool, hasAlivePeers bool) {
-	hasAlivePeers = false
-	isSelfAlive = true
-	for key, alive := range networkSnapshot.Alive {
-		if key == selfKey && !alive {
-			isSelfAlive = false
+func RemoveDeadStates(networkSnapshot *Snapshot, selfKey string) error {
+	err := errors.New("no elevator states marked alive")
+	for id, alive := range networkSnapshot.Alive {
+		if id == selfKey && !alive {
+			return errors.New("local elevator is not alive, stopping assignment")
 		}
 		if !alive {
-			delete(networkSnapshot.States, key)
-		}
-		if key != selfKey && alive {
-			if _, hasState := networkSnapshot.States[key]; hasState {
-				hasAlivePeers = true
-			}
+			delete(networkSnapshot.States, id)
+		} else {
+			err = nil
 		}
 	}
-	return isSelfAlive, hasAlivePeers
+	return err
 }

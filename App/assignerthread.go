@@ -33,9 +33,9 @@ func assignerThread(config common.Config, netUpdateAssignerCh <-chan common.Snap
 			}
 			networkTimeout.Reset(NET_SNAP_TIMEOUT)
 
-			isAlive, _ := common.RemoveDeadStates(&networkSnapshot, selfKey)
-			if !isAlive {
-				log.Printf("assignerthread: local elevator is not alive, stopping assignment")
+			err := common.RemoveDeadStates(&networkSnapshot, selfKey)
+			if err != nil {
+				log.Printf("Remove dead states error: ", err)
 				continue
 			}
 
