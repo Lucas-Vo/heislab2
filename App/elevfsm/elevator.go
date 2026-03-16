@@ -110,7 +110,7 @@ func (e *Elevator) PollButtonPresses() (buttonPresses common.Requests, hadPress 
 	return buttonPresses, hadPress
 }
 
-func (e *Elevator) Tick(now time.Time) (stateChanged bool, servicedRequests common.Requests, isServiced bool) {
+func (e *Elevator) UpdateFSM(now time.Time) (stateChanged bool, servicedRequests common.Requests, isServiced bool) {
 	servicedRequests = common.Requests{}
 	isServiced = false
 

@@ -54,9 +54,9 @@ func elevatorThread(
 			newCabRequests := sync.HandleButtonPresses(buttonPresses, elevator.GetFloor(), now)
 			elevator.ApplyNewRequests(newCabRequests)
 
-			elevStateChange, servicedRequests, isServiced := elevator.Tick(now)
+			elevStateChange, servicedRequests, isServiced := elevator.UpdateFSM(now)
 
-			elevator.ApplyNewRequests(sync.ReadyInjects(now))
+			elevator.ApplyNewRequests(sync.TransferReadyRequests())
 			sync.ClearServicedRequests(elevator.GetPrevFloor(), servicedRequests)
 
 			if isServiced {
