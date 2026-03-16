@@ -2,16 +2,16 @@ package common
 
 import "maps"
 
-func DeepCopySnapshot(ns Snapshot) Snapshot {
+func DeepCopySnapshot(snap Snapshot) Snapshot {
 	snapshotCopy := Snapshot{
-		HallRequests: ns.HallRequests,
-		States:       make(map[string]ElevState, len(ns.States)),
-		Alive:        make(map[string]bool, len(ns.Alive)),
-		Coherent:     ns.Coherent,
-		UpdateKind:   ns.UpdateKind,
+		HallRequests: snap.HallRequests,
+		States:       make(map[string]ElevState, len(snap.States)),
+		Alive:        make(map[string]bool, len(snap.Alive)),
+		Coherent:     snap.Coherent,
+		UpdateKind:   snap.UpdateKind,
 	}
-	maps.Copy(snapshotCopy.States, ns.States)
-	maps.Copy(snapshotCopy.Alive, ns.Alive)
+	maps.Copy(snapshotCopy.States, snap.States)
+	maps.Copy(snapshotCopy.Alive, snap.Alive)
 	return snapshotCopy
 }
 

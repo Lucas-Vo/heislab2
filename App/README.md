@@ -1,1 +1,8 @@
-ctx -> context, cfg ->config, and all other abbreviations so that no abbreviations that are not NASA or NATO is used
+dependency tree
+
+main : assignerthread, networkthread, elevatorthread
+  networkthread : network, worldview
+  elevatorthread : elevator, synchronizer
+    elevator : requests
+
+run ./count_app_go_lines.sh

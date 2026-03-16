@@ -1,17 +1,11 @@
 package main
 
 import (
-	"Network-go/network/bcast"
-	"Network-go/network/peers"
 	"context"
 	"elevator/common"
 	"fmt"
 	"os"
 	"os/signal"
-)
-
-const (
-	NETWORK_CHAN_SIZE = 128
 )
 
 func main() {
@@ -29,21 +23,13 @@ func main() {
 	netUpdateElevCh := make(chan common.Snapshot, 8)
 	netUpdateAssignerCh := make(chan common.Snapshot, 8)
 	assignerUpdateElevCh := make(chan common.ElevInput, 4)
-	incoming := make(chan common.NetMsg, NETWORK_CHAN_SIZE)
-	outgoing := make(chan common.NetMsg, NETWORK_CHAN_SIZE)
-	peerUpdateCh := make(chan peers.PeerUpdate, NETWORK_CHAN_SIZE)
-	peerTxEnable := make(chan bool, 1)
 
 	config, err := common.DefaultConfig()
 	if err != nil {
 		fmt.Println("Error loading config")
 	}
 
-	go peers.Transmitter(config.PeerPort, config.SelfKey, peerTxEnable)
-	go peers.Receiver(config.PeerPort, peerUpdateCh)
-	go bcast.Transmitter(config.MsgPort, outgoing)
-	go bcast.Receiver(config.MsgPort, incoming)
-	go networkThread(config, elevUpdateNetCh, netUpdateAssignerCh, netUpdateElevCh, incoming, outgoing, peerUpdateCh)
+	go networkThread(config, elevUpdateNetCh, netUpdateAssignerCh, netUpdateElevCh)
 	go assignerThread(config, netUpdateAssignerCh, assignerUpdateElevCh)
 	go elevatorThread(config, assignerUpdateElevCh, elevUpdateNetCh, netUpdateElevCh)
 	<-ctx.Done()

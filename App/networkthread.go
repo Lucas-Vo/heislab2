@@ -1,8 +1,6 @@
-// networkthread.go
 package main
 
 import (
-	"Network-go/network/peers"
 	"log"
 	"time"
 
@@ -22,11 +20,9 @@ func networkThread(
 	elevUpdateNetCh <-chan common.Snapshot, // elev -> net
 	netUpdateAssignerCh chan<- common.Snapshot, // net -> assigner
 	netUpdateElevCh chan<- common.Snapshot, // net -> elev
-	incoming <-chan common.NetMsg,
-	outgoing chan<- common.NetMsg,
-	peerUpdates <-chan peers.PeerUpdate,
 ) {
-	wv := elevnetwork.InitWorldView(config, outgoing)
+	wv := elevnetwork.InitWorldView(config)
+	network := elevnetwork.InitNetwork(config)
 
 	localTicker := time.NewTicker(LOCAL_PUBLISH_PERIOD)
 	defer localTicker.Stop()
@@ -47,20 +43,31 @@ func networkThread(
 			elevatorErrorTimer.Reset(ELEVATOR_ERROR_TIMEOUT)
 			wv.HandleLocal(elevatorSnapshot, now)
 
-		case msg := <-incoming:
-			wv.HandleRemote(msg, now)
-		case peerUpdate := <-peerUpdates:
+		case msg := <-network.Incoming():
+			filteredHalls, isFiltered := wv.HandleRemote(msg, now)
+			if isFiltered { // resend serviced request if inchoerent
+				snapshot := wv.SnapshotForResend(filteredHalls)
+				network.SendSnapshot(snapshot, wv.GetSelfAlive())
+			}
+		case peerUpdate := <-network.PeerUpdates():
 			wv.HandlePeerUpdate(peerUpdate, now)
 
 		case <-localTicker.C:
 			wv.CalculateAlive(now)
-			wv.PublishLocally(netUpdateAssignerCh, netUpdateElevCh)
-			if !wv.SnapshotsAreCoherent() { //broadcast more often if we notice inchoherency
-				wv.Broadcast()
+			snapshot, ok := network.LastSentSnapshot()
+			isCoherent := false
+			if ok {
+				isCoherent = wv.SnapshotsAreCoherent(snapshot)
+			}
+			wv.PublishLocally(netUpdateAssignerCh, netUpdateElevCh, isCoherent)
+			if !isCoherent { //broadcast more often if incoherent
+				snapshot := wv.SnapshotForBroadcast()
+				network.SendSnapshot(snapshot, wv.GetSelfAlive())
 			}
 
 		case <-broadcastTicker.C:
-			wv.Broadcast()
+			snapshot := wv.SnapshotForBroadcast()
+			network.SendSnapshot(snapshot, wv.GetSelfAlive())
 
 		case <-elevatorErrorTimer.C:
 			if wv.GetSelfAlive() {
