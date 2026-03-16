@@ -43,12 +43,14 @@ func NewElevator() *Elevator {
 
 	if newFloor != -1 {
 		e.onFloorArrival(newFloor)
+		
 	} else {
 		e.outputDevice.MotorDirection(common.MD_Down)
 		e.dirn = common.MD_Down
 		e.behaviour = EB_Moving
+		e.prevFloor = 1
 	}
-	e.prevFloor = e.floor
+	
 	e.prevDirection = e.dirn
 	e.prevBehaviour = e.behaviour
 	return e
@@ -127,7 +129,6 @@ func (e *Elevator) UpdateFSM(now time.Time) (stateChanged bool, servicedRequests
 
 	if e.floor != -1 && e.prevFloor != e.floor {
 		e.onFloorArrival(e.floor)
-		e.prevFloor = e.floor
 	}
 
 	if isObstructed != 0 && e.behaviour == EB_DoorOpen {
@@ -210,6 +211,7 @@ func (e *Elevator) SetStopLight(online bool) {
 func (e *Elevator) onFloorArrival(newFloor int) {
 	fmt.Println("landed on floor: ", newFloor)
 	e.floor = newFloor
+	e.prevFloor = e.floor
 	e.outputDevice.FloorIndicator(e.floor)
 	if e.behaviour == EB_Moving && requests_shouldStop(e.requests, e.floor, e.dirn) != 0 {
 		e.outputDevice.MotorDirection(common.MD_Stop)

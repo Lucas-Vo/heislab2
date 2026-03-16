@@ -24,6 +24,12 @@ func networkThread(
 	wv := elevnetwork.InitWorldView(config)
 	network := elevnetwork.InitNetwork(config)
 
+	wv.CalculateAlive(time.Now())
+
+	initialSnapshot := common.DeepCopySnapshot(wv.SnapshotForBroadcast())
+	initialSnapshot.UpdateKind = common.UpdateRequests
+	network.SendSnapshot(initialSnapshot, wv.GetSelfAlive())
+
 	localTicker := time.NewTicker(LOCAL_PUBLISH_PERIOD)
 	defer localTicker.Stop()
 
