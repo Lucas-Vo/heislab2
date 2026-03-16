@@ -176,7 +176,7 @@ func (wv *WorldView) FilterRecentlyServicedHalls(msg common.NetMsg, now time.Tim
 	defer wv.mu.Unlock()
 	for floor := range common.N_FLOORS {
 		for button := 0; button < 2; button++ {
-			if msg.Snapshot.HallRequests[floor][button] && wv.wasRecentlyServicedLocked(floor, button, now) {
+			if msg.Snapshot.HallRequests[floor][button] && wv.isHallRecentlyServiced(floor, button, now) {
 				msg.Snapshot.HallRequests[floor][button] = false
 				serviced[floor][button] = true
 				msgIsFiltered = true
@@ -273,7 +273,7 @@ func (wv *WorldView) sendOverNetwork(snap common.Snapshot) {
 	}
 }
 
-func (wv *WorldView) wasRecentlyServicedLocked(floor int, button int, now time.Time) bool {
+func (wv *WorldView) isHallRecentlyServiced(floor int, button int, now time.Time) bool {
 	lastServiced := wv.lastServicedHall[floor][button]
 	if lastServiced.IsZero() {
 		return false
@@ -281,7 +281,7 @@ func (wv *WorldView) wasRecentlyServicedLocked(floor int, button int, now time.T
 	return now.Sub(lastServiced) <= VALID_SERVICE_WINDOW
 }
 
-func (wv *WorldView) MergeWorldView(fromKey string, ns common.Snapshot) { //TODO: maybe since we copy ns, use the new copy to keep synchronizing good
+func (wv *WorldView) MergeWorldView(fromKey string, ns common.Snapshot) {
 	if fromKey != wv.selfKey {
 		wv.lastSnapshot[fromKey] = common.DeepCopySnapshot(ns)
 		if wv.inStartupPeriod {
