@@ -1,0 +1,17 @@
+- CLI argumenter for IP adresser
+- ZIP not larger than 15MB
+- Remove all temporary files, such as binaries and o-files
+
+## Hand in zip with
+
+- Named `final-code-##.zip`
+- Source code
+- Build/run instructions
+- Documentation (readme)
+
+## Comments and documentation
+
+- add comments above packages/functions/types where they explain purpose, intent, assumptions, limitations, and failure behavior
+- do not comment every small line of code just to narrate what it obviously does
+
+- Generate godoc from comments? (hand in specs mention doxygen)
