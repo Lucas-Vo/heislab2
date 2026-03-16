@@ -83,20 +83,23 @@ func (sync *Synchronizer) HandleAssignerTask(task common.ElevInput) (toRevoke co
 	return toRevoke
 }
 
-func (sync *Synchronizer) HandleButtonPresses(edgePresses common.Requests, currentFloor int, now time.Time) (newCabRequests common.Requests) {
+func (sync *Synchronizer) HandleButtonPresses(edgePresses common.Requests, currentFloor int, now time.Time) (newCabRequests common.Requests, newHallRequests common.Requests) {
 	for floor := range common.N_FLOORS {
 		for button := range common.ButtonType(common.N_BUTTONS) {
 			if !edgePresses[floor][button] {
 				continue
 			}
 			sync.localRequests[floor][button] = true
-			if button == common.BT_Cab {
+			switch button {
+			case common.BT_Cab:
 				newCabRequests[floor][button] = true
 				sync.deliveredRequests[floor][button] = true
+			case common.BT_HallUp, common.BT_HallDown:
+				newHallRequests[floor][button] = true
 			}
 		}
 	}
-	return newCabRequests
+	return newCabRequests, newHallRequests
 }
 
 func (sync *Synchronizer) TransferReadyRequests() (toTransfer common.Requests) {
