@@ -116,8 +116,9 @@ func (wv *WorldView) SnapshotsAreCoherent(selfSnapshot common.Snapshot) bool {
 		for floor := range common.N_FLOORS {
 			if selfSnapshot.HallRequests[floor][common.BT_HallUp] != peerSnapshot.HallRequests[floor][common.BT_HallUp] {
 				return false
-			}
-			if selfSnapshot.HallRequests[floor][common.BT_HallDown] != peerSnapshot.HallRequests[floor][common.BT_HallDown] {
+			} else if selfSnapshot.HallRequests[floor][common.BT_HallDown] != peerSnapshot.HallRequests[floor][common.BT_HallDown] {
+				return false
+			} else if selfSnapshot.States[wv.selfKey].CabRequests[floor] != peerSnapshot.States[wv.selfKey].CabRequests[floor] {
 				return false
 			}
 		}
