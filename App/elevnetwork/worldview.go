@@ -215,7 +215,7 @@ func (wv *WorldView) mergeRemote(msg common.NetMsg) {
 	prevHeard := wv.lastHeard[msg.Origin]
 	wv.lastHeard[msg.Origin] = now
 	if now.Sub(prevHeard) < WV_TIMEOUT && msg.Counter < prevCounter && msg.Counter > prevCounter-VALID_COUNTER_WINDOW {
-		log.Printf("drop stale/duplicate frame origin=%s counter=%d prevCounter=%d dt=%s", msg.Origin, msg.Counter, prevCounter, now.Sub(prevHeard))
+		log.Printf("drop dead/duplicate frame origin=%s counter=%d prevCounter=%d dt=%s", msg.Origin, msg.Counter, prevCounter, now.Sub(prevHeard))
 		return
 	}
 	wv.latestCount[msg.Origin] = msg.Counter

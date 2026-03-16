@@ -23,16 +23,9 @@ func NewFsmSync(config common.Config) *Synchronizer {
 }
 
 func (sync *Synchronizer) HandleNetworkSnapshot(snapshot common.Snapshot, now time.Time) {
-	sync.hasAlivePeer = false
+	_, sync.hasAlivePeer = common.RemoveDeadStates(&snapshot, sync.selfKey)
 	sync.coherent = snapshot.Coherent
-	for key, alive := range snapshot.Alive {
-		if key != sync.selfKey && alive {
-			if _, hasState := snapshot.States[key]; hasState {
-				sync.hasAlivePeer = true
-				break
-			}
-		}
-	}
+
 	for floor := range common.N_FLOORS {
 		sync.netRequests[floor][0] = snapshot.HallRequests[floor][0]
 		sync.netRequests[floor][1] = snapshot.HallRequests[floor][1]

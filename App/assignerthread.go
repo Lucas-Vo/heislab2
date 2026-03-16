@@ -2,7 +2,6 @@ package main
 
 import (
 	"elevator/common"
-	"elevator/elevassigner"
 	"encoding/json"
 	"log"
 	"os/exec"
@@ -34,9 +33,9 @@ func assignerThread(config common.Config, netUpdateAssignerCh <-chan common.Snap
 			}
 			networkTimeout.Reset(NET_SNAP_TIMEOUT)
 
-			err := elevassigner.RemoveStaleStates(&networkSnapshot, selfKey)
-			if err != nil {
-				log.Println("removing stale states error: ", err)
+			isAlive, _ := common.RemoveDeadStates(&networkSnapshot, selfKey)
+			if !isAlive {
+				log.Printf("assignerthread: local elevator is not alive, stopping assignment")
 				continue
 			}
 

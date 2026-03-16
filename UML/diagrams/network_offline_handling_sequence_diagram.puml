@@ -35,7 +35,7 @@
         Elevator2->>Elevator2: No ack received, retry
     end
 
-    Elevator2->>Elevator2: Assign Elevator1 as stale, Reassign calls to own elevator
+    Elevator2->>Elevator2: Assign Elevator1 as dead, Reassign calls to own elevator
     Elevator1->>Elevator1: No updates, remain idle/ serve own calls
     end
 

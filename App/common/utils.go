@@ -76,3 +76,23 @@ func BuildSnapshot(
 		UpdateKind: kind,
 	}
 }
+
+// RemoveDeadStates removes the elevator states for the nodes marked dead.
+func RemoveDeadStates(networkSnapshot *Snapshot, selfKey string) (isSelfAlive bool, hasAlivePeers bool) {
+	hasAlivePeers = false
+	isSelfAlive = true
+	for key, alive := range networkSnapshot.Alive {
+		if key == selfKey && !alive {
+			isSelfAlive = false
+		}
+		if !alive {
+			delete(networkSnapshot.States, key)
+		}
+		if key != selfKey && alive {
+			if _, hasState := networkSnapshot.States[key]; hasState {
+				hasAlivePeers = true
+			}
+		}
+	}
+	return isSelfAlive, hasAlivePeers
+}
