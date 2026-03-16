@@ -68,9 +68,9 @@ func (e *Elevator) ApplyNewRequests(requests common.Requests) {
 
 func (e *Elevator) onRequest(buttonFloor int, buttonType common.ButtonType) {
 	e.requests[buttonFloor][buttonType] = true
-	// if e.floor == -1 {
-	// 	e.floor = e.prevFloor
-	// }
+	if e.floor == -1 {
+		e.floor = e.prevFloor
+	}
 	if e.behaviour == EB_DoorOpen && buttonFloor == e.floor {
 		e.doorTimer = time.Now()
 		return
