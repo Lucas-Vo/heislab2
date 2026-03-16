@@ -43,14 +43,14 @@ func NewElevator() *Elevator {
 
 	if newFloor != -1 {
 		e.onFloorArrival(newFloor)
-		
+
 	} else {
 		e.outputDevice.MotorDirection(common.MD_Down)
 		e.dirn = common.MD_Down
 		e.behaviour = EB_Moving
-		e.prevFloor = 1
+		e.prevFloor = -1
 	}
-	
+
 	e.prevDirection = e.dirn
 	e.prevBehaviour = e.behaviour
 	return e
@@ -68,6 +68,9 @@ func (e *Elevator) ApplyNewRequests(requests common.Requests) {
 
 func (e *Elevator) onRequest(buttonFloor int, buttonType common.ButtonType) {
 	e.requests[buttonFloor][buttonType] = true
+	// if e.floor == -1 {
+	// 	e.floor = e.prevFloor
+	// }
 	if e.behaviour == EB_DoorOpen && buttonFloor == e.floor {
 		e.doorTimer = time.Now()
 		return

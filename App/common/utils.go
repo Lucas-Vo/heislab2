@@ -83,12 +83,12 @@ func BuildSnapshot(
 // RemoveDeadStates removes the elevator states for the nodes marked dead.
 func RemoveDeadStates(networkSnapshot *Snapshot, selfKey string) error {
 	err := errors.New("no elevator states marked alive")
-	for id, alive := range networkSnapshot.Alive {
-		if id == selfKey && !alive {
+	for key, alive := range networkSnapshot.Alive {
+		if key == selfKey && !alive {
 			return errors.New("local elevator is not alive, stopping assignment")
 		}
-		if !alive {
-			delete(networkSnapshot.States, id)
+		if !alive || networkSnapshot.States[key].Floor == -1 {
+			delete(networkSnapshot.States, key)
 		} else {
 			err = nil
 		}
