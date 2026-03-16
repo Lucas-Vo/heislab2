@@ -30,3 +30,49 @@ func GetCabRequests(in Requests) [N_FLOORS]bool {
 	}
 	return out
 }
+
+func BuildSnapshot(
+	selfKey string,
+	kind UpdateKind,
+	requestsCleared Requests,
+	floor int,
+	behavior string,
+	direction string,
+	netRequests Requests,
+	localRequests Requests,
+) Snapshot {
+	outRequests := netRequests
+	if kind == UpdateRequests {
+		for floor := range N_FLOORS {
+			if localRequests[floor][BT_HallUp] {
+				outRequests[floor][BT_HallUp] = true
+			}
+			if localRequests[floor][BT_HallDown] {
+				outRequests[floor][BT_HallDown] = true
+			}
+		}
+	}
+	if kind == UpdateServiced {
+		for floor := range N_FLOORS {
+			if requestsCleared[floor][BT_HallUp] {
+				outRequests[floor][BT_HallUp] = false
+			}
+			if requestsCleared[floor][BT_HallDown] {
+				outRequests[floor][BT_HallDown] = false
+			}
+		}
+	}
+
+	return Snapshot{
+		HallRequests: GetHallRequests(outRequests),
+		States: map[string]ElevState{
+			selfKey: {
+				Behavior:    behavior,
+				Floor:       floor,
+				Direction:   direction,
+				CabRequests: GetCabRequests(localRequests),
+			},
+		},
+		UpdateKind: kind,
+	}
+}

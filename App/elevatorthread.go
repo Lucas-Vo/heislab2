@@ -24,7 +24,8 @@ func elevatorThread(
 
 	//dummy
 	behavior, direction := elevator.MotionStrings()
-	initialSnapshot := sync.BuildSnapshot(common.UpdateRequests, common.Requests{}, elevator.GetPrevFloor(), behavior, direction)
+	initialSnapshot := common.BuildSnapshot(config.SelfKey, common.UpdateRequests, common.Requests{},
+		elevator.GetPrevFloor(), behavior, direction, sync.GetNetRequests(), sync.GetLocalRequests())
 	select {
 	case elevUpdateNetCh <- initialSnapshot:
 	default:
@@ -62,12 +63,14 @@ func elevatorThread(
 
 			if isServiced {
 				behavior, direction := elevator.MotionStrings()
-				snapshot := sync.BuildSnapshot(common.UpdateServiced, servicedRequests, elevator.GetPrevFloor(), behavior, direction)
+				snapshot := common.BuildSnapshot(config.SelfKey, common.UpdateServiced, servicedRequests,
+					elevator.GetPrevFloor(), behavior, direction, sync.GetNetRequests(), sync.GetLocalRequests())
 				elevUpdateNetCh <- snapshot
 
 			} else if elevStateChange || newButtonPressed {
 				behavior, direction := elevator.MotionStrings()
-				snapshot := sync.BuildSnapshot(common.UpdateRequests, common.Requests{}, elevator.GetPrevFloor(), behavior, direction)
+				snapshot := common.BuildSnapshot(config.SelfKey, common.UpdateRequests, common.Requests{},
+					elevator.GetPrevFloor(), behavior, direction, sync.GetNetRequests(), sync.GetLocalRequests())
 				select {
 				case elevUpdateNetCh <- snapshot:
 				default:
@@ -79,7 +82,8 @@ func elevatorThread(
 				continue
 			}
 			behavior, direction := elevator.MotionStrings()
-			snapshot := sync.BuildSnapshot(common.UpdateRequests, common.Requests{}, elevator.GetPrevFloor(), behavior, direction)
+			snapshot := common.BuildSnapshot(config.SelfKey, common.UpdateRequests, common.Requests{},
+				elevator.GetPrevFloor(), behavior, direction, sync.GetNetRequests(), sync.GetLocalRequests())
 			select {
 			case elevUpdateNetCh <- snapshot:
 			default:

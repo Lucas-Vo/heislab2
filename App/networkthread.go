@@ -44,35 +44,20 @@ func networkThread(
 		now := time.Now()
 		select {
 		case elevatorSnapshot := <-elevUpdateNetCh:
-			wv.SetSelfAlive(true)
 			elevatorErrorTimer.Reset(ELEVATOR_ERROR_TIMEOUT)
-			if elevatorSnapshot.UpdateKind == common.UpdateServiced {
-				wv.MarkRecentlyServicedHalls(elevatorSnapshot, now)
-			}
-			wv.MergeWorldView(config.SelfKey, elevatorSnapshot)
-			if !wv.SnapshotsAreCoherent() {
-				wv.Broadcast()
-			}
+			wv.HandleLocal(elevatorSnapshot, now)
 
 		case msg := <-incoming:
-			msgToMerge, filteredHalls, isFiltered := wv.FilterRecentlyServicedHalls(msg, now)
-
-			wv.MergeRemote(msgToMerge)
-			if isFiltered {
-				wv.CalculateAlive(now)
-				wv.ResendServicedHalls(filteredHalls)
-			}
-			wv.MergeWorldView(msgToMerge.Origin, msgToMerge.Snapshot)
-
+			wv.HandleRemote(msg, now)
 		case peerUpdate := <-peerUpdates:
 			wv.HandlePeerUpdate(peerUpdate, now)
 
 		case <-localTicker.C:
 			wv.CalculateAlive(now)
-			if !wv.SnapshotsAreCoherent() {
+			wv.PublishLocally(netUpdateAssignerCh, netUpdateElevCh)
+			if !wv.SnapshotsAreCoherent() { //broadcast more often if we notice inchoherency
 				wv.Broadcast()
 			}
-			wv.PublishLocally(netUpdateAssignerCh, netUpdateElevCh)
 
 		case <-broadcastTicker.C:
 			wv.Broadcast()
@@ -80,15 +65,12 @@ func networkThread(
 		case <-elevatorErrorTimer.C:
 			if wv.GetSelfAlive() {
 				wv.SetSelfAlive(false)
-				log.Printf("networkThread: No behavior change detected, marking Elevator as stale")
+				log.Printf("networkThread: No behavior change detected, marking Elevator as dead")
 			}
 
 		case <-startupTimer.C:
 			log.Printf("networkThread: forcing end of startup phase")
 			wv.EndStartupPeriod()
-
-		default:
-			time.Sleep(10 * time.Millisecond)
 		}
 	}
 }

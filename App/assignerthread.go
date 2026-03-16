@@ -62,8 +62,6 @@ func assignerThread(config common.Config, netUpdateAssignerCh <-chan common.Snap
 
 		case <-networkTimeout.C:
 			log.Println("Snapshot from network update timeout, withholding updates until next network ack")
-		default:
-			time.Sleep(10 * time.Millisecond)
 		}
 	}
 }

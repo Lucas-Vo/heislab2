@@ -143,52 +143,14 @@ func (sync *Synchronizer) ClearServicedRequests(floor int, serviced common.Reque
 	}
 }
 
-func (sync *Synchronizer) BuildSnapshot(
-	kind common.UpdateKind,
-	requestsCleared common.Requests,
-	floor int,
-	behavior string,
-	direction string,
-) common.Snapshot {
-	outRequests := sync.netRequests
-	if kind == common.UpdateRequests {
-		for f := range common.N_FLOORS {
-			if sync.localRequests[f][common.BT_HallUp] {
-				outRequests[f][common.BT_HallUp] = true
-			}
-			if sync.localRequests[f][common.BT_HallDown] {
-				outRequests[f][common.BT_HallDown] = true
-			}
-		}
-	}
-	if kind == common.UpdateServiced {
-		for floor := range common.N_FLOORS {
-			if requestsCleared[floor][common.BT_HallUp] {
-				outRequests[floor][common.BT_HallUp] = false
-			}
-			if requestsCleared[floor][common.BT_HallDown] {
-				outRequests[floor][common.BT_HallDown] = false
-			}
-		}
-	}
-	return common.Snapshot{
-		HallRequests: common.GetHallRequests(outRequests),
-		States: map[string]common.ElevState{
-			sync.selfKey: {
-				Behavior:    behavior,
-				Floor:       floor,
-				Direction:   direction,
-				CabRequests: common.GetCabRequests(sync.localRequests),
-			},
-		},
-		UpdateKind: kind,
-	}
-}
-
 func (sync *Synchronizer) HasAlivePeer() bool { return sync.hasAlivePeer }
 
 func (sync *Synchronizer) IsInitFromNetwork() bool { return sync.initFromNetwork }
 
-func (sync *Synchronizer) GetNetRequests() [common.N_FLOORS][common.N_BUTTONS]bool {
+func (sync *Synchronizer) GetLocalRequests() common.Requests {
+	return sync.localRequests
+}
+
+func (sync *Synchronizer) GetNetRequests() common.Requests {
 	return sync.netRequests
 }
