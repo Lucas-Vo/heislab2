@@ -30,12 +30,12 @@ type WorldView struct {
 
 	msgCounter  uint64
 	latestCount map[string]uint64
-	msgTxCh     chan<- common.NetMsg
+	outgoingCh  chan<- common.NetMsg
 }
 
-func InitWorldView(cfg common.Config, outgoing chan<- common.NetMsg) *WorldView {
+func InitWorldView(config common.Config, outgoing chan<- common.NetMsg) *WorldView {
 	wv := &WorldView{
-		peers: cfg.ExpectedKeys(),
+		peers: config.ExpectedKeys(),
 		localSnapshot: common.Snapshot{
 			HallRequests: [common.N_FLOORS][2]bool{},
 			States:       make(map[string]common.ElevState),
@@ -43,11 +43,11 @@ func InitWorldView(cfg common.Config, outgoing chan<- common.NetMsg) *WorldView 
 		},
 		lastHeard:       make(map[string]time.Time),
 		lastSnapshot:    make(map[string]common.Snapshot),
-		selfKey:         cfg.SelfKey,
+		selfKey:         config.SelfKey,
 		selfAlive:       true,
 		latestCount:     make(map[string]uint64),
 		inStartupPeriod: true,
-		msgTxCh:         outgoing,
+		outgoingCh:      outgoing,
 	}
 	wv.CalculateAlive(time.Now())
 
@@ -256,7 +256,7 @@ func (wv *WorldView) CalculateAlive(now time.Time) {
 
 func (wv *WorldView) sendOverNetwork(snap common.Snapshot) {
 	wv.mu.Lock()
-	if !wv.selfAlive || wv.msgTxCh == nil {
+	if !wv.selfAlive || wv.outgoingCh == nil {
 		wv.mu.Unlock()
 		return
 	}
@@ -267,7 +267,7 @@ func (wv *WorldView) sendOverNetwork(snap common.Snapshot) {
 	wv.mu.Unlock()
 
 	select {
-	case wv.msgTxCh <- msg:
+	case wv.outgoingCh <- msg:
 	default:
 		log.Printf("sendOverNetwork: dropping frame origin=%s counter=%d kind=%v (tx queue full)", msg.Origin, msg.Counter, snap.UpdateKind)
 	}

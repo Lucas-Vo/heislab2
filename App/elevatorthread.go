@@ -23,7 +23,8 @@ func elevatorThread(
 	elevator := elevfsm.NewElevator()
 
 	//dummy
-	initialSnapshot := sync.BuildSnapshot(elevator, common.UpdateRequests, common.Requests{})
+	behavior, direction := elevator.MotionStrings()
+	initialSnapshot := sync.BuildSnapshot(common.UpdateRequests, common.Requests{}, elevator.GetPrevFloor(), behavior, direction)
 	select {
 	case elevUpdateNetCh <- initialSnapshot:
 	default:
@@ -38,10 +39,10 @@ func elevatorThread(
 	for {
 		now := time.Now()
 		select {
-		case snap := <-netUpdateElevCh:
-			sync.HandleNetworkSnapshot(snap, now)
+		case networkSnapshot := <-netUpdateElevCh:
+			sync.HandleNetworkSnapshot(networkSnapshot, now)
 
-			if snap.Coherent {
+			if networkSnapshot.Coherent {
 				elevator.SetLights(sync.GetNetRequests())
 			}
 
@@ -60,26 +61,29 @@ func elevatorThread(
 			sync.ClearServicedRequests(elevator.GetPrevFloor(), servicedRequests)
 
 			if isServiced {
-				snapshot := sync.BuildSnapshot(elevator, common.UpdateServiced, servicedRequests)
+				behavior, direction := elevator.MotionStrings()
+				snapshot := sync.BuildSnapshot(common.UpdateServiced, servicedRequests, elevator.GetPrevFloor(), behavior, direction)
 				elevUpdateNetCh <- snapshot
 
 			} else if elevStateChange || newButtonPressed {
-				snapshot := sync.BuildSnapshot(elevator, common.UpdateRequests, common.Requests{})
+				behavior, direction := elevator.MotionStrings()
+				snapshot := sync.BuildSnapshot(common.UpdateRequests, common.Requests{}, elevator.GetPrevFloor(), behavior, direction)
 				select {
 				case elevUpdateNetCh <- snapshot:
 				default:
-					log.Printf("fsmThread: elevUpdateCh is full, skipping snapshot update")
+					log.Printf("fsmThread: elevSnapNetCh is full, skipping snapshot update")
 				}
 			}
 		case <-idleTicker.C:
 			if !elevator.IsIdle() {
 				continue
 			}
-			snapshot := sync.BuildSnapshot(elevator, common.UpdateRequests, common.Requests{})
+			behavior, direction := elevator.MotionStrings()
+			snapshot := sync.BuildSnapshot(common.UpdateRequests, common.Requests{}, elevator.GetPrevFloor(), behavior, direction)
 			select {
 			case elevUpdateNetCh <- snapshot:
 			default:
-				log.Printf("fsmThread: elevUpdateCh is full, skipping snapshot update")
+				log.Printf("fsmThread: elevSnapNetCh is full, skipping snapshot update")
 			}
 		}
 	}

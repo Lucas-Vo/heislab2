@@ -144,9 +144,11 @@ func (sync *Synchronizer) ClearServicedRequests(floor int, serviced common.Reque
 }
 
 func (sync *Synchronizer) BuildSnapshot(
-	elevator *Elevator,
 	kind common.UpdateKind,
 	requestsCleared common.Requests,
+	floor int,
+	behavior string,
+	direction string,
 ) common.Snapshot {
 	outRequests := sync.netRequests
 	if kind == common.UpdateRequests {
@@ -169,13 +171,12 @@ func (sync *Synchronizer) BuildSnapshot(
 			}
 		}
 	}
-	behavior, direction := elevator.motionStrings()
 	return common.Snapshot{
 		HallRequests: common.GetHallRequests(outRequests),
 		States: map[string]common.ElevState{
 			sync.selfKey: {
 				Behavior:    behavior,
-				Floor:       elevator.GetPrevFloor(),
+				Floor:       floor,
 				Direction:   direction,
 				CabRequests: common.GetCabRequests(sync.localRequests),
 			},

@@ -18,15 +18,15 @@ const (
 )
 
 func networkThread(
-	cfg common.Config,
-	elevUpdateCh <-chan common.Snapshot,
-	netUpdateAssignerCh chan<- common.Snapshot,
-	netUpdateElevCh chan<- common.Snapshot,
+	config common.Config,
+	elevUpdateNetCh <-chan common.Snapshot, // elev -> net
+	netUpdateAssignerCh chan<- common.Snapshot, // net -> assigner
+	netUpdateElevCh chan<- common.Snapshot, // net -> elev
 	incoming <-chan common.NetMsg,
 	outgoing chan<- common.NetMsg,
 	peerUpdates <-chan peers.PeerUpdate,
 ) {
-	wv := elevnetwork.InitWorldView(cfg, outgoing)
+	wv := elevnetwork.InitWorldView(config, outgoing)
 
 	localTicker := time.NewTicker(LOCAL_PUBLISH_PERIOD)
 	defer localTicker.Stop()
@@ -43,13 +43,13 @@ func networkThread(
 	for {
 		now := time.Now()
 		select {
-		case ns := <-elevUpdateCh:
+		case elevatorSnapshot := <-elevUpdateNetCh:
 			wv.SetSelfAlive(true)
 			elevatorErrorTimer.Reset(ELEVATOR_ERROR_TIMEOUT)
-			if ns.UpdateKind == common.UpdateServiced {
-				wv.MarkRecentlyServicedHalls(ns, now)
+			if elevatorSnapshot.UpdateKind == common.UpdateServiced {
+				wv.MarkRecentlyServicedHalls(elevatorSnapshot, now)
 			}
-			wv.MergeWorldView(cfg.SelfKey, ns)
+			wv.MergeWorldView(config.SelfKey, elevatorSnapshot)
 			if !wv.SnapshotsAreCoherent() {
 				wv.Broadcast()
 			}

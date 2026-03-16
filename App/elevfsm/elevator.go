@@ -179,7 +179,7 @@ func (e *Elevator) SetLights(requests common.Requests) {
 	}
 }
 
-func (e *Elevator) motionStrings() (behavior string, direction string) {
+func (e *Elevator) MotionStrings() (behavior string, direction string) {
 	switch e.behaviour {
 	case EB_Idle:
 		behavior = "idle"
@@ -203,6 +203,10 @@ func (e *Elevator) motionStrings() (behavior string, direction string) {
 	return behavior, direction
 }
 
+func (e *Elevator) SetStopLight(online bool) {
+	e.outputDevice.StopButtonLight(!online)
+}
+
 func (e *Elevator) onFloorArrival(newFloor int) {
 	fmt.Println("landed on floor: ", newFloor)
 	e.floor = newFloor
@@ -212,10 +216,6 @@ func (e *Elevator) onFloorArrival(newFloor int) {
 		e.outputDevice.DoorLight(true)
 		e.behaviour = EB_DoorOpen
 	}
-}
-
-func (e *Elevator) SetStopLight(online bool) {
-	e.outputDevice.StopButtonLight(!online)
 }
 
 func (e *Elevator) chooseNewDirAtFloor(floor int, fallback common.MotorDirection) common.MotorDirection {
