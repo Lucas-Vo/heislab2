@@ -5,11 +5,6 @@ import (
 	"time"
 )
 
-const (
-	NET_OFFLINE_TIMEOUT = 3 * time.Second
-	NEW_REQUEST_TIMEOUT = 200 * time.Millisecond
-)
-
 type Synchronizer struct {
 	selfKey string
 

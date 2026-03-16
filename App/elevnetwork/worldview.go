@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	WV_TIMEOUT           = 6 * time.Second
+	WV_TIMEOUT           = 4 * time.Second
 	VALID_SERVICE_WINDOW = 2 * time.Second
 	VALID_COUNTER_WINDOW = 20
 )
@@ -206,6 +206,8 @@ func (wv *WorldView) mergeRemote(msg common.NetMsg) {
 		log.Printf("iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii")
 	case "3":
 		log.Printf("####################################################################################################################################")
+	default:
+		log.Printf("Unknown id")
 	}
 	now := time.Now()
 	prevCounter := wv.latestCount[msg.Origin]
