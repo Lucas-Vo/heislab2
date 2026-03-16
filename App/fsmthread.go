@@ -51,12 +51,12 @@ func elevatorThread(
 
 		case <-ticker.C:
 			buttonPresses, newButtonPressed := elevator.PollButtonPresses()
-			cabsToInject := sync.HandleButtonPresses(buttonPresses, elevator.GetFloor(), now)
-			elevator.ApplyInjectRequests(cabsToInject)
+			newCabRequests := sync.HandleButtonPresses(buttonPresses, elevator.GetFloor(), now)
+			elevator.ApplyNewRequests(newCabRequests)
 
 			elevStateChange, servicedRequests, isServiced := elevator.Tick(now)
 
-			elevator.ApplyInjectRequests(sync.ReadyInjects(now))
+			elevator.ApplyNewRequests(sync.ReadyInjects(now))
 			sync.ClearServicedRequests(elevator.GetPrevFloor(), servicedRequests)
 
 			if isServiced {

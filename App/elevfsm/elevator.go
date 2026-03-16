@@ -54,7 +54,7 @@ func NewElevator() *Elevator {
 	return e
 }
 
-func (e *Elevator) ApplyInjectRequests(requests common.Requests) {
+func (e *Elevator) ApplyNewRequests(requests common.Requests) {
 	for floor := range common.N_FLOORS {
 		for button := range common.ButtonType(common.N_BUTTONS) {
 			if requests[floor][button] {
