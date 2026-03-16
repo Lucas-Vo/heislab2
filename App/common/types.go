@@ -22,6 +22,12 @@ type Snapshot struct {
 	UpdateKind   UpdateKind           `json:"type"`
 }
 
+type NetMsg struct {
+	Origin   string   `json:"origin"`
+	Counter  uint64   `json:"counter"`
+	Snapshot Snapshot `json:"snapshot"`
+}
+
 type ElevInput struct {
 	HallTask [N_FLOORS][2]bool `json:"HallTask"`
 }

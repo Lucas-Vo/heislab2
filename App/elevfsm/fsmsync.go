@@ -17,10 +17,10 @@ type FsmSync struct {
 	hasAlivePeer    bool
 	coherent        bool
 
-	assignedHall [common.N_FLOORS][2]bool
-	netCalls     common.Requests
-	localCalls   common.Requests
-	injected     common.Requests
+	assignedHall     [common.N_FLOORS][2]bool
+	netRequests      common.Requests
+	localRequests    common.Requests
+	injectedRequests common.Requests
 }
 
 func NewFsmSync(config common.Config) *FsmSync {
@@ -39,76 +39,76 @@ func (sync *FsmSync) HandleNetworkSnapshot(snapshot common.Snapshot, now time.Ti
 		}
 	}
 	for floor := range common.N_FLOORS {
-		sync.netCalls[floor][0] = snapshot.HallRequests[floor][0]
-		sync.netCalls[floor][1] = snapshot.HallRequests[floor][1]
-		sync.netCalls[floor][common.BT_Cab] = false
+		sync.netRequests[floor][0] = snapshot.HallRequests[floor][0]
+		sync.netRequests[floor][1] = snapshot.HallRequests[floor][1]
+		sync.netRequests[floor][common.BT_Cab] = false
 	}
 	if state, ok := snapshot.States[sync.selfKey]; ok {
 		sync.initFromNetwork = true
 		for floor := 0; floor < common.N_FLOORS && floor < len(state.CabRequests); floor++ {
-			sync.netCalls[floor][common.BT_Cab] = state.CabRequests[floor]
+			sync.netRequests[floor][common.BT_Cab] = state.CabRequests[floor]
 		}
 	}
 
 	for floor := range common.N_FLOORS {
 		for button := range common.ButtonType(common.N_BUTTONS) {
-			if sync.netCalls[floor][button] {
+			if sync.netRequests[floor][button] {
 				if button == common.BT_Cab {
-					sync.localCalls[floor][button] = true
+					sync.localRequests[floor][button] = true
 				}
 				continue
 			}
-			sync.localCalls[floor][button] = false
-			sync.injected[floor][button] = false
+			sync.localRequests[floor][button] = false
+			sync.injectedRequests[floor][button] = false
 		}
 	}
 }
 
-func (sync *FsmSync) HandleAssignerTask(task common.ElevInput) (toClear common.Requests) {
+func (sync *FsmSync) HandleAssignerTask(task common.ElevInput) (toRevoke common.Requests) {
 	previousAssignment := sync.assignedHall
 	sync.assignedHall = task.HallTask
 
 	for floor := range previousAssignment {
 		if previousAssignment[floor][0] && !sync.assignedHall[floor][0] {
-			sync.injected[floor][common.BT_HallUp] = false
-			sync.localCalls[floor][common.BT_HallUp] = false
-			toClear[floor][common.BT_HallUp] = true
+			sync.injectedRequests[floor][common.BT_HallUp] = false
+			sync.localRequests[floor][common.BT_HallUp] = false
+			toRevoke[floor][common.BT_HallUp] = true
 		}
 		if previousAssignment[floor][1] && !sync.assignedHall[floor][1] {
-			sync.injected[floor][common.BT_HallDown] = false
-			sync.localCalls[floor][common.BT_HallDown] = false
-			toClear[floor][common.BT_HallDown] = true
+			sync.injectedRequests[floor][common.BT_HallDown] = false
+			sync.localRequests[floor][common.BT_HallDown] = false
+			toRevoke[floor][common.BT_HallDown] = true
 		}
 	}
-	return toClear
+	return toRevoke
 }
 
-func (sync *FsmSync) HandleLocalButtonPresses(edgePresses common.Requests, currentFloor int, now time.Time) (toInject common.Requests) {
+func (sync *FsmSync) HandleButtonPresses(edgePresses common.Requests, currentFloor int, now time.Time) (cabsToInject common.Requests) {
 	for floor := range common.N_FLOORS {
 		for button := range common.ButtonType(common.N_BUTTONS) {
 			if !edgePresses[floor][button] {
 				continue
 			}
-			sync.localCalls[floor][button] = true
-			if button == common.BT_Cab  {
-				toInject[floor][button] = true
+			sync.localRequests[floor][button] = true
+			if button == common.BT_Cab {
+				cabsToInject[floor][button] = true
 				sync.markInjected(floor, button)
 			}
 		}
 	}
-	return toInject
+	return cabsToInject
 }
 
 func (sync *FsmSync) ReadyInjects(now time.Time) (toInject common.Requests) {
 	for floor := range common.N_FLOORS {
 		for button := range common.ButtonType(common.N_BUTTONS) {
-			callActive := sync.localCalls[floor][button]
+			requestActive := sync.localRequests[floor][button]
 			if sync.hasAlivePeer && button != common.BT_Cab {
-				callActive = sync.coherent && sync.netCalls[floor][button]
+				requestActive = sync.coherent && sync.netRequests[floor][button]
 			} else if button != common.BT_Cab {
-				callActive = sync.netCalls[floor][button] || sync.localCalls[floor][button]
+				requestActive = sync.netRequests[floor][button] || sync.localRequests[floor][button]
 			}
-			if !callActive || sync.injected[floor][button] {
+			if !requestActive || sync.injectedRequests[floor][button] {
 				continue
 			}
 
@@ -132,10 +132,10 @@ func (sync *FsmSync) ClearServicedRequests(floor int, serviced common.Requests) 
 	}
 	for button := range common.ButtonType(common.N_BUTTONS) {
 		if serviced[floor][button] {
-			sync.localCalls[floor][button] = false
+			sync.localRequests[floor][button] = false
 			// Ensure lamps and local world-view reflect service immediately.
-			sync.netCalls[floor][button] = false
-			sync.injected[floor][button] = false
+			sync.netRequests[floor][button] = false
+			sync.injectedRequests[floor][button] = false
 		}
 	}
 }
@@ -143,38 +143,38 @@ func (sync *FsmSync) ClearServicedRequests(floor int, serviced common.Requests) 
 func (sync *FsmSync) BuildSnapshot(
 	elevator *Elevator,
 	kind common.UpdateKind,
-	callsCleared common.Requests,
+	requestsCleared common.Requests,
 ) common.Snapshot {
-	outCalls := sync.netCalls
+	outRequests := sync.netRequests
 	if kind == common.UpdateRequests {
 		for f := range common.N_FLOORS {
-			if sync.localCalls[f][common.BT_HallUp] {
-				outCalls[f][common.BT_HallUp] = true
+			if sync.localRequests[f][common.BT_HallUp] {
+				outRequests[f][common.BT_HallUp] = true
 			}
-			if sync.localCalls[f][common.BT_HallDown] {
-				outCalls[f][common.BT_HallDown] = true
+			if sync.localRequests[f][common.BT_HallDown] {
+				outRequests[f][common.BT_HallDown] = true
 			}
 		}
 	}
 	if kind == common.UpdateServiced {
 		for floor := range common.N_FLOORS {
-			if callsCleared[floor][common.BT_HallUp] {
-				outCalls[floor][common.BT_HallUp] = false
+			if requestsCleared[floor][common.BT_HallUp] {
+				outRequests[floor][common.BT_HallUp] = false
 			}
-			if callsCleared[floor][common.BT_HallDown] {
-				outCalls[floor][common.BT_HallDown] = false
+			if requestsCleared[floor][common.BT_HallDown] {
+				outRequests[floor][common.BT_HallDown] = false
 			}
 		}
 	}
 	behavior, direction := elevator.motionStrings()
 	return common.Snapshot{
-		HallRequests: common.GetHallCalls(outCalls),
+		HallRequests: common.GetHallRequests(outRequests),
 		States: map[string]common.ElevState{
 			sync.selfKey: {
 				Behavior:    behavior,
 				Floor:       elevator.GetPrevFloor(),
 				Direction:   direction,
-				CabRequests: common.GetCabCalls(sync.localCalls),
+				CabRequests: common.GetCabRequests(sync.localRequests),
 			},
 		},
 		UpdateKind: kind,
@@ -186,10 +186,10 @@ func (sync *FsmSync) HasAlivePeer() bool { return sync.hasAlivePeer }
 func (sync *FsmSync) IsInitFromNetwork() bool { return sync.initFromNetwork }
 
 func (sync *FsmSync) markInjected(floor int, button common.ButtonType) {
-	sync.injected[floor][button] = true
-	sync.localCalls[floor][button] = true
+	sync.injectedRequests[floor][button] = true
+	sync.localRequests[floor][button] = true
 }
 
-func (sync *FsmSync) GetNetCalls() [common.N_FLOORS][common.N_BUTTONS]bool {
-	return sync.netCalls
+func (sync *FsmSync) GetNetRequests() [common.N_FLOORS][common.N_BUTTONS]bool {
+	return sync.netRequests
 }

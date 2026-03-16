@@ -2,6 +2,7 @@
 package main
 
 import (
+	"Network-go/network/peers"
 	"log"
 	"time"
 
@@ -21,8 +22,11 @@ func networkThread(
 	elevUpdateCh <-chan common.Snapshot,
 	netUpdateAssignerCh chan<- common.Snapshot,
 	netUpdateElevCh chan<- common.Snapshot,
+	incoming <-chan common.NetMsg,
+	outgoing chan<- common.NetMsg,
+	peerUpdates <-chan peers.PeerUpdate,
 ) {
-	wv, incoming, peerUpdates := elevnetwork.InitWorldView(cfg)
+	wv := elevnetwork.InitWorldView(cfg, outgoing)
 
 	localTicker := time.NewTicker(LOCAL_PUBLISH_PERIOD)
 	defer localTicker.Stop()

@@ -84,7 +84,7 @@ func (e *Elevator) onRequest(buttonFloor int, buttonType common.ButtonType) {
 	}
 }
 
-func (e *Elevator) ApplyClearRequests(requests common.Requests) {
+func (e *Elevator) RevokeRequest(requests common.Requests) {
 	for floor := range common.N_FLOORS {
 		for button := range common.ButtonType(common.N_BUTTONS) {
 			if requests[floor][button] {
@@ -110,8 +110,8 @@ func (e *Elevator) PollButtonPresses() (buttonPresses common.Requests, hadPress 
 	return buttonPresses, hadPress
 }
 
-func (e *Elevator) Tick(now time.Time) (stateChanged bool, servicedCalls common.Requests, isServiced bool) {
-	servicedCalls = common.Requests{}
+func (e *Elevator) Tick(now time.Time) (stateChanged bool, servicedRequests common.Requests, isServiced bool) {
+	servicedRequests = common.Requests{}
 	isServiced = false
 
 	isObstructed := e.inputDevice.Obstruction()
@@ -143,15 +143,15 @@ func (e *Elevator) Tick(now time.Time) (stateChanged bool, servicedCalls common.
 	e.prevDirection = e.dirn
 
 	if e.prevBehaviour == EB_DoorOpen && now.Sub(e.doorTimer) >= DOOR_OPEN_DURATION {
-		servicedCalls = e.onDoorTimerExpiry(now)
+		servicedRequests = e.onDoorTimerExpiry(now)
 		isServiced = true
 	}
-	return stateChanged, servicedCalls, isServiced
+	return stateChanged, servicedRequests, isServiced
 }
 
-func (e *Elevator) onDoorTimerExpiry(now time.Time) (servicedCalls common.Requests) {
+func (e *Elevator) onDoorTimerExpiry(now time.Time) (servicedRequests common.Requests) {
 	e.doorTimer = now
-	servicedCalls, nextAnnounceDirection := e.OnDoorClose(e.prevFloor, e.announceDir)
+	servicedRequests, nextAnnounceDirection := e.OnDoorClose(e.prevFloor, e.announceDir)
 
 	pair := requests_chooseDirection(e.requests, e.floor, e.dirn)
 	e.dirn = pair.dirn
@@ -162,7 +162,7 @@ func (e *Elevator) onDoorTimerExpiry(now time.Time) (servicedCalls common.Reques
 	}
 	e.announceDir = nextAnnounceDirection
 
-	return servicedCalls
+	return servicedRequests
 }
 
 func (e *Elevator) GetPrevFloor() int { return e.prevFloor }
@@ -171,10 +171,10 @@ func (e *Elevator) GetFloor() int { return e.inputDevice.FloorSensor() }
 
 func (e *Elevator) IsIdle() bool { return e.behaviour == EB_Idle }
 
-func (e *Elevator) SetLights(calls common.Requests) {
+func (e *Elevator) SetLights(requests common.Requests) {
 	for floor := range common.N_FLOORS {
 		for btn := range common.ButtonType(common.N_BUTTONS) {
-			e.outputDevice.RequestButtonLight(floor, btn, calls[floor][btn])
+			e.outputDevice.RequestButtonLight(floor, btn, requests[floor][btn])
 		}
 	}
 }

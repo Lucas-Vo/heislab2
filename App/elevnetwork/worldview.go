@@ -1,7 +1,6 @@
 package elevnetwork
 
 import (
-	"Network-go/network/bcast"
 	"Network-go/network/peers"
 	"elevator/common"
 	"log"
@@ -12,16 +11,8 @@ import (
 const (
 	WV_TIMEOUT           = 6 * time.Second
 	VALID_SERVICE_WINDOW = 2 * time.Second
-
-	NETWORK_CHAN_SIZE    = 128
 	VALID_COUNTER_WINDOW = 20
 )
-
-type netMsg struct {
-	Origin   string          `json:"origin"`
-	Counter  uint64          `json:"counter"`
-	Snapshot common.Snapshot `json:"snapshot"`
-}
 
 type WorldView struct {
 	mu      sync.Mutex
@@ -39,20 +30,10 @@ type WorldView struct {
 
 	msgCounter  uint64
 	latestCount map[string]uint64
-	msgTxCh     chan<- netMsg
+	msgTxCh     chan<- common.NetMsg
 }
 
-func InitWorldView(cfg common.Config) (*WorldView, <-chan netMsg, <-chan peers.PeerUpdate) { // TODO: Inits worldview, but also inits network. Place thi otherwhere
-	incoming := make(chan netMsg, NETWORK_CHAN_SIZE)
-	outgoing := make(chan netMsg, NETWORK_CHAN_SIZE)
-	peerUpdateCh := make(chan peers.PeerUpdate, NETWORK_CHAN_SIZE)
-	peerTxEnable := make(chan bool, 1)
-
-	go peers.Transmitter(cfg.PeerPort, cfg.SelfKey, peerTxEnable)
-	go peers.Receiver(cfg.PeerPort, peerUpdateCh)
-	go bcast.Transmitter(cfg.MsgPort, outgoing)
-	go bcast.Receiver(cfg.MsgPort, incoming)
-
+func InitWorldView(cfg common.Config, outgoing chan<- common.NetMsg) *WorldView {
 	wv := &WorldView{
 		peers: cfg.ExpectedKeys(),
 		localSnapshot: common.Snapshot{
@@ -74,7 +55,7 @@ func InitWorldView(cfg common.Config) (*WorldView, <-chan netMsg, <-chan peers.P
 	initialSnapshot.UpdateKind = common.UpdateRequests
 	wv.sendOverNetwork(initialSnapshot)
 
-	return wv, incoming, peerUpdateCh
+	return wv
 }
 
 func (wv *WorldView) EndStartupPeriod() {
@@ -184,7 +165,7 @@ func (wv *WorldView) MarkRecentlyServicedHalls(ns common.Snapshot, now time.Time
 	}
 }
 
-func (wv *WorldView) FilterRecentlyServicedHalls(msg netMsg, now time.Time) (netMsg, [common.N_FLOORS][2]bool, bool) {
+func (wv *WorldView) FilterRecentlyServicedHalls(msg common.NetMsg, now time.Time) (common.NetMsg, [common.N_FLOORS][2]bool, bool) {
 	var serviced [common.N_FLOORS][2]bool
 	msgIsFiltered := false
 	if msg.Origin == "" || msg.Origin == wv.selfKey {
@@ -221,7 +202,7 @@ func (wv *WorldView) ResendServicedHalls(serviced [common.N_FLOORS][2]bool) {
 	wv.sendOverNetwork(snap)
 }
 
-func (wv *WorldView) MergeRemote(msg netMsg) {
+func (wv *WorldView) MergeRemote(msg common.NetMsg) {
 	wv.mu.Lock()
 	defer wv.mu.Unlock()
 	if msg.Origin == wv.selfKey || msg.Origin == "" {
@@ -280,7 +261,7 @@ func (wv *WorldView) sendOverNetwork(snap common.Snapshot) {
 		return
 	}
 	wv.msgCounter++
-	msg := netMsg{Origin: wv.selfKey, Counter: wv.msgCounter, Snapshot: snap}
+	msg := common.NetMsg{Origin: wv.selfKey, Counter: wv.msgCounter, Snapshot: snap}
 	wv.lastHeard[wv.selfKey] = time.Now()
 	wv.lastSnapshot[wv.selfKey] = common.DeepCopySnapshot(snap)
 	wv.mu.Unlock()
