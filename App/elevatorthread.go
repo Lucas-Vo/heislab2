@@ -53,8 +53,11 @@ func elevatorThread(
 
 		case <-ticker.C:
 			buttonPresses, newButtonPressed := elevator.PollButtonPresses()
-			newCabRequests := sync.HandleButtonPresses(buttonPresses, elevator.GetFloor(), now)
+			newCabRequests, newHallRequests := sync.HandleButtonPresses(buttonPresses, elevator.GetFloor(), now)
 			elevator.ApplyNewRequests(newCabRequests)
+			if !sync.HasAlivePeer() {
+				elevator.ApplyNewRequests(newHallRequests)
+			}
 
 			elevStateChange, servicedRequests, isServiced := elevator.UpdateFSM(now)
 
