@@ -233,6 +233,9 @@ func (wv *WorldView) markRecentlyServicedRequests(ns common.Snapshot, now time.T
 func (wv *WorldView) filterRecentlyServicedHalls(snapshot common.Snapshot, now time.Time) (common.Snapshot, common.HallRequests, bool) {
 	var serviced common.HallRequests
 	snapIsFiltered := false
+	if wv.inStartupPeriod {
+		return snapshot, serviced, snapIsFiltered
+	}
 
 	for floor := range elevhw.N_FLOORS {
 		for button := 0; button < 2; button++ {
