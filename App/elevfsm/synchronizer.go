@@ -143,8 +143,6 @@ func (sync *RequestManager) ClearServicedRequests(floor int, serviced common.Req
 
 func (sync *RequestManager) HasAlivePeer() bool { return sync.hasAlivePeer }
 
-func (sync *RequestManager) IsInitFromNetwork() bool { return sync.initFromNetwork }
-
 func (sync *RequestManager) GetLocalRequests() common.Requests {
 	return sync.localRequests
 }
