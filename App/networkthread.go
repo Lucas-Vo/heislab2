@@ -1,11 +1,10 @@
 package main
 
 import (
-	"log"
-	"time"
-
 	"elevator/common"
 	"elevator/elevnetwork"
+	"log"
+	"time"
 )
 
 const (
@@ -30,11 +29,11 @@ func networkThread(
 	initialSnapshot.UpdateKind = common.UK_Requests
 	network.SendSnapshot(initialSnapshot, wv.GetSelfAlive())
 
-	localTicker := time.NewTicker(LOCAL_PUBLISH_PERIOD)
-	defer localTicker.Stop()
+	localPublishTicker := time.NewTicker(LOCAL_PUBLISH_PERIOD)
+	defer localPublishTicker.Stop()
 
-	broadcastTicker := time.NewTicker(BROADCAST_PERIOD)
-	defer broadcastTicker.Stop()
+	heartbeatTicker := time.NewTicker(BROADCAST_PERIOD)
+	defer heartbeatTicker.Stop()
 
 	startupTimer := time.NewTimer(INITIAL_CONTACT_TIMEOUT)
 	defer startupTimer.Stop()
@@ -49,21 +48,21 @@ func networkThread(
 			elevatorErrorTimer.Reset(ELEVATOR_ERROR_TIMEOUT)
 			wv.HandleLocal(elevatorSnapshot, now)
 
-		case msg := <-network.Incoming():
-			filteredHalls, isFiltered := wv.HandleRemote(msg, now)
+		case incomingMsg := <-network.Incoming():
+			filteredHallRequests, isFiltered := wv.HandleRemote(incomingMsg, now)
 			if isFiltered { // resend serviced request if inchoerent
-				snapshot := wv.ReapplyServicedHalls(filteredHalls)
+				snapshot := wv.ReapplyServicedHalls(filteredHallRequests)
 				network.SendSnapshot(snapshot, wv.GetSelfAlive())
 			}
 		case peerUpdate := <-network.PeerUpdates():
 			wv.HandlePeerUpdate(peerUpdate, now)
 
-		case <-localTicker.C:
+		case <-localPublishTicker.C:
 			wv.CalculateAlivePeers(now)
-			snapshot, ok := network.LastSentSnapshot()
+			lastSnapshot, ok := network.LastSentSnapshot()
 			isCoherent := false
 			if ok {
-				isCoherent = wv.SnapshotsAreCoherent(snapshot)
+				isCoherent = wv.SnapshotsAreCoherent(lastSnapshot)
 			}
 			wv.PublishLocally(netUpdateAssignerCh, netUpdateElevCh, isCoherent)
 			if !isCoherent { //broadcast more often if incoherent
@@ -71,7 +70,7 @@ func networkThread(
 				network.SendSnapshot(snapshot, wv.GetSelfAlive())
 			}
 
-		case <-broadcastTicker.C:
+		case <-heartbeatTicker.C:
 			snapshot := wv.SnapshotForBroadcast()
 			network.SendSnapshot(snapshot, wv.GetSelfAlive())
 

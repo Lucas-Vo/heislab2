@@ -130,9 +130,6 @@ func (sync *RequestManager) TransferReadyRequests() (toTransfer common.Requests)
 }
 
 func (sync *RequestManager) ClearServicedRequests(floor int, serviced common.Requests) {
-	if floor < 0 || floor >= elevhw.N_FLOORS {
-		return
-	}
 	for button := range elevhw.ButtonType(elevhw.N_BUTTONS) {
 		if serviced[floor][button] {
 			sync.localRequests[floor][button] = false
@@ -144,10 +141,6 @@ func (sync *RequestManager) ClearServicedRequests(floor int, serviced common.Req
 
 func (sync *RequestManager) HasAlivePeer() bool { return sync.hasAlivePeer }
 
-func (sync *RequestManager) GetLocalRequests() common.Requests {
-	return sync.localRequests
-}
+func (sync *RequestManager) GetLocalRequests() common.Requests { return sync.localRequests }
 
-func (sync *RequestManager) GetNetRequests() common.Requests {
-	return sync.netRequests
-}
+func (sync *RequestManager) GetNetRequests() common.Requests { return sync.netRequests }

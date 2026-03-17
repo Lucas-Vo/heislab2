@@ -1,16 +1,15 @@
 package main
 
 import (
-	"log"
-	"time"
-
 	"elevator/common"
 	"elevator/elevfsm"
+	"log"
+	"time"
 )
 
 const (
-	POLL_RATE_MS = 25 * time.Millisecond
-	IDLE_RATE_MS = 1 * time.Second
+	POLL_RATE_MS     = 25 * time.Millisecond
+	HEARTBEAT_RATE_S = 1 * time.Second
 )
 
 func elevatorThread(
@@ -31,11 +30,11 @@ func elevatorThread(
 	default:
 	}
 
-	ticker := time.NewTicker(POLL_RATE_MS)
-	defer ticker.Stop()
+	pollElevTicker := time.NewTicker(POLL_RATE_MS)
+	defer pollElevTicker.Stop()
 
-	idleTicker := time.NewTicker(IDLE_RATE_MS)
-	defer idleTicker.Stop()
+	heartbeatTicker := time.NewTicker(HEARTBEAT_RATE_S)
+	defer heartbeatTicker.Stop()
 
 	for {
 		now := time.Now()
@@ -51,7 +50,7 @@ func elevatorThread(
 			revokedRequests := sync.HandleAssignment(hallAssignment)
 			elevator.RevokeRequests(revokedRequests)
 
-		case <-ticker.C:
+		case <-pollElevTicker.C:
 			buttonPresses, newButtonPressed := elevator.PollButtonPresses()
 			newCabRequests, newHallRequests := sync.HandleButtonPresses(buttonPresses, elevator.GetFloor(), now)
 			elevator.ApplyNewRequests(newCabRequests)
@@ -80,7 +79,7 @@ func elevatorThread(
 					log.Printf("fsmThread: elevSnapNetCh is full, skipping snapshot update")
 				}
 			}
-		case <-idleTicker.C:
+		case <-heartbeatTicker.C:
 			if !elevator.IsIdle() {
 				continue
 			}
