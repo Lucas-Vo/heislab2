@@ -139,8 +139,8 @@ func (sync *RequestManager) ClearServicedRequests(floor int, serviced common.Req
 	}
 }
 
-func (sync *RequestManager) HasAlivePeer() bool { return sync.hasAlivePeer }
-
 func (sync *RequestManager) GetLocalRequests() common.Requests { return sync.localRequests }
 
 func (sync *RequestManager) GetNetRequests() common.Requests { return sync.netRequests }
+
+func (sync *RequestManager) HasAlivePeer() bool { return sync.hasAlivePeer }

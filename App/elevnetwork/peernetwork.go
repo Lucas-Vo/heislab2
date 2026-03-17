@@ -40,21 +40,6 @@ func InitPeerNetwork(config common.Config) *PeerNetwork {
 	return pn
 }
 
-func (pn *PeerNetwork) Incoming() <-chan common.NetMsg {
-	return pn.incoming
-}
-
-func (pn *PeerNetwork) PeerUpdates() <-chan peers.PeerUpdate {
-	return pn.peerUpdates
-}
-
-func (pn *PeerNetwork) LastSentSnapshot() (common.Snapshot, bool) {
-	if !pn.hasLastSnapshot {
-		return common.Snapshot{}, false
-	}
-	return common.DeepCopySnapshot(pn.lastSnapshot), true
-}
-
 func (pn *PeerNetwork) SendSnapshot(snapshot common.Snapshot, selfAlive bool) bool {
 	if !selfAlive || pn.outgoing == nil {
 		return false
@@ -85,4 +70,19 @@ func (wv *WorldView) HandlePeerUpdate(update peers.PeerUpdate, _ time.Time) {
 		}
 		delete(wv.latestCount, id)
 	}
+}
+
+func (pn *PeerNetwork) PeerUpdates() <-chan peers.PeerUpdate {
+	return pn.peerUpdates
+}
+
+func (pn *PeerNetwork) Incoming() <-chan common.NetMsg {
+	return pn.incoming
+}
+
+func (pn *PeerNetwork) LastSentSnapshot() (common.Snapshot, bool) {
+	if !pn.hasLastSnapshot {
+		return common.Snapshot{}, false
+	}
+	return common.DeepCopySnapshot(pn.lastSnapshot), true
 }

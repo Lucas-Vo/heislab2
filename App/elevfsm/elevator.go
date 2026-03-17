@@ -24,6 +24,8 @@ type Elevator struct {
 	announceDir elevhw.MotorDirection
 }
 
+// ------------ Exported Methods -------------
+
 func InitElevator() *Elevator {
 	elevhw.InitElevio(common.IO_ADDRESS)
 	e := new(Elevator)
@@ -52,12 +54,12 @@ func InitElevator() *Elevator {
 	return e
 }
 
+// polls physical sensors and updates behavior of elevator
 func (e *Elevator) ElevUpdate(now time.Time) (stateChanged bool, servicedRequests common.Requests, isServiced bool) {
 	servicedRequests = common.Requests{}
 	isServiced = false
 
-	isObstructed := e.inputDevice.Obstruction()
-	newFloor := e.inputDevice.FloorSensor()
+	isObstructed, newFloor := e.pollSensors()
 
 	if e.floor != newFloor ||
 		e.behaviour != e.prevBehaviour ||
@@ -77,7 +79,7 @@ func (e *Elevator) ElevUpdate(now time.Time) (stateChanged bool, servicedRequest
 
 	if e.prevBehaviour != e.behaviour && e.behaviour == EB_DoorOpen {
 		arrivalDirection := e.dirn
-		e.announceDir = e.chooseNewDirAtFloor(e.prevFloor, arrivalDirection)
+		e.announceDir = requests_chooseNewDirAtFloor(e.requests, e.prevFloor, arrivalDirection)
 		e.doorTimer = now
 	}
 	e.prevBehaviour = e.behaviour
@@ -126,12 +128,6 @@ func (e *Elevator) PollButtonPresses() (buttonPresses common.Requests, hadPress 
 	return buttonPresses, hadPress
 }
 
-func (e *Elevator) GetPrevFloor() int { return e.prevFloor }
-
-func (e *Elevator) GetFloor() int { return e.inputDevice.FloorSensor() }
-
-func (e *Elevator) IsIdle() bool { return e.behaviour == EB_Idle }
-
 func (e *Elevator) SetLights(requests common.Requests) {
 	for floor := range elevhw.N_FLOORS {
 		for btn := range elevhw.ButtonType(elevhw.N_BUTTONS) {
@@ -164,9 +160,18 @@ func (e *Elevator) MotionStrings() (behavior string, direction string) {
 	return behavior, direction
 }
 
+func (e *Elevator) GetPrevFloor() int { return e.prevFloor }
+
+func (e *Elevator) GetFloor() int { return e.inputDevice.FloorSensor() }
+
+func (e *Elevator) IsIdle() bool { return e.behaviour == EB_Idle }
+
+// ------------ Unexported Methods -------------
+
 func (e *Elevator) onDoorTimerExpiry(now time.Time) (servicedRequests common.Requests) {
 	e.doorTimer = now
-	servicedRequests, nextAnnounceDirection := e.onDoorClose(e.prevFloor, e.announceDir)
+	nextAnnounceDirection, serviceDir := requests_chooseNextAnnounceDir(e.requests, e.prevFloor, e.announceDir, e.dirn)
+	servicedRequests = e.clearServicedRequestsAtFloor(e.prevFloor, serviceDir)
 
 	pair := requests_chooseDirection(e.requests, e.floor, e.dirn)
 	e.dirn = pair.dirn
@@ -178,45 +183,6 @@ func (e *Elevator) onDoorTimerExpiry(now time.Time) (servicedRequests common.Req
 	e.announceDir = nextAnnounceDirection
 
 	return servicedRequests
-}
-
-// OnDoorClose decides local door-expiry behaviour
-// Returns the requests cleared at the given floor, the next announced direction, and whether to restart the door timer.
-// TODO: move into onDoorTimerExpiry
-func (e *Elevator) onDoorClose(floor int, announceDir elevhw.MotorDirection) (cleared common.Requests, nextAnnounceDir elevhw.MotorDirection) {
-	e.floor = floor
-	requestsAboveFloor, requestsBelowFloor := requests_hallRequestsAtFloor(e.requests, e.floor)
-	nextAnnounceDir = announceDir
-
-	if announceDir == elevhw.MD_Up && requestsAboveFloor {
-		e.requests, cleared = requests_clearAtFloorDir(e.requests, e.floor, elevhw.MD_Up)
-		if requestsBelowFloor && e.shouldSwitchDirection() {
-			return cleared, elevhw.MD_Down
-		}
-
-	} else if announceDir == elevhw.MD_Down && requestsBelowFloor {
-		e.requests, cleared = requests_clearAtFloorDir(e.requests, e.floor, elevhw.MD_Down)
-		if requestsAboveFloor && e.shouldSwitchDirection() {
-			return cleared, elevhw.MD_Up
-		}
-
-	} else if requestsAboveFloor || requestsBelowFloor {
-		arrivalDir := e.dirn
-		nextAnnounceDir = e.chooseNewDirAtFloor(floor, arrivalDir)
-		e.requests, cleared = requests_clearAtFloorDir(e.requests, e.floor, nextAnnounceDir)
-
-		if nextAnnounceDir == elevhw.MD_Up && requestsBelowFloor && e.shouldSwitchDirection() {
-			return cleared, elevhw.MD_Down
-		}
-		if nextAnnounceDir == elevhw.MD_Down && requestsAboveFloor && e.shouldSwitchDirection() {
-			return cleared, elevhw.MD_Up
-		}
-
-	} else {
-		e.requests, cleared = requests_clearAtFloorDir(e.requests, e.floor, elevhw.MD_Stop)
-		nextAnnounceDir = elevhw.MD_Stop
-	}
-	return cleared, nextAnnounceDir
 }
 
 func (e *Elevator) onFloorArrival(newFloor int) {
@@ -254,30 +220,12 @@ func (e *Elevator) onRequest(buttonFloor int, buttonType elevhw.ButtonType) {
 	}
 }
 
-func (e *Elevator) chooseNewDirAtFloor(floor int, fallback elevhw.MotorDirection) elevhw.MotorDirection {
-	up, down := requests_hallRequestsAtFloor(e.requests, floor)
-	if up && !down {
-		return elevhw.MD_Up
-	}
-	if down && !up {
-		return elevhw.MD_Down
-	}
-	if up && down {
-		if fallback == elevhw.MD_Up || fallback == elevhw.MD_Down {
-			return fallback
-		}
-		return elevhw.MD_Up
-	}
-	return fallback
+func (e *Elevator) clearServicedRequestsAtFloor(floor int, serviceDir elevhw.MotorDirection) (cleared common.Requests) {
+	e.floor = floor
+	e.requests, cleared = requests_clearAtFloorDir(e.requests, e.floor, serviceDir)
+	return cleared
 }
 
-func (e *Elevator) shouldSwitchDirection() bool {
-	switch e.dirn {
-	case elevhw.MD_Up:
-		return requests_above(e.requests, e.floor) == 0
-	case elevhw.MD_Down:
-		return requests_below(e.requests, e.floor) == 0
-	default:
-		return true
-	}
+func (e *Elevator) pollSensors() (int, int) {
+	return e.inputDevice.Obstruction(), e.inputDevice.FloorSensor()
 }

@@ -85,6 +85,78 @@ func requests_shouldStop(requests common.Requests, floor int, dirn elevhw.MotorD
 	}
 }
 
+func requests_shouldSwitchDirection(requests common.Requests, floor int, dirn elevhw.MotorDirection) bool {
+	switch dirn {
+	case elevhw.MD_Up:
+		return requests_above(requests, floor) == 0
+	case elevhw.MD_Down:
+		return requests_below(requests, floor) == 0
+	default:
+		return true
+	}
+}
+
+func requests_chooseNextAnnounceDir(
+	requests common.Requests,
+	floor int,
+	announceDir elevhw.MotorDirection,
+	dirn elevhw.MotorDirection,
+) (nextAnnounceDir elevhw.MotorDirection, serviceDir elevhw.MotorDirection) {
+	requestsAboveFloor, requestsBelowFloor := requests_hallRequestsAtFloor(requests, floor)
+	nextAnnounceDir = announceDir
+	serviceDir = elevhw.MD_Stop
+
+	if announceDir == elevhw.MD_Up && requestsAboveFloor {
+		serviceDir = elevhw.MD_Up
+		if requestsBelowFloor && requests_shouldSwitchDirection(requests, floor, dirn) {
+			nextAnnounceDir = elevhw.MD_Down
+		}
+		return nextAnnounceDir, serviceDir
+	}
+
+	if announceDir == elevhw.MD_Down && requestsBelowFloor {
+		serviceDir = elevhw.MD_Down
+		if requestsAboveFloor && requests_shouldSwitchDirection(requests, floor, dirn) {
+			nextAnnounceDir = elevhw.MD_Up
+		}
+		return nextAnnounceDir, serviceDir
+	}
+
+	if requestsAboveFloor || requestsBelowFloor {
+		serviceDir = requests_chooseNewDirAtFloor(requests, floor, dirn)
+		nextAnnounceDir = serviceDir
+
+		if serviceDir == elevhw.MD_Up && requestsBelowFloor && requests_shouldSwitchDirection(requests, floor, dirn) {
+			nextAnnounceDir = elevhw.MD_Down
+		}
+		if serviceDir == elevhw.MD_Down && requestsAboveFloor && requests_shouldSwitchDirection(requests, floor, dirn) {
+			nextAnnounceDir = elevhw.MD_Up
+		}
+		return nextAnnounceDir, serviceDir
+	}
+
+	nextAnnounceDir = elevhw.MD_Stop
+	serviceDir = elevhw.MD_Stop
+	return nextAnnounceDir, serviceDir
+}
+
+func requests_chooseNewDirAtFloor(requests common.Requests, floor int, fallback elevhw.MotorDirection) elevhw.MotorDirection {
+	up, down := requests_hallRequestsAtFloor(requests, floor)
+	if up && !down {
+		return elevhw.MD_Up
+	}
+	if down && !up {
+		return elevhw.MD_Down
+	}
+	if up && down {
+		if fallback == elevhw.MD_Up || fallback == elevhw.MD_Down {
+			return fallback
+		}
+		return elevhw.MD_Up
+	}
+	return fallback
+}
+
 func requests_clearAtFloorDir(requests common.Requests, floor int, announceDir elevhw.MotorDirection) (updated common.Requests, cleared common.Requests) {
 	updated = requests
 

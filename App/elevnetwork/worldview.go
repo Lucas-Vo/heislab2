@@ -29,6 +29,8 @@ type WorldView struct {
 	latestCount map[string]uint64
 }
 
+// ------------ Exported Methods -------------
+
 func InitWorldView(config common.Config) *WorldView {
 	wv := &WorldView{
 		peers: config.ExpectedKeys(),
@@ -49,18 +51,6 @@ func InitWorldView(config common.Config) *WorldView {
 	return wv
 }
 
-func (wv *WorldView) EndStartupPeriod() {
-	wv.inStartupPeriod = false
-}
-
-func (wv *WorldView) SetSelfAlive(alive bool) {
-	wv.selfAlive = alive
-}
-
-func (wv *WorldView) GetSelfAlive() bool {
-	return wv.selfAlive
-}
-
 // sends the worldview's snapshot to elevatorthread and assignerthread
 func (wv *WorldView) PublishLocally(netSnap1Ch, netSnap2Ch chan<- common.Snapshot, snapshotsCoherent bool) {
 	snap := common.DeepCopySnapshot(wv.localSnapshot)
@@ -76,43 +66,6 @@ func (wv *WorldView) PublishLocally(netSnap1Ch, netSnap2Ch chan<- common.Snapsho
 	case netSnap2Ch <- snap2:
 	default:
 	}
-}
-
-func (wv *WorldView) SnapshotsAreCoherent(selfSnapshot common.Snapshot) bool {
-	selfViewOfSelf, ok := selfSnapshot.States[wv.selfKey]
-	if !ok {
-		return false
-	}
-	for _, peerID := range wv.peers {
-		if peerID == wv.selfKey || !wv.localSnapshot.Alive[peerID] {
-			continue
-		}
-		peerSnapshot, ok := wv.lastSnapshot[peerID]
-		if !ok {
-			return false
-		}
-		peerViewOfSelf, ok := peerSnapshot.States[wv.selfKey]
-		if !ok {
-			return false
-		}
-
-		for floor := range elevhw.N_FLOORS {
-			if selfSnapshot.HallRequests[floor][elevhw.BT_HallUp] != peerSnapshot.HallRequests[floor][elevhw.BT_HallUp] {
-				return false
-			} else if selfSnapshot.HallRequests[floor][elevhw.BT_HallDown] != peerSnapshot.HallRequests[floor][elevhw.BT_HallDown] {
-				return false
-			} else if selfSnapshot.States[wv.selfKey].CabRequests[floor] != peerSnapshot.States[wv.selfKey].CabRequests[floor] {
-				return false
-			}
-		}
-
-		if selfViewOfSelf.Behavior != peerViewOfSelf.Behavior ||
-			selfViewOfSelf.Direction != peerViewOfSelf.Direction ||
-			selfViewOfSelf.Floor != peerViewOfSelf.Floor {
-			return false
-		}
-	}
-	return true
 }
 
 func (wv *WorldView) HandleLocal(ns common.Snapshot, now time.Time) {
@@ -157,10 +110,6 @@ func (wv *WorldView) HandleRemote(msg common.NetMsg, now time.Time) (common.Hall
 	return filteredHalls, isFiltered
 }
 
-func (wv *WorldView) SnapshotForBroadcast() common.Snapshot {
-	return common.DeepCopySnapshot(wv.localSnapshot)
-}
-
 func (wv *WorldView) ReapplyServicedHalls(serviced common.HallRequests) common.Snapshot {
 	snap := common.DeepCopySnapshot(wv.localSnapshot)
 	snap.UpdateKind = common.UK_Serviced
@@ -188,7 +137,60 @@ func (wv *WorldView) CalculateAlivePeers(now time.Time) {
 	}
 }
 
-// ------------ Unexported -------------
+func (wv *WorldView) SnapshotForBroadcast() common.Snapshot {
+	return common.DeepCopySnapshot(wv.localSnapshot)
+}
+
+func (wv *WorldView) SnapshotsAreCoherent(selfSnapshot common.Snapshot) bool {
+	selfViewOfSelf, ok := selfSnapshot.States[wv.selfKey]
+	if !ok {
+		return false
+	}
+	for _, peerID := range wv.peers {
+		if peerID == wv.selfKey || !wv.localSnapshot.Alive[peerID] {
+			continue
+		}
+		peerSnapshot, ok := wv.lastSnapshot[peerID]
+		if !ok {
+			return false
+		}
+		peerViewOfSelf, ok := peerSnapshot.States[wv.selfKey]
+		if !ok {
+			return false
+		}
+
+		for floor := range elevhw.N_FLOORS {
+			if selfSnapshot.HallRequests[floor][elevhw.BT_HallUp] != peerSnapshot.HallRequests[floor][elevhw.BT_HallUp] {
+				return false
+			} else if selfSnapshot.HallRequests[floor][elevhw.BT_HallDown] != peerSnapshot.HallRequests[floor][elevhw.BT_HallDown] {
+				return false
+			} else if selfSnapshot.States[wv.selfKey].CabRequests[floor] != peerSnapshot.States[wv.selfKey].CabRequests[floor] {
+				return false
+			}
+		}
+
+		if selfViewOfSelf.Behavior != peerViewOfSelf.Behavior ||
+			selfViewOfSelf.Direction != peerViewOfSelf.Direction ||
+			selfViewOfSelf.Floor != peerViewOfSelf.Floor {
+			return false
+		}
+	}
+	return true
+}
+
+func (wv *WorldView) EndStartupPeriod() {
+	wv.inStartupPeriod = false
+}
+
+func (wv *WorldView) SetSelfAlive(alive bool) {
+	wv.selfAlive = alive
+}
+
+func (wv *WorldView) GetSelfAlive() bool {
+	return wv.selfAlive
+}
+
+// ------------ Unexported Methods -------------
 
 func (wv *WorldView) markRecentlyServicedHalls(ns common.Snapshot, now time.Time) {
 	for floor := range elevhw.N_FLOORS {
