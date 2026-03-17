@@ -10,7 +10,7 @@ import (
 const (
 	LOCAL_PUBLISH_PERIOD    = 50 * time.Millisecond
 	BROADCAST_PERIOD        = 1 * time.Second
-	INITIAL_CONTACT_TIMEOUT = 5 * time.Second
+	INITIAL_CONTACT_TIMEOUT = 3 * time.Second
 	ELEVATOR_ERROR_TIMEOUT  = 6 * time.Second
 )
 

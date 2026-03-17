@@ -234,6 +234,7 @@ func (wv *WorldView) filterRecentlyServicedHalls(snapshot common.Snapshot, now t
 	var serviced common.HallRequests
 	snapIsFiltered := false
 	if wv.inStartupPeriod {
+		snapshot.UpdateKind = common.UK_Requests
 		return snapshot, serviced, snapIsFiltered
 	}
 
@@ -278,7 +279,6 @@ func (wv *WorldView) mergeWorldView(fromKey string, snap common.Snapshot) {
 		wv.lastSnapshot[fromKey] = common.DeepCopySnapshot(snap)
 		if wv.inStartupPeriod {
 			wv.recoverCabRequests(snap)
-			wv.inStartupPeriod = false
 		}
 	}
 
