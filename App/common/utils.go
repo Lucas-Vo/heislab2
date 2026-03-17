@@ -1,6 +1,7 @@
 package common
 
 import (
+	"elevator/elevhw"
 	"errors"
 	"maps"
 )
@@ -46,22 +47,22 @@ func BuildSnapshot(
 ) Snapshot {
 	outRequests := netRequests
 	if kind == UK_Requests {
-		for floor := range N_FLOORS {
-			if localRequests[floor][BT_HallUp] {
-				outRequests[floor][BT_HallUp] = true
+		for floor := range elevhw.N_FLOORS {
+			if localRequests[floor][elevhw.BT_HallUp] {
+				outRequests[floor][elevhw.BT_HallUp] = true
 			}
-			if localRequests[floor][BT_HallDown] {
-				outRequests[floor][BT_HallDown] = true
+			if localRequests[floor][elevhw.BT_HallDown] {
+				outRequests[floor][elevhw.BT_HallDown] = true
 			}
 		}
 	}
 	if kind == UK_Serviced {
-		for floor := range N_FLOORS {
-			if requestsCleared[floor][BT_HallUp] {
-				outRequests[floor][BT_HallUp] = false
+		for floor := range elevhw.N_FLOORS {
+			if requestsCleared[floor][elevhw.BT_HallUp] {
+				outRequests[floor][elevhw.BT_HallUp] = false
 			}
-			if requestsCleared[floor][BT_HallDown] {
-				outRequests[floor][BT_HallDown] = false
+			if requestsCleared[floor][elevhw.BT_HallDown] {
+				outRequests[floor][elevhw.BT_HallDown] = false
 			}
 		}
 	}

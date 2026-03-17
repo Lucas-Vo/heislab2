@@ -1,5 +1,5 @@
 // Taken from https://github.com/TTK4145/driver-go
-package common
+package elevhw
 
 import (
 	"fmt"

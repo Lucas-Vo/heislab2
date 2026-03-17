@@ -1,6 +1,6 @@
 // Based off of https://github.com/TTK4145/Project-resources/tree/master/elev_algo
 
-package common
+package elevhw
 
 const (
 	N_FLOORS  = 4

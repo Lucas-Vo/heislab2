@@ -1,5 +1,7 @@
 package common
 
+import "elevator/elevhw"
+
 type UpdateKind int
 
 const (
@@ -28,8 +30,8 @@ type NetMsg struct {
 	Snapshot Snapshot `json:"snapshot"`
 }
 
-type Requests [N_FLOORS][N_BUTTONS]bool
-type CabRequests [N_FLOORS]bool
-type HallRequests [N_FLOORS][N_BUTTONS - 1]bool
+type Requests [elevhw.N_FLOORS][elevhw.N_BUTTONS]bool
+type CabRequests [elevhw.N_FLOORS]bool
+type HallRequests [elevhw.N_FLOORS][elevhw.N_BUTTONS - 1]bool
 
-type HallAssignment [N_FLOORS][N_BUTTONS - 1]bool
+type HallAssignment [elevhw.N_FLOORS][elevhw.N_BUTTONS - 1]bool
