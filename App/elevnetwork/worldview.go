@@ -1,7 +1,6 @@
 package elevnetwork
 
 import (
-	"Network-go/network/peers"
 	"elevator/common"
 	"log"
 	"time"
@@ -44,7 +43,7 @@ func InitWorldView(config common.Config) *WorldView {
 		latestCount:     make(map[string]uint64),
 		inStartupPeriod: true,
 	}
-	wv.CalculateAlive(time.Now())
+	wv.CalculateAlivePeers(time.Now())
 
 	return wv
 }
@@ -61,24 +60,7 @@ func (wv *WorldView) GetSelfAlive() bool {
 	return wv.selfAlive
 }
 
-func (wv *WorldView) HandlePeerUpdate(update peers.PeerUpdate, now time.Time) {
-	if update.New != "" && update.New != wv.selfKey {
-		wv.lastHeard[update.New] = now
-	}
-	for _, id := range update.Peers {
-		if id == "" || id == wv.selfKey {
-			continue
-		}
-		wv.lastHeard[id] = now
-	}
-	for _, id := range update.Lost {
-		if id == "" || id == wv.selfKey {
-			continue
-		}
-		delete(wv.lastHeard, id)
-	}
-}
-
+// sends the worldview's snapshot to elevatorthread and assignerthread
 func (wv *WorldView) PublishLocally(netSnap1Ch, netSnap2Ch chan<- common.Snapshot, snapshotsCoherent bool) {
 	snap := common.DeepCopySnapshot(wv.localSnapshot)
 	coherent := !wv.inStartupPeriod && snapshotsCoherent
@@ -142,9 +124,33 @@ func (wv *WorldView) HandleLocal(ns common.Snapshot, now time.Time) {
 
 func (wv *WorldView) HandleRemote(msg common.NetMsg, now time.Time) (common.HallRequests, bool) {
 	msgToMerge, filteredHalls, isFiltered := wv.filterRecentlyServicedHalls(msg, now)
-	wv.mergeRemote(msgToMerge)
+
+	if msgToMerge.Origin != wv.selfKey && msgToMerge.Origin != "" {
+		switch msgToMerge.Origin { //TODO: DELETE THIS SHIT
+		case "1":
+			log.Printf("((((((((((((((((((((((((((((((((((((((((((((((((((((()))))))))))))))))))))))))))))))))))))))))))))))))))))")
+		case "2":
+			log.Printf("iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii")
+		case "3":
+			log.Printf("##########################################################################################################")
+		default:
+			log.Printf("Unknown id")
+		}
+
+		prevCounter := wv.latestCount[msgToMerge.Origin]
+		prevHeard := wv.lastHeard[msgToMerge.Origin]
+		wv.lastHeard[msgToMerge.Origin] = now
+		if now.Sub(prevHeard) < WV_TIMEOUT &&
+			msgToMerge.Counter < prevCounter &&
+			msgToMerge.Counter > prevCounter-VALID_COUNTER_WINDOW {
+			log.Printf("drop dead/duplicate frame")
+		} else {
+			wv.latestCount[msgToMerge.Origin] = msgToMerge.Counter
+		}
+	}
+
 	if isFiltered {
-		wv.CalculateAlive(now)
+		wv.CalculateAlivePeers(now)
 	}
 	wv.mergeWorldView(msgToMerge.Origin, msgToMerge.Snapshot)
 	return filteredHalls, isFiltered
@@ -154,7 +160,7 @@ func (wv *WorldView) SnapshotForBroadcast() common.Snapshot {
 	return common.DeepCopySnapshot(wv.localSnapshot)
 }
 
-func (wv *WorldView) SnapshotForResend(serviced common.HallRequests) common.Snapshot {
+func (wv *WorldView) ReapplyServicedHalls(serviced common.HallRequests) common.Snapshot {
 	snap := common.DeepCopySnapshot(wv.localSnapshot)
 	snap.UpdateKind = common.UK_Serviced
 	for floor := range common.N_FLOORS {
@@ -167,6 +173,22 @@ func (wv *WorldView) SnapshotForResend(serviced common.HallRequests) common.Snap
 	return snap
 }
 
+func (wv *WorldView) CalculateAlivePeers(now time.Time) {
+	for _, id := range wv.peers {
+		wv.localSnapshot.Alive[id] = wv.inStartupPeriod
+		if id == wv.selfKey {
+			wv.localSnapshot.Alive[id] = wv.selfAlive
+			continue
+		}
+		if t, ok := wv.lastHeard[id]; ok {
+			wv.localSnapshot.Alive[id] = now.Sub(t) <= WV_TIMEOUT
+			continue
+		}
+	}
+}
+
+// ------------ Unexported -------------
+
 func (wv *WorldView) markRecentlyServicedHalls(ns common.Snapshot, now time.Time) {
 	for floor := range common.N_FLOORS {
 		for button := 0; button < 2; button++ {
@@ -177,6 +199,7 @@ func (wv *WorldView) markRecentlyServicedHalls(ns common.Snapshot, now time.Time
 	}
 }
 
+// removes hall request from incoming message if hall request was recently serviced
 func (wv *WorldView) filterRecentlyServicedHalls(msg common.NetMsg, now time.Time) (common.NetMsg, common.HallRequests, bool) {
 	var serviced common.HallRequests
 	msgIsFiltered := false
@@ -194,45 +217,6 @@ func (wv *WorldView) filterRecentlyServicedHalls(msg common.NetMsg, now time.Tim
 		}
 	}
 	return msg, serviced, msgIsFiltered
-}
-
-func (wv *WorldView) mergeRemote(msg common.NetMsg) {
-	if msg.Origin == wv.selfKey || msg.Origin == "" {
-		return
-	}
-	switch msg.Origin { //TODO: DELETE THIS SHIT
-	case "1":
-		log.Printf("((((((((((((((((((((((((((((((((((((((((((((((((((((()))))))))))))))))))))))))))))))))))))))))))))))))))))")
-	case "2":
-		log.Printf("iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii")
-	case "3":
-		log.Printf("####################################################################################################################################")
-	default:
-		log.Printf("Unknown id")
-	}
-	now := time.Now()
-	prevCounter := wv.latestCount[msg.Origin]
-	prevHeard := wv.lastHeard[msg.Origin]
-	wv.lastHeard[msg.Origin] = now
-	if now.Sub(prevHeard) < WV_TIMEOUT && msg.Counter < prevCounter && msg.Counter > prevCounter-VALID_COUNTER_WINDOW {
-		log.Printf("drop dead/duplicate frame origin=%s counter=%d prevCounter=%d dt=%s", msg.Origin, msg.Counter, prevCounter, now.Sub(prevHeard))
-		return
-	}
-	wv.latestCount[msg.Origin] = msg.Counter
-}
-
-func (wv *WorldView) CalculateAlive(now time.Time) {
-	for _, id := range wv.peers {
-		if id == wv.selfKey {
-			wv.localSnapshot.Alive[id] = wv.selfAlive
-			continue
-		}
-		if t, ok := wv.lastHeard[id]; ok {
-			wv.localSnapshot.Alive[id] = now.Sub(t) <= WV_TIMEOUT
-			continue
-		}
-		wv.localSnapshot.Alive[id] = wv.inStartupPeriod
-	}
 }
 
 func (wv *WorldView) isHallRecentlyServiced(floor int, button int, now time.Time) bool {

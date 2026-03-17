@@ -24,7 +24,7 @@ func networkThread(
 	wv := elevnetwork.InitWorldView(config)
 	network := elevnetwork.InitPeerNetwork(config)
 
-	wv.CalculateAlive(time.Now())
+	wv.CalculateAlivePeers(time.Now())
 
 	initialSnapshot := common.DeepCopySnapshot(wv.SnapshotForBroadcast())
 	initialSnapshot.UpdateKind = common.UK_Requests
@@ -52,14 +52,14 @@ func networkThread(
 		case msg := <-network.Incoming():
 			filteredHalls, isFiltered := wv.HandleRemote(msg, now)
 			if isFiltered { // resend serviced request if inchoerent
-				snapshot := wv.SnapshotForResend(filteredHalls)
+				snapshot := wv.ReapplyServicedHalls(filteredHalls)
 				network.SendSnapshot(snapshot, wv.GetSelfAlive())
 			}
 		case peerUpdate := <-network.PeerUpdates():
 			wv.HandlePeerUpdate(peerUpdate, now)
 
 		case <-localTicker.C:
-			wv.CalculateAlive(now)
+			wv.CalculateAlivePeers(now)
 			snapshot, ok := network.LastSentSnapshot()
 			isCoherent := false
 			if ok {
