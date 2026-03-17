@@ -26,8 +26,8 @@ func DefaultConfig() (Config, error) {
 		PeerPort: 4242,
 		MsgPort:  4243,
 		HostByKey: map[int]string{
-			1: "10.100.23.28",
-			2: "10.100.23.32",
+			1: "10.100.23.32",
+			2: "10.100.23.30",
 			3: "10.24.67.28",
 		},
 	}

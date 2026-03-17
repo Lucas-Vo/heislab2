@@ -60,8 +60,8 @@ func elevatorThread(
 
 			elevStateChange, servicedRequests, isServiced := elevator.ElevUpdate(now)
 
-			sync.ClearServicedRequests(elevator.GetPrevFloor(), servicedRequests)
 			elevator.ApplyNewRequests(sync.TransferReadyRequests())
+			sync.ClearServicedRequests(elevator.GetPrevFloor(), servicedRequests)
 
 			if isServiced {
 				behavior, direction := elevator.MotionStrings()
