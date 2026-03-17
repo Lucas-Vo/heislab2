@@ -66,13 +66,11 @@ func (rm *RequestManager) HandleAssignment(assignment common.HallAssignment) (re
 
 	for floor := range previousAssignment {
 		if previousAssignment[floor][0] && !rm.assignedHall[floor][0] {
-			rm.netRequests[floor][elevhw.BT_HallUp] = false
 			rm.localRequests[floor][elevhw.BT_HallUp] = false
 			rm.deliveredRequests[floor][elevhw.BT_HallUp] = false
 			revokedRequests[floor][elevhw.BT_HallUp] = true
 		}
 		if previousAssignment[floor][1] && !rm.assignedHall[floor][1] {
-			rm.netRequests[floor][elevhw.BT_HallUp] = false
 			rm.localRequests[floor][elevhw.BT_HallDown] = false
 			rm.deliveredRequests[floor][elevhw.BT_HallDown] = false
 			revokedRequests[floor][elevhw.BT_HallDown] = true
@@ -87,6 +85,7 @@ func (rm *RequestManager) HandleButtonPresses(edgePresses common.Requests, curre
 			if !edgePresses[floor][button] {
 				continue
 			}
+			wasInactive := !rm.localRequests[floor][button] && !rm.netRequests[floor][button]
 			rm.localRequests[floor][button] = true
 			switch button {
 			case elevhw.BT_Cab:
@@ -94,6 +93,9 @@ func (rm *RequestManager) HandleButtonPresses(edgePresses common.Requests, curre
 				rm.deliveredRequests[floor][button] = true
 			case elevhw.BT_HallUp, elevhw.BT_HallDown:
 				newHallRequests[floor][button] = true
+				if wasInactive {
+					rm.deliveredRequests[floor][button] = false
+				}
 			}
 		}
 	}
@@ -140,7 +142,7 @@ func (rm *RequestManager) ClearServicedRequests(floor int, serviced common.Reque
 		if serviced[floor][button] {
 			rm.localRequests[floor][button] = false
 			rm.netRequests[floor][button] = false
-			rm.deliveredRequests[floor][button] = false
+			rm.deliveredRequests[floor][button] = true
 		}
 	}
 }
