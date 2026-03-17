@@ -34,7 +34,7 @@ func assignerThread(config common.Config,
 			log.Printf("Remove dead states error: %v", err)
 			continue
 		}
-
+		// parses snapshot into json format
 		jsonBytes, err := json.Marshal(networkSnapshot)
 		if err != nil {
 			log.Println("json.Marshal error:", err)
@@ -46,13 +46,14 @@ func assignerThread(config common.Config,
 			log.Println(string(ret))
 			continue
 		}
-		var output map[string]common.HallAssignment
-		if err := json.Unmarshal(ret, &output); err != nil {
+		// parses json into hall assignments
+		var assignerOutput map[string]common.HallAssignment
+		if err := json.Unmarshal(ret, &assignerOutput); err != nil {
 			log.Println("json.Unmarshal error:", err)
 			continue
 		}
 
-		hallAssignment = output[selfKey]
+		hallAssignment = assignerOutput[selfKey]
 		hallAssignmentCh <- hallAssignment
 	}
 }
