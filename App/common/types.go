@@ -34,4 +34,5 @@ type Requests [elevhw.N_FLOORS][elevhw.N_BUTTONS]bool
 type CabRequests [elevhw.N_FLOORS]bool
 type HallRequests [elevhw.N_FLOORS][elevhw.N_BUTTONS - 1]bool
 
+// produced by assigner, consumed by elevator
 type HallAssignment [elevhw.N_FLOORS][elevhw.N_BUTTONS - 1]bool

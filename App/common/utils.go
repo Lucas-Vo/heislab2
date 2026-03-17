@@ -6,35 +6,6 @@ import (
 	"maps"
 )
 
-func DeepCopySnapshot(snap Snapshot) Snapshot {
-	snapshotCopy := Snapshot{
-		HallRequests: snap.HallRequests,
-		States:       make(map[string]ElevState, len(snap.States)),
-		Alive:        make(map[string]bool, len(snap.Alive)),
-		Coherent:     snap.Coherent,
-		UpdateKind:   snap.UpdateKind,
-	}
-	maps.Copy(snapshotCopy.States, snap.States)
-	maps.Copy(snapshotCopy.Alive, snap.Alive)
-	return snapshotCopy
-}
-
-func GetHallRequests(in Requests) HallRequests {
-	var out HallRequests
-	for i, row := range in {
-		out[i] = [2]bool{row[0], row[1]}
-	}
-	return out
-}
-
-func GetCabRequests(in Requests) CabRequests {
-	var out CabRequests
-	for i, row := range in {
-		out[i] = row[2]
-	}
-	return out
-}
-
 func BuildSnapshot(
 	selfKey string,
 	kind UpdateKind,
@@ -81,7 +52,7 @@ func BuildSnapshot(
 	}
 }
 
-// RemoveDeadStates removes the elevator states for the nodes marked dead.
+// removes the elevator states for the nodes marked dead.
 func RemoveDeadStates(networkSnapshot *Snapshot, selfKey string) error {
 	err := errors.New("no elevator states marked alive")
 	for key, alive := range networkSnapshot.Alive {
@@ -95,4 +66,33 @@ func RemoveDeadStates(networkSnapshot *Snapshot, selfKey string) error {
 		}
 	}
 	return err
+}
+
+func DeepCopySnapshot(snap Snapshot) Snapshot {
+	snapshotCopy := Snapshot{
+		HallRequests: snap.HallRequests,
+		States:       make(map[string]ElevState, len(snap.States)),
+		Alive:        make(map[string]bool, len(snap.Alive)),
+		Coherent:     snap.Coherent,
+		UpdateKind:   snap.UpdateKind,
+	}
+	maps.Copy(snapshotCopy.States, snap.States)
+	maps.Copy(snapshotCopy.Alive, snap.Alive)
+	return snapshotCopy
+}
+
+func GetHallRequests(in Requests) HallRequests {
+	var out HallRequests
+	for i, row := range in {
+		out[i] = [2]bool{row[0], row[1]}
+	}
+	return out
+}
+
+func GetCabRequests(in Requests) CabRequests {
+	var out CabRequests
+	for i, row := range in {
+		out[i] = row[2]
+	}
+	return out
 }
