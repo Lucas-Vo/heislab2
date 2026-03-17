@@ -5,6 +5,7 @@ import (
 	"Network-go/network/peers"
 	"elevator/common"
 	"log"
+	"time"
 )
 
 const NETWORK_CHAN_SIZE = 128
@@ -74,5 +75,14 @@ func (pn *PeerNetwork) SendSnapshot(snapshot common.Snapshot, selfAlive bool) bo
 	default:
 		log.Printf("sendOverNetwork: dropping frame origin=%s counter=%d kind=%v (tx queue full)", msg.Origin, msg.Counter, snapshot.UpdateKind)
 		return false
+	}
+}
+
+func (wv *WorldView) HandlePeerUpdate(update peers.PeerUpdate, _ time.Time) {
+	for _, id := range update.Lost {
+		if id == "" || id == wv.selfKey {
+			continue
+		}
+		delete(wv.latestCount, id)
 	}
 }
