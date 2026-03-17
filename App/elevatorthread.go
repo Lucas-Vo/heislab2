@@ -9,31 +9,20 @@ import (
 )
 
 const (
-	// POLL_RATE_MS is the local FSM polling period for buttons, floor sensor,
-	// obstruction, and door timing.
-	POLL_RATE_MS = 25 * time.Millisecond
-	// IDLE_RATE_MS is the heartbeat period used while the local elevator is idle.
-	IDLE_RATE_MS = 1 * time.Second
+	pollRate           = 25 * time.Millisecond
+	idleSnapshotPeriod = 1 * time.Second
 )
 
-// elevatorThread owns the local Elevator FSM and all direct interaction with
-// the simulator I/O.
-//
-// The thread is the only goroutine that mutates Elevator or Synchronizer. It
-// publishes local state to the network thread, applies hall assignments from
-// the assigner thread, and falls back to serving hall calls locally when no
-// peer is alive.
+// elevatorThread owns the local controller loop.
 func elevatorThread(
 	config common.Config,
-	assignerOutputCh <-chan common.ElevInput, // assigner -> elev
-	elevUpdateNetCh chan<- common.Snapshot, // elev -> network
-	netUpdateElevCh <-chan common.Snapshot, // network -> elev
+	assignerOutputCh <-chan common.ElevInput,
+	elevUpdateNetCh chan<- common.Snapshot,
+	netUpdateElevCh <-chan common.Snapshot,
 ) {
 	sync := elevfsm.NewFsmSync(config)
 	elevator := elevfsm.NewElevator()
 
-	// Publish a best-effort initial snapshot so the network thread has a local
-	// state to merge even before the first button press or state change.
 	behavior, direction := elevator.MotionStrings()
 	initialSnapshot := common.BuildSnapshot(config.SelfKey, common.UpdateRequests, common.Requests{},
 		elevator.GetPrevFloor(), behavior, direction, sync.GetNetRequests(), sync.GetLocalRequests())
@@ -42,17 +31,17 @@ func elevatorThread(
 	default:
 	}
 
-	ticker := time.NewTicker(POLL_RATE_MS)
+	ticker := time.NewTicker(pollRate)
 	defer ticker.Stop()
 
-	idleTicker := time.NewTicker(IDLE_RATE_MS)
+	idleTicker := time.NewTicker(idleSnapshotPeriod)
 	defer idleTicker.Stop()
 
 	for {
 		now := time.Now()
 		select {
 		case networkSnapshot := <-netUpdateElevCh:
-			sync.HandleNetworkSnapshot(networkSnapshot, now)
+			sync.HandleNetworkSnapshot(networkSnapshot)
 
 			if networkSnapshot.Coherent {
 				elevator.SetLights(sync.GetNetRequests())
@@ -64,11 +53,9 @@ func elevatorThread(
 
 		case <-ticker.C:
 			buttonPresses, newButtonPressed := elevator.PollButtonPresses()
-			newCabRequests, newHallRequests := sync.HandleButtonPresses(buttonPresses, elevator.GetFloor(), now)
+			newCabRequests, newHallRequests := sync.HandleButtonPresses(buttonPresses)
 			elevator.ApplyNewRequests(newCabRequests)
 			if !sync.HasAlivePeer() {
-				// In single-elevator or disconnected mode, new hall calls are served
-				// locally without waiting for a distributed assignment round.
 				elevator.ApplyNewRequests(newHallRequests)
 			}
 
@@ -78,7 +65,6 @@ func elevatorThread(
 			sync.ClearServicedRequests(elevator.GetPrevFloor(), servicedRequests)
 
 			if isServiced {
-				// A serviced snapshot clears shared hall calls through AND-merge.
 				behavior, direction := elevator.MotionStrings()
 				snapshot := common.BuildSnapshot(config.SelfKey, common.UpdateServiced, servicedRequests,
 					elevator.GetPrevFloor(), behavior, direction, sync.GetNetRequests(), sync.GetLocalRequests())
@@ -98,8 +84,6 @@ func elevatorThread(
 			if !elevator.IsIdle() {
 				continue
 			}
-			// Idle snapshots act as a heartbeat so peers can keep the local
-			// elevator marked alive even when no requests are changing.
 			behavior, direction := elevator.MotionStrings()
 			snapshot := common.BuildSnapshot(config.SelfKey, common.UpdateRequests, common.Requests{},
 				elevator.GetPrevFloor(), behavior, direction, sync.GetNetRequests(), sync.GetLocalRequests())

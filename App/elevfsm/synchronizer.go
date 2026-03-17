@@ -2,15 +2,10 @@ package elevfsm
 
 import (
 	"elevator/common"
-	"time"
 )
 
-// Synchronizer mediates between the local FSM and the replicated network view.
-//
-// It keeps track of which requests are known locally, which requests are known
-// from the network, and which hall calls are currently assigned to this
-// elevator. Synchronizer is not concurrency-safe; elevatorThread is expected to
-// own it.
+// Synchronizer mediates between the local FSM, the shared snapshot, and the
+// assigner output.
 type Synchronizer struct {
 	selfKey string
 
@@ -18,30 +13,22 @@ type Synchronizer struct {
 	hasAlivePeer    bool
 	coherent        bool
 
-	// assignedHall is the latest hall-task matrix received from the external
-	// assigner.
-	assignedHall [common.N_FLOORS][2]bool
-	// netRequests mirrors the currently published world view.
-	netRequests common.Requests
-	// localRequests is the local controller's desired request set.
-	localRequests common.Requests
-	// deliveredRequests prevents re-sending already injected requests to the
-	// Elevator on every polling tick.
+	assignedHall      [common.N_FLOORS][2]bool
+	netRequests       common.Requests
+	localRequests     common.Requests
 	deliveredRequests common.Requests
 }
 
-// NewFsmSync returns a Synchronizer for the local elevator identified by
-// config.SelfKey.
+// NewFsmSync returns a Synchronizer for config.SelfKey.
 func NewFsmSync(config common.Config) *Synchronizer {
 	return &Synchronizer{selfKey: config.SelfKey}
 }
 
-// HandleNetworkSnapshot imports the latest published world view.
+// HandleNetworkSnapshot imports the latest shared snapshot.
 //
-// Hall requests are always taken from the shared snapshot. Cab requests are only
-// recovered from the local elevator's own state entry, which lets another
-// elevator hand back our cab lights after a restart without making them global.
-func (sync *Synchronizer) HandleNetworkSnapshot(snapshot common.Snapshot, now time.Time) {
+// Hall requests come from shared state. Cab requests are only recovered from
+// this elevator's own state entry.
+func (sync *Synchronizer) HandleNetworkSnapshot(snapshot common.Snapshot) {
 	sync.hasAlivePeer = false
 	sync.coherent = snapshot.Coherent
 	for key, alive := range snapshot.Alive {
@@ -52,8 +39,6 @@ func (sync *Synchronizer) HandleNetworkSnapshot(snapshot common.Snapshot, now ti
 			}
 		}
 	}
-	// Hall calls are shared state; cab calls remain local and are recovered only
-	// from this elevator's own state entry.
 	for floor := range common.N_FLOORS {
 		sync.netRequests[floor][0] = snapshot.HallRequests[floor][0]
 		sync.netRequests[floor][1] = snapshot.HallRequests[floor][1]
@@ -66,8 +51,6 @@ func (sync *Synchronizer) HandleNetworkSnapshot(snapshot common.Snapshot, now ti
 		}
 	}
 
-	// Any request missing from the network view is considered cleared. Cab calls
-	// that were recovered from the network are kept latched locally.
 	for floor := range common.N_FLOORS {
 		for button := range common.ButtonType(common.N_BUTTONS) {
 			if sync.netRequests[floor][button] {
@@ -82,9 +65,8 @@ func (sync *Synchronizer) HandleNetworkSnapshot(snapshot common.Snapshot, now ti
 	}
 }
 
-// HandleAssignerTask records a new hall-task assignment and returns hall calls
-// that must be revoked from the local Elevator because another node took over
-// responsibility for them.
+// HandleAssignerTask stores a new hall assignment and returns hall calls that
+// must be revoked locally.
 func (sync *Synchronizer) HandleAssignerTask(task common.ElevInput) (toRevoke common.Requests) {
 	previousAssignment := sync.assignedHall
 	sync.assignedHall = task.HallTask
@@ -105,11 +87,7 @@ func (sync *Synchronizer) HandleAssignerTask(task common.ElevInput) (toRevoke co
 }
 
 // HandleButtonPresses latches newly observed button presses.
-//
-// Cab calls are immediately eligible for local execution. Hall calls are merely
-// recorded here and are injected later by TransferReadyRequests once assignment
-// and coherence rules allow it.
-func (sync *Synchronizer) HandleButtonPresses(edgePresses common.Requests, currentFloor int, now time.Time) (newCabRequests common.Requests, newHallRequests common.Requests) {
+func (sync *Synchronizer) HandleButtonPresses(edgePresses common.Requests) (newCabRequests common.Requests, newHallRequests common.Requests) {
 	for floor := range common.N_FLOORS {
 		for button := range common.ButtonType(common.N_BUTTONS) {
 			if !edgePresses[floor][button] {
@@ -128,15 +106,9 @@ func (sync *Synchronizer) HandleButtonPresses(edgePresses common.Requests, curre
 	return newCabRequests, newHallRequests
 }
 
-// TransferReadyRequests returns the requests that should be handed to Elevator
-// on this tick.
-//
-// Cab calls are always local. Hall calls are only released when they are
-// assigned to this elevator and either the node is alone or the cluster has
-// reached a coherent shared view.
+// TransferReadyRequests returns requests that are ready to enter the local FSM.
 func (sync *Synchronizer) TransferReadyRequests() (toTransfer common.Requests) {
 	for floor := range common.N_FLOORS {
-		// Cab calls are private to the local elevator and should be injected once.
 		if sync.localRequests[floor][common.BT_Cab] && !sync.deliveredRequests[floor][common.BT_Cab] {
 			toTransfer[floor][common.BT_Cab] = true
 			sync.deliveredRequests[floor][common.BT_Cab] = true
@@ -146,15 +118,11 @@ func (sync *Synchronizer) TransferReadyRequests() (toTransfer common.Requests) {
 			if sync.deliveredRequests[floor][button] {
 				continue
 			}
-			// While peers are alive but disagree on the shared snapshot, wait for
-			// convergence before committing to a hall assignment.
 			if sync.hasAlivePeer && !sync.coherent {
 				continue
 			}
 
 			hallActive := sync.netRequests[floor][button] || sync.localRequests[floor][button]
-			// In distributed mode, only the replicated hall state counts. In
-			// single-elevator mode, locally latched hall calls are served directly.
 			if sync.hasAlivePeer {
 				hallActive = sync.netRequests[floor][button]
 			}
@@ -170,8 +138,7 @@ func (sync *Synchronizer) TransferReadyRequests() (toTransfer common.Requests) {
 	return toTransfer
 }
 
-// ClearServicedRequests clears any requests that the Elevator just reported
-// serviced at floor.
+// ClearServicedRequests removes requests just reported serviced at floor.
 func (sync *Synchronizer) ClearServicedRequests(floor int, serviced common.Requests) {
 	if floor < 0 || floor >= common.N_FLOORS {
 		return
@@ -185,12 +152,10 @@ func (sync *Synchronizer) ClearServicedRequests(floor int, serviced common.Reque
 	}
 }
 
-// HasAlivePeer reports whether at least one other elevator is currently alive
-// and represented by a state entry in the world view.
+// HasAlivePeer reports whether another elevator is alive in the world view.
 func (sync *Synchronizer) HasAlivePeer() bool { return sync.hasAlivePeer }
 
-// IsInitFromNetwork reports whether the local cab state has been seen in a
-// network snapshot since startup.
+// IsInitFromNetwork reports whether the local cab state has been seen on the network.
 func (sync *Synchronizer) IsInitFromNetwork() bool { return sync.initFromNetwork }
 
 // GetLocalRequests returns the synchronizer's local request matrix.
@@ -198,8 +163,7 @@ func (sync *Synchronizer) GetLocalRequests() common.Requests {
 	return sync.localRequests
 }
 
-// GetNetRequests returns the latest request matrix derived from the shared
-// network snapshot.
+// GetNetRequests returns the request matrix derived from the shared snapshot.
 func (sync *Synchronizer) GetNetRequests() common.Requests {
 	return sync.netRequests
 }

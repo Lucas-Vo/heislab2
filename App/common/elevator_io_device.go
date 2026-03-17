@@ -7,16 +7,14 @@ const (
 	N_BUTTONS = 3
 )
 
-// ElevInputDevice adapts the raw driver functions to the interface used by the
-// local FSM.
+// ElevInputDevice groups the driver reads used by the local FSM.
 type ElevInputDevice struct {
 	FloorSensor   func() int
 	RequestButton func(int, ButtonType) int
 	obstruction   func() int
 }
 
-// ElevOutputDevice adapts the raw driver functions to the interface used by
-// the local FSM.
+// ElevOutputDevice groups the driver writes used by the local FSM.
 type ElevOutputDevice struct {
 	FloorIndicator     func(int)
 	RequestButtonLight func(int, ButtonType, bool)
@@ -25,13 +23,12 @@ type ElevOutputDevice struct {
 	MotorDirection     func(MotorDirection)
 }
 
-// ElevioInit initializes the shared driver connection using the project's
-// fixed floor count.
+// ElevioInit initializes the shared driver connection.
 func ElevioInit(addr string) {
 	Init(addr, N_FLOORS)
 }
 
-// ElevioGetInputDevice returns the simulator input hooks consumed by Elevator.
+// ElevioGetInputDevice returns the driver reads as an ElevInputDevice.
 func ElevioGetInputDevice() ElevInputDevice {
 	return ElevInputDevice{
 		FloorSensor: func() int {
@@ -60,8 +57,7 @@ func (d ElevInputDevice) Obstruction() int {
 	return d.obstruction()
 }
 
-// ElevioGetOutputDevice returns the simulator output hooks consumed by
-// Elevator.
+// ElevioGetOutputDevice returns the driver writes as an ElevOutputDevice.
 func ElevioGetOutputDevice() ElevOutputDevice {
 	return ElevOutputDevice{
 		FloorIndicator: func(floor int) {

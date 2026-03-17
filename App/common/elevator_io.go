@@ -28,7 +28,7 @@ const (
 	MD_Stop MotorDirection = 0
 )
 
-// ButtonType identifies one physical elevator button column.
+// ButtonType identifies a button column.
 type ButtonType int
 
 const (
@@ -40,7 +40,7 @@ const (
 	BT_Cab ButtonType = 2
 )
 
-// ButtonEvent reports one button press edge.
+// ButtonEvent reports a button press edge.
 type ButtonEvent struct {
 	Floor  int
 	Button ButtonType
@@ -65,24 +65,22 @@ func Init(addr string, numFloors int) {
 	_initialized = true
 }
 
-// SetMotorDirection writes the commanded motor direction to the elevator
-// server.
+// SetMotorDirection writes the motor command.
 func SetMotorDirection(dir MotorDirection) {
 	write([4]byte{1, byte(dir), 0, 0})
 }
 
-// SetButtonLamp sets one hall or cab button lamp.
+// SetButtonLamp sets one hall or cab lamp.
 func SetButtonLamp(button ButtonType, floor int, value bool) {
 	write([4]byte{2, byte(button), byte(floor), toByte(value)})
 }
 
-// SetFloorIndicator sets the floor indicator lamp.
+// SetFloorIndicator sets the floor indicator.
 func SetFloorIndicator(floor int) {
 	write([4]byte{3, byte(floor), 0, 0})
 }
 
-// SetDoorOpenLamp controls the door-open lamp used as the door actuator in the
-// simulator.
+// SetDoorOpenLamp controls the door-open lamp.
 func SetDoorOpenLamp(value bool) {
 	write([4]byte{4, toByte(value), 0, 0})
 }
@@ -93,8 +91,6 @@ func SetStopLamp(value bool) {
 }
 
 // PollButtons continuously sends button press edges on receiver.
-//
-// The function never returns and will block if receiver is not serviced.
 func PollButtons(receiver chan<- ButtonEvent) {
 	prev := make([][3]bool, _numFloors)
 	for {
@@ -137,7 +133,7 @@ func PollStopButton(receiver chan<- bool) {
 	}
 }
 
-// GetButton reads the current state of one hall or cab button.
+// GetButton reads one hall or cab button.
 func GetButton(button ButtonType, floor int) bool {
 	a := read([4]byte{6, byte(button), byte(floor), 0})
 	return toBool(a[1])

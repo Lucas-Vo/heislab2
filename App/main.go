@@ -8,7 +8,6 @@ import (
 	"os/signal"
 )
 
-// main starts the three controller threads and waits for an interrupt.
 func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

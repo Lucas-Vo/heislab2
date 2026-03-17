@@ -9,30 +9,18 @@ import (
 )
 
 const (
-	// LOCAL_PUBLISH_PERIOD is how often the merged world view is forwarded to the
-	// assigner and local FSM.
-	LOCAL_PUBLISH_PERIOD = 50 * time.Millisecond
-	// BROADCAST_PERIOD is the steady-state snapshot broadcast period.
-	BROADCAST_PERIOD = 1 * time.Second
-	// INITIAL_CONTACT_TIMEOUT bounds how long startup may wait before giving up
-	// on seeing peers.
-	INITIAL_CONTACT_TIMEOUT = 5 * time.Second
-	// ELEVATOR_ERROR_TIMEOUT marks the local elevator dead if elevatorThread stops
-	// publishing state updates.
-	ELEVATOR_ERROR_TIMEOUT = 6 * time.Second
+	localPublishPeriod  = 50 * time.Millisecond
+	broadcastPeriod     = 1 * time.Second
+	initialContactDelay = 5 * time.Second
+	elevatorDeadTimeout = 6 * time.Second
 )
 
-// networkThread owns peer communication and the merged WorldView.
-//
-// It receives local snapshots from elevatorThread, remote snapshots from the
-// UDP network layer, and peer heartbeats from the discovery layer. The thread
-// is also responsible for gating coherence and for marking the local elevator
-// dead if the local FSM stops reporting progress.
+// networkThread owns peer communication and the merged world view.
 func networkThread(
 	config common.Config,
-	elevUpdateNetCh <-chan common.Snapshot, // elev -> net
-	netUpdateAssignerCh chan<- common.Snapshot, // net -> assigner
-	netUpdateElevCh chan<- common.Snapshot, // net -> elev
+	elevUpdateNetCh <-chan common.Snapshot,
+	netUpdateAssignerCh chan<- common.Snapshot,
+	netUpdateElevCh chan<- common.Snapshot,
 ) {
 	wv := elevnetwork.InitWorldView(config)
 	network := elevnetwork.InitNetwork(config)
@@ -43,30 +31,28 @@ func networkThread(
 	initialSnapshot.UpdateKind = common.UpdateRequests
 	network.SendSnapshot(initialSnapshot, wv.GetSelfAlive())
 
-	localTicker := time.NewTicker(LOCAL_PUBLISH_PERIOD)
+	localTicker := time.NewTicker(localPublishPeriod)
 	defer localTicker.Stop()
 
-	broadcastTicker := time.NewTicker(BROADCAST_PERIOD)
+	broadcastTicker := time.NewTicker(broadcastPeriod)
 	defer broadcastTicker.Stop()
 
-	startupTimer := time.NewTimer(INITIAL_CONTACT_TIMEOUT)
+	startupTimer := time.NewTimer(initialContactDelay)
 	defer startupTimer.Stop()
 
-	elevatorErrorTimer := time.NewTimer(ELEVATOR_ERROR_TIMEOUT)
+	elevatorErrorTimer := time.NewTimer(elevatorDeadTimeout)
 	defer elevatorErrorTimer.Stop()
 
 	for {
 		now := time.Now()
 		select {
 		case elevatorSnapshot := <-elevUpdateNetCh:
-			elevatorErrorTimer.Reset(ELEVATOR_ERROR_TIMEOUT)
+			elevatorErrorTimer.Reset(elevatorDeadTimeout)
 			wv.HandleLocal(elevatorSnapshot, now)
 
 		case msg := <-network.Incoming():
 			filteredHalls, isFiltered := wv.HandleRemote(msg, now)
 			if isFiltered {
-				// Re-broadcast the clear so delayed packets do not resurrect already
-				// served hall lights after packet loss.
 				snapshot := wv.SnapshotForResend(filteredHalls)
 				network.SendSnapshot(snapshot, wv.GetSelfAlive())
 			}
@@ -82,8 +68,6 @@ func networkThread(
 			}
 			wv.PublishLocally(netUpdateAssignerCh, netUpdateElevCh, isCoherent)
 			if !isCoherent {
-				// While peers disagree, broadcast aggressively to drive the cluster
-				// back toward a coherent hall-light view.
 				snapshot := wv.SnapshotForBroadcast()
 				network.SendSnapshot(snapshot, wv.GetSelfAlive())
 			}

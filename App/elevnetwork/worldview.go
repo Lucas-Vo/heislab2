@@ -8,15 +8,9 @@ import (
 )
 
 const (
-	// WV_TIMEOUT is the peer-heard timeout before another elevator is marked
-	// dead.
-	WV_TIMEOUT = 4 * time.Second
-	// VALID_SERVICE_WINDOW suppresses hall-call resurrection from delayed packets
-	// shortly after a call was served locally.
-	VALID_SERVICE_WINDOW = 2 * time.Second
-	// VALID_COUNTER_WINDOW bounds how far an older packet counter may lag before
-	// it is accepted again after silence.
-	VALID_COUNTER_WINDOW = 20
+	worldViewTimeout    = 4 * time.Second
+	recentServiceWindow = 2 * time.Second
+	counterWindow       = 20
 )
 
 // WorldView maintains the controller's merged picture of the whole elevator
@@ -61,26 +55,22 @@ func InitWorldView(config common.Config) *WorldView {
 	return wv
 }
 
-// EndStartupPeriod disables the optimistic startup behavior used while waiting
-// for the first peer snapshots.
+// EndStartupPeriod ends the optimistic startup mode.
 func (wv *WorldView) EndStartupPeriod() {
 	wv.inStartupPeriod = false
 }
 
-// SetSelfAlive records whether the local elevator should still be considered
-// assignable.
+// SetSelfAlive marks whether the local elevator is assignable.
 func (wv *WorldView) SetSelfAlive(alive bool) {
 	wv.selfAlive = alive
 }
 
-// GetSelfAlive reports whether the local elevator is currently considered
-// assignable.
+// GetSelfAlive reports whether the local elevator is assignable.
 func (wv *WorldView) GetSelfAlive() bool {
 	return wv.selfAlive
 }
 
-// HandlePeerUpdate updates last-heard timestamps from the peer-discovery
-// subsystem.
+// HandlePeerUpdate updates last-heard timestamps from peer discovery.
 func (wv *WorldView) HandlePeerUpdate(update peers.PeerUpdate, now time.Time) {
 	if update.New != "" && update.New != wv.selfKey {
 		wv.lastHeard[update.New] = now
@@ -99,11 +89,8 @@ func (wv *WorldView) HandlePeerUpdate(update peers.PeerUpdate, now time.Time) {
 	}
 }
 
-// PublishLocally sends the current merged snapshot to the assigner and elevator
+// PublishLocally forwards the merged snapshot to the assigner and elevator
 // threads.
-//
-// The exported Coherent flag is only set after startup and only when the latest
-// peer snapshots agree with the local snapshot.
 func (wv *WorldView) PublishLocally(netSnap1Ch, netSnap2Ch chan<- common.Snapshot, snapshotsCoherent bool) {
 	snap := common.DeepCopySnapshot(wv.localSnapshot)
 	coherent := !wv.inStartupPeriod && snapshotsCoherent
@@ -120,8 +107,8 @@ func (wv *WorldView) PublishLocally(netSnap1Ch, netSnap2Ch chan<- common.Snapsho
 	}
 }
 
-// SnapshotsAreCoherent reports whether all currently alive peers agree on hall
-// calls and on this elevator's published local state.
+// SnapshotsAreCoherent reports whether alive peers agree on hall calls and on
+// this elevator's published local state.
 func (wv *WorldView) SnapshotsAreCoherent(selfSnapshot common.Snapshot) bool {
 	selfViewOfSelf, ok := selfSnapshot.States[wv.selfKey]
 	if !ok {
@@ -167,10 +154,8 @@ func (wv *WorldView) HandleLocal(ns common.Snapshot, now time.Time) {
 	wv.mergeWorldView(wv.selfKey, ns)
 }
 
-// HandleRemote merges one remote network message into the world view.
-//
-// The returned hall matrix is non-zero when recently serviced hall calls were
-// filtered out and should be re-broadcast as cleared.
+// HandleRemote merges one remote message and reports whether a clear should be
+// re-broadcast.
 func (wv *WorldView) HandleRemote(msg common.NetMsg, now time.Time) ([common.N_FLOORS][2]bool, bool) {
 	msgToMerge, filteredHalls, isFiltered := wv.filterRecentlyServicedHalls(msg, now)
 	wv.mergeRemote(msgToMerge)
@@ -211,8 +196,8 @@ func (wv *WorldView) markRecentlyServicedHalls(ns common.Snapshot, now time.Time
 	}
 }
 
-// filterRecentlyServicedHalls masks hall calls that are being resurrected by
-// delayed packets shortly after a local service event.
+// filterRecentlyServicedHalls suppresses delayed packets that would resurrect a
+// recently served hall call.
 func (wv *WorldView) filterRecentlyServicedHalls(msg common.NetMsg, now time.Time) (common.NetMsg, [common.N_FLOORS][2]bool, bool) {
 	var serviced [common.N_FLOORS][2]bool
 	msgIsFiltered := false
@@ -236,8 +221,6 @@ func (wv *WorldView) mergeRemote(msg common.NetMsg) {
 	if msg.Origin == wv.selfKey || msg.Origin == "" {
 		return
 	}
-	// Keep the origin-specific marker logs so packet-loss traces are easier to
-	// scan by eye during FAT/debugging.
 	switch msg.Origin {
 	case "1":
 		log.Printf("((((((((((((((((((((((((((((((((((((((((((((((((((((()))))))))))))))))))))))))))))))))))))))))))))))))))))")
@@ -252,20 +235,14 @@ func (wv *WorldView) mergeRemote(msg common.NetMsg) {
 	prevCounter := wv.latestCount[msg.Origin]
 	prevHeard := wv.lastHeard[msg.Origin]
 	wv.lastHeard[msg.Origin] = now
-	// A small rollback window tolerates packet reordering without letting very
-	// old broadcasts overwrite newer state after a loss burst.
-	if now.Sub(prevHeard) < WV_TIMEOUT && msg.Counter < prevCounter && msg.Counter > prevCounter-VALID_COUNTER_WINDOW {
+	if now.Sub(prevHeard) < worldViewTimeout && msg.Counter < prevCounter && msg.Counter > prevCounter-counterWindow {
 		log.Printf("drop stale/duplicate frame origin=%s counter=%d prevCounter=%d dt=%s", msg.Origin, msg.Counter, prevCounter, now.Sub(prevHeard))
 		return
 	}
 	wv.latestCount[msg.Origin] = msg.Counter
 }
 
-// CalculateAlive refreshes the Alive map from peer heartbeats and the local
-// selfAlive flag.
-//
-// During startup, peers that have not yet been heard from are optimistically
-// treated as alive until EndStartupPeriod is called.
+// CalculateAlive refreshes the Alive map from peer heartbeats.
 func (wv *WorldView) CalculateAlive(now time.Time) {
 	for _, id := range wv.peers {
 		if id == wv.selfKey {
@@ -273,7 +250,7 @@ func (wv *WorldView) CalculateAlive(now time.Time) {
 			continue
 		}
 		if t, ok := wv.lastHeard[id]; ok {
-			wv.localSnapshot.Alive[id] = now.Sub(t) <= WV_TIMEOUT
+			wv.localSnapshot.Alive[id] = now.Sub(t) <= worldViewTimeout
 			continue
 		}
 		wv.localSnapshot.Alive[id] = wv.inStartupPeriod
@@ -285,16 +262,13 @@ func (wv *WorldView) isHallRecentlyServiced(floor int, button int, now time.Time
 	if lastServiced.IsZero() {
 		return false
 	}
-	return now.Sub(lastServiced) <= VALID_SERVICE_WINDOW
+	return now.Sub(lastServiced) <= recentServiceWindow
 }
 
 func (wv *WorldView) mergeWorldView(fromKey string, snap common.Snapshot) {
 	if fromKey != wv.selfKey {
 		wv.lastSnapshot[fromKey] = common.DeepCopySnapshot(snap)
 		if wv.inStartupPeriod {
-			// Cab-call recovery is network-assisted only. On startup, the first peer
-			// snapshot that still remembers our last cab lights is merged back into
-			// our local state.
 			wv.recoverCabRequests(snap)
 			wv.inStartupPeriod = false
 		}
@@ -302,7 +276,6 @@ func (wv *WorldView) mergeWorldView(fromKey string, snap common.Snapshot) {
 
 	wv.mergeHallRequests(snap.HallRequests, snap.UpdateKind)
 	for k, st := range snap.States {
-		// After startup, remote peers may not overwrite our own local FSM state.
 		if k == wv.selfKey && fromKey != wv.selfKey && !wv.inStartupPeriod {
 			continue
 		}
@@ -328,11 +301,9 @@ func (wv *WorldView) mergeHallRequests(incoming [common.N_FLOORS][2]bool, kind c
 	for i := range common.N_FLOORS {
 		switch kind {
 		case common.UpdateServiced:
-			// Service is merged with AND so any false clears the shared hall light.
 			wv.localSnapshot.HallRequests[i][0] = wv.localSnapshot.HallRequests[i][0] && incoming[i][0]
 			wv.localSnapshot.HallRequests[i][1] = wv.localSnapshot.HallRequests[i][1] && incoming[i][1]
 		case common.UpdateRequests:
-			// New requests are merged with OR so any node can light a hall call.
 			wv.localSnapshot.HallRequests[i][0] = wv.localSnapshot.HallRequests[i][0] || incoming[i][0]
 			wv.localSnapshot.HallRequests[i][1] = wv.localSnapshot.HallRequests[i][1] || incoming[i][1]
 		}

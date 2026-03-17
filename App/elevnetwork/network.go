@@ -7,15 +7,10 @@ import (
 	"log"
 )
 
-// NETWORK_CHAN_SIZE is the buffer size used for the UDP peer and snapshot
-// channels.
-const NETWORK_CHAN_SIZE = 128
+const networkChanSize = 128
 
-// Network wraps the peer-discovery and UDP broadcast channels used by the
+// Network wraps the peer-discovery and broadcast channels used by the
 // controller.
-//
-// The type also keeps the last transmitted snapshot and a per-origin message
-// counter so higher layers can reason about coherence and stale frames.
 type Network struct {
 	selfKey    string
 	msgCounter uint64
@@ -29,14 +24,13 @@ type Network struct {
 	hasLastSnapshot bool
 }
 
-// InitNetwork starts the background peer-discovery and snapshot broadcast
-// goroutines and returns their channel wrapper.
+// InitNetwork starts peer discovery and snapshot broadcast.
 func InitNetwork(config common.Config) *Network {
 	network := &Network{
 		selfKey:      config.SelfKey,
-		incoming:     make(chan common.NetMsg, NETWORK_CHAN_SIZE),
-		outgoing:     make(chan common.NetMsg, NETWORK_CHAN_SIZE),
-		peerUpdates:  make(chan peers.PeerUpdate, NETWORK_CHAN_SIZE),
+		incoming:     make(chan common.NetMsg, networkChanSize),
+		outgoing:     make(chan common.NetMsg, networkChanSize),
+		peerUpdates:  make(chan peers.PeerUpdate, networkChanSize),
 		peerTxEnable: make(chan bool, 1),
 	}
 
@@ -58,8 +52,7 @@ func (network *Network) PeerUpdates() <-chan peers.PeerUpdate {
 	return network.peerUpdates
 }
 
-// LastSentSnapshot returns a defensive copy of the most recent transmitted
-// snapshot.
+// LastSentSnapshot returns a copy of the most recent transmitted snapshot.
 func (network *Network) LastSentSnapshot() (common.Snapshot, bool) {
 	if !network.hasLastSnapshot {
 		return common.Snapshot{}, false
@@ -67,11 +60,7 @@ func (network *Network) LastSentSnapshot() (common.Snapshot, bool) {
 	return common.DeepCopySnapshot(network.lastSnapshot), true
 }
 
-// SendSnapshot broadcasts snapshot if this elevator is currently considered
-// alive.
-//
-// The function returns false when transmission is skipped or the outgoing queue
-// is full.
+// SendSnapshot broadcasts snapshot if this elevator is still considered alive.
 func (network *Network) SendSnapshot(snapshot common.Snapshot, selfAlive bool) bool {
 	if !selfAlive || network.outgoing == nil {
 		return false

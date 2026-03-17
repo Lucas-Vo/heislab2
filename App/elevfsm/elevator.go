@@ -7,17 +7,12 @@ import (
 )
 
 const (
-	// DOOR_OPEN_DURATION is the course-specified door-open time.
-	DOOR_OPEN_DURATION = 3 * time.Second
-	// IO_ADDRESS is the hard-coded simulator TCP endpoint used by this build.
-	IO_ADDRESS = "localhost:15657"
+	doorOpenDuration = 3 * time.Second
+	ioAddress        = "localhost:15657"
 )
 
-// Elevator owns the local elevator FSM and simulator I/O.
-//
-// It is designed to be driven by exactly one goroutine. The type keeps the
-// currently latched requests, the last known floor, the movement state, and the
-// temporary direction announcement used to clear up/down hall calls separately.
+// Elevator owns the local FSM, the latched request set, and the temporary
+// direction announcement used to clear up and down hall calls separately.
 type Elevator struct {
 	inputDevice  common.ElevInputDevice
 	outputDevice common.ElevOutputDevice
@@ -35,14 +30,12 @@ type Elevator struct {
 	announceDir common.MotorDirection
 }
 
-// NewElevator initializes the local controller and returns it in a defined
-// startup state.
+// NewElevator initializes the local controller.
 //
-// If the elevator starts between floors, the controller drives downward until a
-// floor sensor becomes active. The function panics if the simulator connection
-// at IO_ADDRESS cannot be opened.
+// If startup happens between floors, the car searches downward until the first
+// floor sensor edge. The function panics if the simulator connection fails.
 func NewElevator() *Elevator {
-	common.ElevioInit(IO_ADDRESS)
+	common.ElevioInit(ioAddress)
 	e := new(Elevator)
 	e.floor = -1
 	e.dirn = common.MD_Stop
@@ -57,9 +50,6 @@ func NewElevator() *Elevator {
 	if newFloor != -1 {
 		e.onFloorArrival(newFloor)
 	} else {
-		// The project assumes the controller may need to recover its position at
-		// startup. The chosen policy is to move downward until the first floor
-		// sensor edge is observed.
 		e.outputDevice.MotorDirection(common.MD_Down)
 		e.dirn = common.MD_Down
 		e.behaviour = EB_Moving
@@ -71,7 +61,7 @@ func NewElevator() *Elevator {
 	return e
 }
 
-// ApplyNewRequests latches the supplied requests into the local FSM.
+// ApplyNewRequests latches requests into the local FSM.
 func (e *Elevator) ApplyNewRequests(requests common.Requests) {
 	for floor := range common.N_FLOORS {
 		for button := range common.ButtonType(common.N_BUTTONS) {
@@ -85,8 +75,7 @@ func (e *Elevator) ApplyNewRequests(requests common.Requests) {
 func (e *Elevator) onRequest(buttonFloor int, buttonType common.ButtonType) {
 	e.requests[buttonFloor][buttonType] = true
 	if e.behaviour == EB_DoorOpen && buttonFloor == e.floor {
-		// Re-pressing a button at the current floor extends the open-door window
-		// instead of scheduling an extra stop later.
+		// A press at the current floor extends the door-open interval.
 		e.doorTimer = time.Now()
 		return
 	}
@@ -104,7 +93,7 @@ func (e *Elevator) onRequest(buttonFloor int, buttonType common.ButtonType) {
 	}
 }
 
-// RevokeRequest removes requests that were de-assigned away from this elevator.
+// RevokeRequest drops requests that were de-assigned away from this elevator.
 func (e *Elevator) RevokeRequest(requests common.Requests) {
 	for floor := range common.N_FLOORS {
 		for button := range common.ButtonType(common.N_BUTTONS) {
@@ -115,11 +104,9 @@ func (e *Elevator) RevokeRequest(requests common.Requests) {
 	}
 }
 
-// PollButtonPresses snapshots the current button matrix and reports whether any
-// button is pressed right now.
+// PollButtonPresses reads the current button matrix.
 //
-// The method polls level-triggered simulator inputs, so repeated calls while a
-// physical button remains pressed will continue to report that request.
+// Inputs are level-triggered, so a held button will keep appearing active.
 func (e *Elevator) PollButtonPresses() (buttonPresses common.Requests, hadPress bool) {
 	buttonPresses, hadPress = common.Requests{}, false
 
@@ -136,11 +123,8 @@ func (e *Elevator) PollButtonPresses() (buttonPresses common.Requests, hadPress 
 	return buttonPresses, hadPress
 }
 
-// UpdateFSM advances the local FSM by one polling tick.
-//
-// It samples the floor sensor and obstruction switch, updates the movement and
-// door state, and returns any requests that were just serviced. The caller is
-// responsible for running this method periodically from a single goroutine.
+// UpdateFSM advances the local FSM by one polling tick and returns any newly
+// serviced requests.
 func (e *Elevator) UpdateFSM(now time.Time) (stateChanged bool, servicedRequests common.Requests, isServiced bool) {
 	servicedRequests = common.Requests{}
 	isServiced = false
@@ -160,16 +144,11 @@ func (e *Elevator) UpdateFSM(now time.Time) (stateChanged bool, servicedRequests
 		e.onFloorArrival(e.floor)
 	}
 
-	// Obstruction keeps the door open by restarting the timer every tick while
-	// the switch is active.
 	if isObstructed != 0 && e.behaviour == EB_DoorOpen {
 		e.doorTimer = now
 	}
 
 	if e.prevBehaviour != e.behaviour && e.behaviour == EB_DoorOpen {
-		// The first door-open period announces the direction that is being served
-		// at this floor. If the opposite hall call must also be announced, the
-		// remaining request stays latched and causes a second 3 s door-open cycle.
 		arrivalDirection := e.dirn
 		e.announceDir = e.chooseNewDirAtFloor(e.prevFloor, arrivalDirection)
 		e.doorTimer = now
@@ -177,7 +156,7 @@ func (e *Elevator) UpdateFSM(now time.Time) (stateChanged bool, servicedRequests
 	e.prevBehaviour = e.behaviour
 	e.prevDirection = e.dirn
 
-	if e.prevBehaviour == EB_DoorOpen && now.Sub(e.doorTimer) >= DOOR_OPEN_DURATION {
+	if e.prevBehaviour == EB_DoorOpen && now.Sub(e.doorTimer) >= doorOpenDuration {
 		servicedRequests = e.onDoorTimerExpiry(now)
 		isServiced = true
 	}
@@ -209,10 +188,7 @@ func (e *Elevator) GetFloor() int { return e.inputDevice.FloorSensor() }
 // IsIdle reports whether the local FSM is currently idle.
 func (e *Elevator) IsIdle() bool { return e.behaviour == EB_Idle }
 
-// SetLights writes the complete local request matrix to the simulator lamps.
-//
-// In distributed mode this should normally be called with the coherent network
-// request set so hall lights remain shared across workspaces.
+// SetLights writes the current request matrix to the simulator lamps.
 func (e *Elevator) SetLights(requests common.Requests) {
 	for floor := range common.N_FLOORS {
 		for btn := range common.ButtonType(common.N_BUTTONS) {
@@ -221,8 +197,7 @@ func (e *Elevator) SetLights(requests common.Requests) {
 	}
 }
 
-// MotionStrings returns the assigner-compatible string encoding of the current
-// behaviour and direction.
+// MotionStrings returns the assigner-compatible behaviour and direction strings.
 func (e *Elevator) MotionStrings() (behavior string, direction string) {
 	switch e.behaviour {
 	case EB_Idle:
@@ -247,8 +222,7 @@ func (e *Elevator) MotionStrings() (behavior string, direction string) {
 	return behavior, direction
 }
 
-// SetStopLight uses the simulator stop lamp as a coarse online/offline
-// indicator for this elevator.
+// SetStopLight mirrors online status to the stop lamp.
 func (e *Elevator) SetStopLight(online bool) {
 	e.outputDevice.StopButtonLight(!online)
 }
@@ -259,8 +233,6 @@ func (e *Elevator) onFloorArrival(newFloor int) {
 	e.prevFloor = e.floor
 	e.outputDevice.FloorIndicator(e.floor)
 	if e.behaviour == EB_Moving && requests_shouldStop(e.requests, e.floor, e.dirn) != 0 {
-		// Stopping decisions happen on floor-sensor edges so the elevator never
-		// opens the door while between floors.
 		e.outputDevice.MotorDirection(common.MD_Stop)
 		e.outputDevice.DoorLight(true)
 		e.behaviour = EB_DoorOpen
@@ -295,14 +267,14 @@ func (e *Elevator) shouldSwitchDirection() bool {
 	}
 }
 
-// OnDoorClose decides which requests are cleared when the current 3 s door-open
-// interval expires.
+// OnDoorClose decides which requests are cleared when a door-open interval
+// expires.
 //
 // Cab calls are always cleared at the stop floor. Hall calls are only cleared
 // for the currently announced direction so up and down guarantees remain
 // separate. If the opposite hall direction is still waiting and the elevator is
-// about to reverse, the method leaves that opposite request latched and returns
-// the next announced direction so a second 3 s open interval can serve it.
+// about to reverse, the opposite hall call stays latched so the door can remain
+// open for a second 3-second announcement interval.
 func (e *Elevator) OnDoorClose(floor int, announceDir common.MotorDirection) (cleared common.Requests, nextAnnounceDir common.MotorDirection) {
 	e.floor = floor
 	upRequestAtFloor, downRequestAtFloor := requests_hallRequestsAtFloor(e.requests, e.floor)
