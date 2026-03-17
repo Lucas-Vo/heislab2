@@ -19,6 +19,8 @@ type Config struct {
 	SelfKey   string
 }
 
+// ------------ Exported Methods -------------
+
 func DefaultConfig() (Config, error) {
 	config := Config{
 		PeerPort: 4242,
@@ -37,6 +39,22 @@ func DefaultConfig() (Config, error) {
 	}
 	return config, nil
 }
+
+func (c Config) ExpectedKeys() []string {
+	ids := make([]int, 0, len(c.HostByKey))
+	for elevID := range c.HostByKey {
+		ids = append(ids, elevID)
+	}
+	sort.Ints(ids)
+
+	keyStrings := make([]string, 0, len(ids))
+	for _, elevID := range ids {
+		keyStrings = append(keyStrings, fmt.Sprintf("%d", elevID))
+	}
+	return keyStrings
+}
+
+// ------------ Unexported Methods -------------
 
 func (c *Config) initSelf() error {
 	elevID, err := c.detectSelfID()
@@ -58,18 +76,4 @@ func (c Config) detectSelfID() (int, error) {
 		}
 	}
 	return 0, fmt.Errorf("host IP %q not found in config", ip)
-}
-
-func (c Config) ExpectedKeys() []string {
-	ids := make([]int, 0, len(c.HostByKey))
-	for elevID := range c.HostByKey {
-		ids = append(ids, elevID)
-	}
-	sort.Ints(ids)
-
-	keyStrings := make([]string, 0, len(ids))
-	for _, elevID := range ids {
-		keyStrings = append(keyStrings, fmt.Sprintf("%d", elevID))
-	}
-	return keyStrings
 }
