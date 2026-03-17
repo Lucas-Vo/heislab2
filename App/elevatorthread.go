@@ -3,6 +3,7 @@ package main
 import (
 	"elevator/common"
 	"elevator/elevfsm"
+	"log"
 	"time"
 )
 
@@ -66,13 +67,21 @@ func elevatorThread(
 				behavior, direction := elevator.MotionStrings()
 				snapshot := common.BuildSnapshot(config.SelfKey, common.UK_Serviced, servicedRequests,
 					elevator.GetPrevFloor(), behavior, direction, sync.GetNetRequests(), sync.GetLocalRequests())
-				elevUpdateNetCh <- snapshot
+				select {
+				case elevUpdateNetCh <- snapshot:
+				default:
+					log.Printf("fsmThread: elevSnapNetCh is full, skipping snapshot update")
+				}
 
 			} else if elevStateChange || newButtonPressed {
 				behavior, direction := elevator.MotionStrings()
 				snapshot := common.BuildSnapshot(config.SelfKey, common.UK_Requests, common.Requests{},
 					elevator.GetPrevFloor(), behavior, direction, sync.GetNetRequests(), sync.GetLocalRequests())
-				elevUpdateNetCh <- snapshot
+				select {
+				case elevUpdateNetCh <- snapshot:
+				default:
+					log.Printf("fsmThread: elevSnapNetCh is full, skipping snapshot update")
+				}
 			}
 		case <-heartbeatTicker.C:
 			if !elevator.IsIdle() {
@@ -81,7 +90,11 @@ func elevatorThread(
 			behavior, direction := elevator.MotionStrings()
 			snapshot := common.BuildSnapshot(config.SelfKey, common.UK_Requests, common.Requests{},
 				elevator.GetPrevFloor(), behavior, direction, sync.GetNetRequests(), sync.GetLocalRequests())
-			elevUpdateNetCh <- snapshot
+			select {
+			case elevUpdateNetCh <- snapshot:
+			default:
+				log.Printf("fsmThread: elevSnapNetCh is full, skipping snapshot update")
+			}
 		default:
 			//Do nothing
 		}
