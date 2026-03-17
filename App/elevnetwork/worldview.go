@@ -80,15 +80,15 @@ func (wv *WorldView) HandleRemote(msg common.NetMsg, now time.Time) (common.Hall
 	msgToMerge, filteredHalls, isFiltered := wv.filterRecentlyServicedHalls(msg, now)
 
 	if msgToMerge.Origin != wv.selfKey && msgToMerge.Origin != "" {
-		switch msgToMerge.Origin { //TODO: DELETE THIS SHIT
+		switch msgToMerge.Origin {
 		case "1":
-			log.Printf("((((((((((((((((((((((((((((((((((((((((((((((((((((()))))))))))))))))))))))))))))))))))))))))))))))))))))")
+			log.Printf("incoming message from 1")
 		case "2":
-			log.Printf("iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii")
+			log.Printf("incoming message from 2")
 		case "3":
-			log.Printf("##########################################################################################################")
+			log.Printf("incoming message from 3")
 		default:
-			log.Printf("Unknown id")
+			log.Printf("incoming message from unknown id")
 		}
 
 		prevCounter := wv.latestCount[msgToMerge.Origin]

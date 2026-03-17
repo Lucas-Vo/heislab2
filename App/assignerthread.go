@@ -11,7 +11,10 @@ const (
 	HRA_EXECUTABLE_PATH = "./elevassigner/hall_request_assigner"
 )
 
-func assignerThread(config common.Config, netUpdateAssignerCh <-chan common.Snapshot, hallAssignmentCh chan<- common.HallAssignment) {
+func assignerThread(config common.Config,
+	netUpdateAssignerCh <-chan common.Snapshot, // net -> assigner
+	hallAssignmentCh chan<- common.HallAssignment, // assigner -> elev
+) {
 	selfKey := config.SelfKey
 	if selfKey == "" {
 		log.Println("assignerThread: config.SelfKey is empty (did you call config.InitSelf()?)")

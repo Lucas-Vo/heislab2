@@ -16,7 +16,7 @@ type RequestManager struct {
 	assignedHall      common.HallAssignment
 	netRequests       common.Requests
 	localRequests     common.Requests
-	deliveredRequests common.Requests // prevents re-sending active requests to elevator each tick
+	deliveredRequests common.Requests
 }
 
 func InitRequestManager(config common.Config) *RequestManager {
@@ -106,6 +106,7 @@ func (rm *RequestManager) TransferReadyRequests() (toTransfer common.Requests) {
 		}
 
 		for button := elevhw.ButtonType(elevhw.BT_HallUp); button <= elevhw.BT_HallDown; button++ {
+			// only transfer request if it has not been delivered to elevator before
 			if rm.deliveredRequests[floor][button] {
 				continue
 			}

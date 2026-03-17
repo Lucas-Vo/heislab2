@@ -50,7 +50,8 @@ func networkThread(
 
 		case incomingMsg := <-network.Incoming():
 			filteredHallRequests, isFiltered := wv.HandleRemote(incomingMsg, now)
-			if isFiltered { // resend serviced request if inchoerent
+			// resend serviced request if inchoerent
+			if isFiltered {
 				snapshot := wv.ReapplyServicedHalls(filteredHallRequests)
 				network.SendSnapshot(snapshot, wv.GetSelfAlive())
 			}
@@ -65,7 +66,8 @@ func networkThread(
 				isCoherent = wv.SnapshotsAreCoherent(lastSnapshot)
 			}
 			wv.PublishLocally(netUpdateAssignerCh, netUpdateElevCh, isCoherent)
-			if !isCoherent { //broadcast more often if incoherent
+			//broadcast more often if incoherent
+			if !isCoherent {
 				snapshot := wv.SnapshotForBroadcast()
 				network.SendSnapshot(snapshot, wv.GetSelfAlive())
 			}
