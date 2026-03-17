@@ -202,7 +202,7 @@ func (wv *WorldView) markRecentlyServicedHalls(ns common.Snapshot, now time.Time
 	}
 }
 
-// removes hall request from incoming message if hall request was recently serviced
+// removes hall request from incoming message if hall request was recently serviced //TODO: WRITE THIS TO TAKE IN SNAPSHOT, AND USE IN BOTH MERGE REMOTE AND MERGE LOCAL
 func (wv *WorldView) filterRecentlyServicedHalls(msg common.NetMsg, now time.Time) (common.NetMsg, common.HallRequests, bool) {
 	var serviced common.HallRequests
 	msgIsFiltered := false
