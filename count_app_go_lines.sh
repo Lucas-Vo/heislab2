@@ -3,7 +3,7 @@
 set -euo pipefail
 
 root_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-app_dir="$root_dir"
+app_dir="$root_dir/App"
 
 if [[ ! -d "$app_dir" ]]; then
     echo "Error: App directory not found at $app_dir" >&2

@@ -9,7 +9,7 @@ import (
 
 const (
 	WV_TIMEOUT           = 4 * time.Second
-	VALID_SERVICE_WINDOW = 500 * time.Millisecond
+	VALID_SERVICE_WINDOW = 1 * time.Second
 	VALID_COUNTER_WINDOW = 20
 )
 
@@ -81,37 +81,40 @@ func (wv *WorldView) HandleLocal(snap common.Snapshot, now time.Time) {
 }
 
 func (wv *WorldView) HandleRemote(msg common.NetMsg, now time.Time) (common.HallRequests, bool) {
+	if msg.Origin == "" || msg.Origin == wv.selfKey {
+		return common.HallRequests{}, false
+	}
+
 	msgToMerge := msg
 	var filteredHalls common.HallRequests
 	isFiltered := false
 
-	if msg.Origin != "" && msg.Origin != wv.selfKey {
-		msgToMerge.Snapshot, filteredHalls, isFiltered = wv.filterRecentlyServicedHalls(msg.Snapshot, now)
+	msgToMerge.Snapshot, filteredHalls, isFiltered = wv.filterRecentlyServicedHalls(msg.Snapshot, now)
+
+	switch msgToMerge.Origin {
+	case "1":
+		log.Printf("incoming message from 1")
+	case "2":
+		log.Printf("incoming message from 2")
+	case "3":
+		log.Printf("incoming message from 3")
+	default:
+		log.Printf("incoming message from unknown id")
 	}
 
-	if msgToMerge.Origin != wv.selfKey && msgToMerge.Origin != "" {
-		switch msgToMerge.Origin {
-		case "1":
-			log.Printf("incoming message from 1")
-		case "2":
-			log.Printf("incoming message from 2")
-		case "3":
-			log.Printf("incoming message from 3")
-		default:
-			log.Printf("incoming message from unknown id")
-		}
+	prevCounter := wv.latestCount[msgToMerge.Origin]
+	prevHeard := wv.lastHeard[msgToMerge.Origin]
+	wv.lastHeard[msgToMerge.Origin] = now
 
-		prevCounter := wv.latestCount[msgToMerge.Origin]
-		prevHeard := wv.lastHeard[msgToMerge.Origin]
-		wv.lastHeard[msgToMerge.Origin] = now
-		if now.Sub(prevHeard) < WV_TIMEOUT &&
-			msgToMerge.Counter < prevCounter &&
-			msgToMerge.Counter > prevCounter-VALID_COUNTER_WINDOW {
-			log.Printf("drop dead/duplicate frame")
-		} else {
-			wv.latestCount[msgToMerge.Origin] = msgToMerge.Counter
-		}
+	withinCounterWindow := prevCounter <= VALID_COUNTER_WINDOW ||
+		msgToMerge.Counter > prevCounter-VALID_COUNTER_WINDOW
+	if now.Sub(prevHeard) < WV_TIMEOUT &&
+		msgToMerge.Counter <= prevCounter &&
+		withinCounterWindow {
+		log.Printf("drop dead/duplicate frame origin=%s counter=%d prev=%d", msgToMerge.Origin, msgToMerge.Counter, prevCounter)
+		return common.HallRequests{}, false
 	}
+	wv.latestCount[msgToMerge.Origin] = msgToMerge.Counter
 
 	if isFiltered {
 		wv.CalculateAlivePeers(now)
