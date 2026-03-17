@@ -92,6 +92,7 @@ func (rm *RequestManager) HandleButtonPresses(edgePresses common.Requests, curre
 				rm.deliveredRequests[floor][button] = true
 			case elevhw.BT_HallUp, elevhw.BT_HallDown:
 				newHallRequests[floor][button] = true
+				rm.deliveredRequests[floor][button] = false
 			}
 		}
 	}
