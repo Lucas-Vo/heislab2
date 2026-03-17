@@ -138,7 +138,11 @@ func (rm *RequestManager) ClearServicedRequests(floor int, serviced common.Reque
 		if serviced[floor][button] {
 			rm.localRequests[floor][button] = false
 			rm.netRequests[floor][button] = false
-			rm.deliveredRequests[floor][button] = false
+			if button == elevhw.BT_Cab {
+				rm.deliveredRequests[floor][button] = false
+			} else {
+				rm.deliveredRequests[floor][button] = true
+			}
 		}
 	}
 }
