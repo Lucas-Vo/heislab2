@@ -5,7 +5,12 @@ import (
 	"errors"
 )
 
-// RemoveStaleStates removes the elevator states for the nodes marked stale.
+// RemoveStaleStates drops state entries for peers that are not currently alive.
+//
+// The external hall request assigner should only see elevators that can still
+// be assigned hall calls. If the local elevator is already marked dead,
+// assignment is aborted instead of asking the assigner to allocate work to an
+// unusable node.
 func RemoveStaleStates(networkSnapshot *common.Snapshot, selfKey string) error {
 	err := errors.New("no elevator states marked alive")
 	for id, alive := range networkSnapshot.Alive {

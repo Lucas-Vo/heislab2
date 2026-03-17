@@ -9,12 +9,25 @@ import (
 )
 
 const (
-	LOCAL_PUBLISH_PERIOD    = 50 * time.Millisecond
-	BROADCAST_PERIOD        = 1 * time.Second
+	// LOCAL_PUBLISH_PERIOD is how often the merged world view is forwarded to the
+	// assigner and local FSM.
+	LOCAL_PUBLISH_PERIOD = 50 * time.Millisecond
+	// BROADCAST_PERIOD is the steady-state snapshot broadcast period.
+	BROADCAST_PERIOD = 1 * time.Second
+	// INITIAL_CONTACT_TIMEOUT bounds how long startup may wait before giving up
+	// on seeing peers.
 	INITIAL_CONTACT_TIMEOUT = 5 * time.Second
-	ELEVATOR_ERROR_TIMEOUT  = 6 * time.Second
+	// ELEVATOR_ERROR_TIMEOUT marks the local elevator dead if elevatorThread stops
+	// publishing state updates.
+	ELEVATOR_ERROR_TIMEOUT = 6 * time.Second
 )
 
+// networkThread owns peer communication and the merged WorldView.
+//
+// It receives local snapshots from elevatorThread, remote snapshots from the
+// UDP network layer, and peer heartbeats from the discovery layer. The thread
+// is also responsible for gating coherence and for marking the local elevator
+// dead if the local FSM stops reporting progress.
 func networkThread(
 	config common.Config,
 	elevUpdateNetCh <-chan common.Snapshot, // elev -> net
@@ -51,7 +64,9 @@ func networkThread(
 
 		case msg := <-network.Incoming():
 			filteredHalls, isFiltered := wv.HandleRemote(msg, now)
-			if isFiltered { // resend serviced request if inchoerent
+			if isFiltered {
+				// Re-broadcast the clear so delayed packets do not resurrect already
+				// served hall lights after packet loss.
 				snapshot := wv.SnapshotForResend(filteredHalls)
 				network.SendSnapshot(snapshot, wv.GetSelfAlive())
 			}
@@ -66,7 +81,9 @@ func networkThread(
 				isCoherent = wv.SnapshotsAreCoherent(snapshot)
 			}
 			wv.PublishLocally(netUpdateAssignerCh, netUpdateElevCh, isCoherent)
-			if !isCoherent { //broadcast more often if incoherent
+			if !isCoherent {
+				// While peers disagree, broadcast aggressively to drive the cluster
+				// back toward a coherent hall-light view.
 				snapshot := wv.SnapshotForBroadcast()
 				network.SendSnapshot(snapshot, wv.GetSelfAlive())
 			}

@@ -7,8 +7,15 @@ import (
 	"log"
 )
 
+// NETWORK_CHAN_SIZE is the buffer size used for the UDP peer and snapshot
+// channels.
 const NETWORK_CHAN_SIZE = 128
 
+// Network wraps the peer-discovery and UDP broadcast channels used by the
+// controller.
+//
+// The type also keeps the last transmitted snapshot and a per-origin message
+// counter so higher layers can reason about coherence and stale frames.
 type Network struct {
 	selfKey    string
 	msgCounter uint64
@@ -22,6 +29,8 @@ type Network struct {
 	hasLastSnapshot bool
 }
 
+// InitNetwork starts the background peer-discovery and snapshot broadcast
+// goroutines and returns their channel wrapper.
 func InitNetwork(config common.Config) *Network {
 	network := &Network{
 		selfKey:      config.SelfKey,
@@ -39,14 +48,18 @@ func InitNetwork(config common.Config) *Network {
 	return network
 }
 
+// Incoming returns the receive-only channel for snapshot messages from peers.
 func (network *Network) Incoming() <-chan common.NetMsg {
 	return network.incoming
 }
 
+// PeerUpdates returns the receive-only channel for peer liveness updates.
 func (network *Network) PeerUpdates() <-chan peers.PeerUpdate {
 	return network.peerUpdates
 }
 
+// LastSentSnapshot returns a defensive copy of the most recent transmitted
+// snapshot.
 func (network *Network) LastSentSnapshot() (common.Snapshot, bool) {
 	if !network.hasLastSnapshot {
 		return common.Snapshot{}, false
@@ -54,6 +67,11 @@ func (network *Network) LastSentSnapshot() (common.Snapshot, bool) {
 	return common.DeepCopySnapshot(network.lastSnapshot), true
 }
 
+// SendSnapshot broadcasts snapshot if this elevator is currently considered
+// alive.
+//
+// The function returns false when transmission is skipped or the outgoing queue
+// is full.
 func (network *Network) SendSnapshot(snapshot common.Snapshot, selfAlive bool) bool {
 	if !selfAlive || network.outgoing == nil {
 		return false

@@ -10,10 +10,18 @@ import (
 )
 
 const (
-	NET_SNAP_TIMEOUT    = 2 * time.Second
+	// NET_SNAP_TIMEOUT disables hall reassignment until the next coherent network
+	// snapshot arrives.
+	NET_SNAP_TIMEOUT = 2 * time.Second
+	// HRA_EXECUTABLE_PATH is the bundled external hall request assigner
+	// binary.
 	HRA_EXECUTABLE_PATH = "./elevassigner/hall_request_assigner"
 )
 
+// assignerThread runs the external hall request assigner on coherent snapshots.
+//
+// The thread is intentionally conservative: if the network view is incoherent
+// or timed out, it withholds new hall assignments instead of speculating.
 func assignerThread(config common.Config, netUpdateAssignerCh <-chan common.Snapshot, elevatorTasksCh chan<- common.ElevInput) {
 	selfKey := config.SelfKey
 	if selfKey == "" {
@@ -29,6 +37,8 @@ func assignerThread(config common.Config, netUpdateAssignerCh <-chan common.Snap
 	for {
 		select {
 		case networkSnapshot := <-netUpdateAssignerCh:
+			// Hall assignment is only trusted once the cluster agrees on the shared
+			// hall-light state.
 			if !networkSnapshot.Coherent {
 				continue
 			}

@@ -2,6 +2,8 @@ package common
 
 import "maps"
 
+// DeepCopySnapshot returns a copy of snap with duplicated maps so callers can
+// mutate the result without aliasing the original.
 func DeepCopySnapshot(snap Snapshot) Snapshot {
 	snapshotCopy := Snapshot{
 		HallRequests: snap.HallRequests,
@@ -15,6 +17,8 @@ func DeepCopySnapshot(snap Snapshot) Snapshot {
 	return snapshotCopy
 }
 
+// GetHallRequests extracts the shared hall-call portion of a full request
+// matrix.
 func GetHallRequests(in Requests) [N_FLOORS][2]bool {
 	var out [N_FLOORS][2]bool
 	for i, row := range in {
@@ -23,6 +27,7 @@ func GetHallRequests(in Requests) [N_FLOORS][2]bool {
 	return out
 }
 
+// GetCabRequests extracts the cab-call portion of a full request matrix.
 func GetCabRequests(in Requests) [N_FLOORS]bool {
 	var out [N_FLOORS]bool
 	for i, row := range in {
@@ -31,6 +36,11 @@ func GetCabRequests(in Requests) [N_FLOORS]bool {
 	return out
 }
 
+// BuildSnapshot constructs the local elevator's outbound snapshot.
+//
+// Only hall requests participate in distributed merge logic. Cab requests stay
+// local to the elevator state entry so they can be recovered by peers after a
+// restart without becoming shared hall calls.
 func BuildSnapshot(
 	selfKey string,
 	kind UpdateKind,
@@ -43,6 +53,7 @@ func BuildSnapshot(
 ) Snapshot {
 	outRequests := netRequests
 	if kind == UpdateRequests {
+		// New local hall calls are merged into the replicated hall view.
 		for floor := range N_FLOORS {
 			if localRequests[floor][BT_HallUp] {
 				outRequests[floor][BT_HallUp] = true
@@ -53,6 +64,7 @@ func BuildSnapshot(
 		}
 	}
 	if kind == UpdateServiced {
+		// A serviced update clears only the hall calls that were just completed.
 		for floor := range N_FLOORS {
 			if requestsCleared[floor][BT_HallUp] {
 				outRequests[floor][BT_HallUp] = false

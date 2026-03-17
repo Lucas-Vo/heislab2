@@ -4,14 +4,20 @@ import (
 	"elevator/common"
 )
 
+// ElevatorBehaviour describes the local FSM mode of the elevator.
 type ElevatorBehaviour int
 
 const (
+	// EB_Idle means the elevator is stationary with no active door cycle.
 	EB_Idle ElevatorBehaviour = iota
+	// EB_DoorOpen means the elevator is stopped with the door lamp on.
 	EB_DoorOpen
+	// EB_Moving means the elevator is traveling between floors.
 	EB_Moving
 )
 
+// DirnBehaviourPair is the next motion decision returned by the request
+// scheduler.
 type DirnBehaviourPair struct {
 	dirn      common.MotorDirection
 	behaviour ElevatorBehaviour
@@ -57,6 +63,9 @@ func requests_chooseDirection(requests common.Requests, floor int, dirn common.M
 	}
 }
 
+// requests_shouldStop implements the standard collective-control stop policy:
+// stop for same-direction hall calls, always stop for cab calls, and stop at
+// the end of a sweep so the car can reverse direction.
 func requests_shouldStop(requests common.Requests, floor int, dirn common.MotorDirection) int {
 	switch dirn {
 	case common.MD_Down:
@@ -82,6 +91,9 @@ func requests_shouldStop(requests common.Requests, floor int, dirn common.MotorD
 	}
 }
 
+// requests_clearAtFloorDir clears the cab request at floor and only the hall
+// request matching announceDir. This preserves the service guarantee that up and
+// down hall calls are cleared separately.
 func requests_clearAtFloorDir(requests common.Requests, floor int, announceDir common.MotorDirection) (updated common.Requests, cleared common.Requests) {
 	updated = requests
 
