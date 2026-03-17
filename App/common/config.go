@@ -4,6 +4,12 @@ import (
 	"Network-go/network/localip"
 	"fmt"
 	"sort"
+	"time"
+)
+
+const (
+	DOOR_OPEN_DURATION = 3 * time.Second
+	IO_ADDRESS         = "localhost:15657"
 )
 
 type Config struct {
@@ -18,9 +24,9 @@ func DefaultConfig() (Config, error) {
 		PeerPort: 4242,
 		MsgPort:  4243,
 		HostByKey: map[int]string{
-			1: "10.100.23.28",
-			2: "10.100.23.30",
-			// 3: "10.100.23.172",
+			1: "10.100.23.30",
+			2: "10.100.23.32",
+			3: "10.100.23.172",
 			//4: "192.168.0.197", // filip ip
 			//5: "10.22.135.140", // veetel ip
 			// 6: "10.24.67.134", // lucas ip

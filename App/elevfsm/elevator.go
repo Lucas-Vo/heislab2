@@ -6,11 +6,6 @@ import (
 	"time"
 )
 
-const (
-	DOOR_OPEN_DURATION = 3 * time.Second
-	IO_ADDRESS         = "localhost:15657"
-)
-
 type Elevator struct {
 	inputDevice  common.ElevInputDevice
 	outputDevice common.ElevOutputDevice
@@ -28,8 +23,8 @@ type Elevator struct {
 	announceDir common.MotorDirection
 }
 
-func NewElevator() *Elevator {
-	common.InitElevio(IO_ADDRESS)
+func InitElevator() *Elevator {
+	common.InitElevio(common.IO_ADDRESS)
 	e := new(Elevator)
 	e.floor = -1
 	e.dirn = common.MD_Stop
@@ -54,65 +49,6 @@ func NewElevator() *Elevator {
 	e.prevDirection = e.dirn
 	e.prevBehaviour = e.behaviour
 	return e
-}
-
-func (e *Elevator) ApplyNewRequests(requests common.Requests) {
-	for floor := range common.N_FLOORS {
-		for button := range common.ButtonType(common.N_BUTTONS) {
-			if requests[floor][button] {
-				e.onRequest(floor, button)
-			}
-		}
-	}
-}
-
-func (e *Elevator) onRequest(buttonFloor int, buttonType common.ButtonType) {
-	e.requests[buttonFloor][buttonType] = true
-	if e.floor == -1 {
-		e.floor = e.prevFloor
-	}
-	if e.behaviour == EB_DoorOpen && buttonFloor == e.floor {
-		e.doorTimer = time.Now()
-		return
-	}
-	if e.behaviour == EB_Idle {
-		pair := requests_chooseDirection(e.requests, e.floor, e.dirn)
-		e.dirn = pair.dirn
-		e.behaviour = pair.behaviour
-		switch pair.behaviour {
-		case EB_DoorOpen:
-			e.outputDevice.DoorLight(true)
-			e.doorTimer = time.Now()
-		case EB_Moving:
-			e.outputDevice.MotorDirection(e.dirn)
-		}
-	}
-}
-
-func (e *Elevator) RevokeRequest(requests common.Requests) {
-	for floor := range common.N_FLOORS {
-		for button := range common.ButtonType(common.N_BUTTONS) {
-			if requests[floor][button] {
-				e.requests[floor][button] = false
-			}
-		}
-	}
-}
-
-func (e *Elevator) PollButtonPresses() (buttonPresses common.Requests, hadPress bool) {
-	buttonPresses, hadPress = common.Requests{}, false
-
-	for floor := range common.N_FLOORS {
-		for button := range common.ButtonType(common.N_BUTTONS) {
-			isPressed := e.inputDevice.RequestButton(floor, button)
-			if isPressed != 0 {
-				hadPress = true
-				buttonType := button
-				buttonPresses[floor][buttonType] = true
-			}
-		}
-	}
-	return buttonPresses, hadPress
 }
 
 func (e *Elevator) ElevUpdate(now time.Time) (stateChanged bool, servicedRequests common.Requests, isServiced bool) {
@@ -146,27 +82,47 @@ func (e *Elevator) ElevUpdate(now time.Time) (stateChanged bool, servicedRequest
 	e.prevBehaviour = e.behaviour
 	e.prevDirection = e.dirn
 
-	if e.prevBehaviour == EB_DoorOpen && now.Sub(e.doorTimer) >= DOOR_OPEN_DURATION {
+	if e.prevBehaviour == EB_DoorOpen && now.Sub(e.doorTimer) >= common.DOOR_OPEN_DURATION {
 		servicedRequests = e.onDoorTimerExpiry(now)
 		isServiced = true
 	}
 	return stateChanged, servicedRequests, isServiced
 }
 
-func (e *Elevator) onDoorTimerExpiry(now time.Time) (servicedRequests common.Requests) {
-	e.doorTimer = now
-	servicedRequests, nextAnnounceDirection := e.OnDoorClose(e.prevFloor, e.announceDir)
-
-	pair := requests_chooseDirection(e.requests, e.floor, e.dirn)
-	e.dirn = pair.dirn
-	e.behaviour = pair.behaviour
-	if e.behaviour == EB_Moving || e.behaviour == EB_Idle {
-		e.outputDevice.DoorLight(false)
-		e.outputDevice.MotorDirection(e.dirn)
+func (e *Elevator) ApplyNewRequests(requests common.Requests) {
+	for floor := range common.N_FLOORS {
+		for button := range common.ButtonType(common.N_BUTTONS) {
+			if requests[floor][button] {
+				e.onRequest(floor, button)
+			}
+		}
 	}
-	e.announceDir = nextAnnounceDirection
+}
 
-	return servicedRequests
+func (e *Elevator) RevokeRequests(requests common.Requests) {
+	for floor := range common.N_FLOORS {
+		for button := range common.ButtonType(common.N_BUTTONS) {
+			if requests[floor][button] {
+				e.requests[floor][button] = false
+			}
+		}
+	}
+}
+
+func (e *Elevator) PollButtonPresses() (buttonPresses common.Requests, hadPress bool) {
+	buttonPresses, hadPress = common.Requests{}, false
+
+	for floor := range common.N_FLOORS {
+		for button := range common.ButtonType(common.N_BUTTONS) {
+			isPressed := e.inputDevice.RequestButton(floor, button)
+			if isPressed != 0 {
+				hadPress = true
+				buttonType := button
+				buttonPresses[floor][buttonType] = true
+			}
+		}
+	}
+	return buttonPresses, hadPress
 }
 
 func (e *Elevator) GetPrevFloor() int { return e.prevFloor }
@@ -207,8 +163,59 @@ func (e *Elevator) MotionStrings() (behavior string, direction string) {
 	return behavior, direction
 }
 
-func (e *Elevator) SetStopLight(online bool) {
-	e.outputDevice.StopButtonLight(!online)
+func (e *Elevator) onDoorTimerExpiry(now time.Time) (servicedRequests common.Requests) {
+	e.doorTimer = now
+	servicedRequests, nextAnnounceDirection := e.onDoorClose(e.prevFloor, e.announceDir)
+
+	pair := requests_chooseDirection(e.requests, e.floor, e.dirn)
+	e.dirn = pair.dirn
+	e.behaviour = pair.behaviour
+	if e.behaviour == EB_Moving || e.behaviour == EB_Idle {
+		e.outputDevice.DoorLight(false)
+		e.outputDevice.MotorDirection(e.dirn)
+	}
+	e.announceDir = nextAnnounceDirection
+
+	return servicedRequests
+}
+
+// OnDoorClose decides local door-expiry behaviour
+// Returns the requests cleared at the given floor, the next announced direction, and whether to restart the door timer.
+// TODO: move into onDoorTimerExpiry
+func (e *Elevator) onDoorClose(floor int, announceDir common.MotorDirection) (cleared common.Requests, nextAnnounceDir common.MotorDirection) {
+	e.floor = floor
+	requestsAboveFloor, requestsBelowFloor := requests_hallRequestsAtFloor(e.requests, e.floor)
+	nextAnnounceDir = announceDir
+	
+	if announceDir == common.MD_Up && requestsAboveFloor {
+		e.requests, cleared = requests_clearAtFloorDir(e.requests, e.floor, common.MD_Up)
+		if requestsBelowFloor && e.shouldSwitchDirection() {
+			return cleared, common.MD_Down
+		}
+
+	} else if announceDir == common.MD_Down && requestsBelowFloor {
+		e.requests, cleared = requests_clearAtFloorDir(e.requests, e.floor, common.MD_Down)
+		if requestsAboveFloor && e.shouldSwitchDirection() {
+			return cleared, common.MD_Up
+		}
+
+	} else if requestsAboveFloor || requestsBelowFloor {
+		arrivalDir := e.dirn
+		nextAnnounceDir = e.chooseNewDirAtFloor(floor, arrivalDir)
+		e.requests, cleared = requests_clearAtFloorDir(e.requests, e.floor, nextAnnounceDir)
+
+		if nextAnnounceDir == common.MD_Up && requestsBelowFloor && e.shouldSwitchDirection() {
+			return cleared, common.MD_Down
+		}
+		if nextAnnounceDir == common.MD_Down && requestsAboveFloor && e.shouldSwitchDirection() {
+			return cleared, common.MD_Up
+		}
+
+	} else {
+		e.requests, cleared = requests_clearAtFloorDir(e.requests, e.floor, common.MD_Stop)
+		nextAnnounceDir = common.MD_Stop
+	}
+	return cleared, nextAnnounceDir
 }
 
 func (e *Elevator) onFloorArrival(newFloor int) {
@@ -220,6 +227,29 @@ func (e *Elevator) onFloorArrival(newFloor int) {
 		e.outputDevice.MotorDirection(common.MD_Stop)
 		e.outputDevice.DoorLight(true)
 		e.behaviour = EB_DoorOpen
+	}
+}
+
+func (e *Elevator) onRequest(buttonFloor int, buttonType common.ButtonType) {
+	e.requests[buttonFloor][buttonType] = true
+	if e.floor == -1 {
+		e.floor = e.prevFloor
+	}
+	if e.behaviour == EB_DoorOpen && buttonFloor == e.floor {
+		e.doorTimer = time.Now()
+		return
+	}
+	if e.behaviour == EB_Idle {
+		pair := requests_chooseDirection(e.requests, e.floor, e.dirn)
+		e.dirn = pair.dirn
+		e.behaviour = pair.behaviour
+		switch pair.behaviour {
+		case EB_DoorOpen:
+			e.outputDevice.DoorLight(true)
+			e.doorTimer = time.Now()
+		case EB_Moving:
+			e.outputDevice.MotorDirection(e.dirn)
+		}
 	}
 }
 
@@ -249,43 +279,4 @@ func (e *Elevator) shouldSwitchDirection() bool {
 	default:
 		return true
 	}
-}
-
-// OnDoorClose decides local door-expiry behaviour and applies local FSM transitions.
-// Returns cleared requests at floor, the next announce direction, and whether to restart the door timer.
-// TODO: move into onDoorTimerExpiry
-func (e *Elevator) OnDoorClose(floor int, announceDir common.MotorDirection) (cleared common.Requests, nextAnnounceDir common.MotorDirection) {
-	e.floor = floor
-	upRequestAtFloor, downRequestAtFloor := requests_hallRequestsAtFloor(e.requests, e.floor)
-	nextAnnounceDir = announceDir
-	//TODO: add comments to describe the different cases
-	if announceDir == common.MD_Up && upRequestAtFloor {
-		e.requests, cleared = requests_clearAtFloorDir(e.requests, e.floor, common.MD_Up)
-		if downRequestAtFloor && e.shouldSwitchDirection() {
-			return cleared, common.MD_Down
-		}
-
-	} else if announceDir == common.MD_Down && downRequestAtFloor {
-		e.requests, cleared = requests_clearAtFloorDir(e.requests, e.floor, common.MD_Down)
-		if upRequestAtFloor && e.shouldSwitchDirection() {
-			return cleared, common.MD_Up
-		}
-
-	} else if upRequestAtFloor || downRequestAtFloor {
-		arrivalDir := e.dirn
-		nextAnnounceDir = e.chooseNewDirAtFloor(floor, arrivalDir)
-		e.requests, cleared = requests_clearAtFloorDir(e.requests, e.floor, nextAnnounceDir)
-
-		if nextAnnounceDir == common.MD_Up && downRequestAtFloor && e.shouldSwitchDirection() {
-			return cleared, common.MD_Down
-		}
-		if nextAnnounceDir == common.MD_Down && upRequestAtFloor && e.shouldSwitchDirection() {
-			return cleared, common.MD_Up
-		}
-
-	} else {
-		e.requests, cleared = requests_clearAtFloorDir(e.requests, e.floor, common.MD_Stop)
-		nextAnnounceDir = common.MD_Stop
-	}
-	return cleared, nextAnnounceDir
 }

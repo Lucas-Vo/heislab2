@@ -20,7 +20,7 @@ func elevatorThread(
 	netUpdateElevCh <-chan common.Snapshot, // network -> elev
 ) {
 	sync := elevfsm.InitRequestManager(config)
-	elevator := elevfsm.NewElevator()
+	elevator := elevfsm.InitElevator()
 
 	//dummy
 	behavior, direction := elevator.MotionStrings()
@@ -49,7 +49,7 @@ func elevatorThread(
 
 		case hallAssignment := <-hallAssignmentCh:
 			revokedRequests := sync.HandleAssignment(hallAssignment)
-			elevator.RevokeRequest(revokedRequests)
+			elevator.RevokeRequests(revokedRequests)
 
 		case <-ticker.C:
 			buttonPresses, newButtonPressed := elevator.PollButtonPresses()
