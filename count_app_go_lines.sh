@@ -28,7 +28,7 @@ for file in "${go_files[@]}"; do
 
     total_with_soup=$((total_with_soup + lines))
 
-    if [[ "$file" == "$app_dir/Network-go/"* || "$file" == "$app_dir/common/elevator_io.go" ]]; then
+    if [[ "$file" == "$app_dir/Network-go/"* || "$file" == "$app_dir/elevhw/elevator_io.go" ]]; then
         excluded+=("$(printf "%6d  %s" "$lines" "$rel")")
         continue
     fi
