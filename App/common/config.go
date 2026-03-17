@@ -28,7 +28,7 @@ func DefaultConfig() (Config, error) {
 		HostByKey: map[int]string{
 			1: "10.100.23.28",
 			2: "10.100.23.32",
-			3: "10.100.23.33",
+			3: "10.24.67.28",
 		},
 	}
 	if err := config.initSelf(); err != nil {

@@ -9,9 +9,11 @@ import (
 
 const (
 	WV_TIMEOUT           = 4 * time.Second
-	VALID_SERVICE_WINDOW = 2 * time.Second
+	VALID_SERVICE_WINDOW = 500 * time.Millisecond
 	VALID_COUNTER_WINDOW = 20
 )
+
+type ServicedRequest [elevhw.N_FLOORS][elevhw.N_BUTTONS]time.Time
 
 type WorldView struct {
 	peers   []string
@@ -20,8 +22,8 @@ type WorldView struct {
 	localSnapshot common.Snapshot
 	lastSnapshot  map[string]common.Snapshot
 
-	lastServicedHall [elevhw.N_FLOORS][2]time.Time
-	lastHeard        map[string]time.Time
+	lastServicedRequest ServicedRequest
+	lastHeard           map[string]time.Time
 
 	inStartupPeriod bool
 	selfAlive       bool
@@ -39,12 +41,13 @@ func InitWorldView(config common.Config) *WorldView {
 			States:       make(map[string]common.ElevState),
 			Alive:        make(map[string]bool),
 		},
-		lastHeard:       make(map[string]time.Time),
-		lastSnapshot:    make(map[string]common.Snapshot),
-		selfKey:         config.SelfKey,
-		selfAlive:       true,
-		latestCount:     make(map[string]uint64),
-		inStartupPeriod: true,
+		lastHeard:           make(map[string]time.Time),
+		lastSnapshot:        make(map[string]common.Snapshot),
+		lastServicedRequest: ServicedRequest{},
+		selfKey:             config.SelfKey,
+		selfAlive:           true,
+		latestCount:         make(map[string]uint64),
+		inStartupPeriod:     true,
 	}
 	wv.CalculateAlivePeers(time.Now())
 
@@ -68,16 +71,23 @@ func (wv *WorldView) PublishLocally(netSnap1Ch, netSnap2Ch chan<- common.Snapsho
 	}
 }
 
-func (wv *WorldView) HandleLocal(ns common.Snapshot, now time.Time) {
+func (wv *WorldView) HandleLocal(snap common.Snapshot, now time.Time) {
 	wv.SetSelfAlive(true)
-	if ns.UpdateKind == common.UK_Serviced {
-		wv.markRecentlyServicedHalls(ns, now)
+	filteredSnap, _, _ := wv.filterRecentlyServicedHalls(snap, now)
+	if filteredSnap.UpdateKind == common.UK_Serviced {
+		wv.markRecentlyServicedRequests(filteredSnap, now)
 	}
-	wv.mergeWorldView(wv.selfKey, ns)
+	wv.mergeWorldView(wv.selfKey, filteredSnap)
 }
 
 func (wv *WorldView) HandleRemote(msg common.NetMsg, now time.Time) (common.HallRequests, bool) {
-	msgToMerge, filteredHalls, isFiltered := wv.filterRecentlyServicedHalls(msg, now)
+	msgToMerge := msg
+	var filteredHalls common.HallRequests
+	isFiltered := false
+
+	if msg.Origin != "" && msg.Origin != wv.selfKey {
+		msgToMerge.Snapshot, filteredHalls, isFiltered = wv.filterRecentlyServicedHalls(msg.Snapshot, now)
+	}
 
 	if msgToMerge.Origin != wv.selfKey && msgToMerge.Origin != "" {
 		switch msgToMerge.Origin {
@@ -112,6 +122,9 @@ func (wv *WorldView) HandleRemote(msg common.NetMsg, now time.Time) (common.Hall
 
 func (wv *WorldView) ReapplyServicedHalls(serviced common.HallRequests) common.Snapshot {
 	snap := common.DeepCopySnapshot(wv.localSnapshot)
+	if wv.inStartupPeriod {
+		return snap
+	}
 	snap.UpdateKind = common.UK_Serviced
 	for floor := range elevhw.N_FLOORS {
 		for button := 0; button < 2; button++ {
@@ -192,38 +205,62 @@ func (wv *WorldView) GetSelfAlive() bool {
 
 // ------------ Unexported Methods -------------
 
-func (wv *WorldView) markRecentlyServicedHalls(ns common.Snapshot, now time.Time) {
+func (wv *WorldView) markRecentlyServicedRequests(ns common.Snapshot, now time.Time) {
 	for floor := range elevhw.N_FLOORS {
 		for button := 0; button < 2; button++ {
 			if wv.localSnapshot.HallRequests[floor][button] && !ns.HallRequests[floor][button] {
-				wv.lastServicedHall[floor][button] = now
+				wv.lastServicedRequest[floor][button] = now
 			}
+		}
+	}
+
+	prevSelfState, hasPrevSelf := wv.localSnapshot.States[wv.selfKey]
+	nextSelfState, hasNextSelf := ns.States[wv.selfKey]
+	if !hasPrevSelf || !hasNextSelf {
+		return
+	}
+	for floor := range elevhw.N_FLOORS {
+		if prevSelfState.CabRequests[floor] && !nextSelfState.CabRequests[floor] {
+			wv.lastServicedRequest[floor][elevhw.BT_Cab] = now
 		}
 	}
 }
 
-// removes hall request from incoming message if hall request was recently serviced //TODO: WRITE THIS TO TAKE IN SNAPSHOT, AND USE IN BOTH MERGE REMOTE AND MERGE LOCAL
-func (wv *WorldView) filterRecentlyServicedHalls(msg common.NetMsg, now time.Time) (common.NetMsg, common.HallRequests, bool) {
+// removes requests from incoming snapshot if requests were recently serviced
+func (wv *WorldView) filterRecentlyServicedHalls(snapshot common.Snapshot, now time.Time) (common.Snapshot, common.HallRequests, bool) {
 	var serviced common.HallRequests
-	msgIsFiltered := false
-	if msg.Origin == "" || msg.Origin == wv.selfKey {
-		return msg, serviced, msgIsFiltered
-	}
+	snapIsFiltered := false
 
 	for floor := range elevhw.N_FLOORS {
 		for button := 0; button < 2; button++ {
-			if msg.Snapshot.HallRequests[floor][button] && wv.isHallRecentlyServiced(floor, button, now) {
-				msg.Snapshot.HallRequests[floor][button] = false
+			if snapshot.HallRequests[floor][button] && wv.isRequestRecentlyServiced(floor, elevhw.ButtonType(button), now) {
+				snapshot.HallRequests[floor][button] = false
 				serviced[floor][button] = true
-				msgIsFiltered = true
+				snapIsFiltered = true
 			}
 		}
 	}
-	return msg, serviced, msgIsFiltered
+
+	for key, state := range snapshot.States {
+		if key != wv.selfKey {
+			continue
+		}
+		for floor := range elevhw.N_FLOORS {
+			if state.CabRequests[floor] && wv.isRequestRecentlyServiced(floor, elevhw.BT_Cab, now) {
+				state.CabRequests[floor] = false
+				snapIsFiltered = true
+			}
+		}
+		snapshot.States[key] = state
+	}
+	return snapshot, serviced, snapIsFiltered
 }
 
-func (wv *WorldView) isHallRecentlyServiced(floor int, button int, now time.Time) bool {
-	lastServiced := wv.lastServicedHall[floor][button]
+func (wv *WorldView) isRequestRecentlyServiced(floor int, button elevhw.ButtonType, now time.Time) bool {
+	if button < 0 || button >= elevhw.ButtonType(elevhw.N_BUTTONS) {
+		return false
+	}
+	lastServiced := wv.lastServicedRequest[floor][button]
 	if lastServiced.IsZero() {
 		return false
 	}
