@@ -131,6 +131,9 @@ func (rm *RequestManager) TransferReadyRequests() (toTransfer common.Requests) {
 }
 
 func (rm *RequestManager) ClearServicedRequests(floor int, serviced common.Requests) {
+	if floor < 0 || floor >= elevhw.N_FLOORS {
+		return
+	}
 	for button := range elevhw.ButtonType(elevhw.N_BUTTONS) {
 		if serviced[floor][button] {
 			rm.localRequests[floor][button] = false
