@@ -17,11 +17,11 @@ type Elevator struct {
 	requests  common.Requests
 
 	prevFloor     int
-	prevDirection elevhw.MotorDirection
+	prevDirn      elevhw.MotorDirection
 	prevBehaviour ElevatorBehaviour
 
-	doorTimer   time.Time
-	announceDir elevhw.MotorDirection
+	doorTimer    time.Time
+	announceDirn elevhw.MotorDirection
 }
 
 // ------------ Exported Methods -------------
@@ -49,7 +49,7 @@ func InitElevator() *Elevator {
 		e.prevFloor = -1
 	}
 
-	e.prevDirection = e.dirn
+	e.prevDirn = e.dirn
 	e.prevBehaviour = e.behaviour
 	return e
 }
@@ -59,11 +59,12 @@ func (e *Elevator) ElevUpdate(now time.Time) (stateChanged bool, servicedRequest
 	servicedRequests = common.Requests{}
 	isServiced = false
 
-	isObstructed, newFloor := e.pollSensors()
+	isObstructed := e.pollObstruction()
+	newFloor := e.pollFloor()
 
 	if e.floor != newFloor ||
 		e.behaviour != e.prevBehaviour ||
-		e.dirn != e.prevDirection {
+		e.dirn != e.prevDirn {
 		stateChanged = true
 	}
 
@@ -78,12 +79,12 @@ func (e *Elevator) ElevUpdate(now time.Time) (stateChanged bool, servicedRequest
 	}
 
 	if e.prevBehaviour != e.behaviour && e.behaviour == EB_DoorOpen {
-		arrivalDirection := e.dirn
-		e.announceDir = requests_chooseNewDirAtFloor(e.requests, e.prevFloor, arrivalDirection)
+		arrivalDirn := e.dirn
+		e.announceDirn = requests_chooseNewDirnAtFloor(e.requests, e.prevFloor, arrivalDirn)
 		e.doorTimer = now
 	}
 	e.prevBehaviour = e.behaviour
-	e.prevDirection = e.dirn
+	e.prevDirn = e.dirn
 
 	if e.prevBehaviour == EB_DoorOpen && now.Sub(e.doorTimer) >= common.DOOR_OPEN_DURATION {
 		servicedRequests = e.onDoorTimerExpiry(now)
@@ -102,10 +103,10 @@ func (e *Elevator) ApplyNewRequests(requests common.Requests) {
 	}
 }
 
-func (e *Elevator) RevokeRequests(requests common.Requests) {
+func (e *Elevator) RemoveAssignments(removeAssignments common.HallAssignment) {
 	for floor := range elevhw.N_FLOORS {
-		for button := range elevhw.ButtonType(elevhw.N_BUTTONS) {
-			if requests[floor][button] {
+		for button := 0; button < 2; button++ {
+			if removeAssignments[floor][button] {
 				e.requests[floor][button] = false
 			}
 		}
@@ -130,13 +131,14 @@ func (e *Elevator) PollButtonPresses() (buttonPresses common.Requests, hadPress 
 
 func (e *Elevator) SetLights(requests common.Requests) {
 	for floor := range elevhw.N_FLOORS {
-		for btn := range elevhw.ButtonType(elevhw.N_BUTTONS) {
-			e.outputDevice.RequestButtonLight(floor, btn, requests[floor][btn])
+		for button := range elevhw.ButtonType(elevhw.N_BUTTONS) {
+			e.outputDevice.RequestButtonLight(floor, button, requests[floor][button])
 		}
 	}
 }
 
-func (e *Elevator) MotionStrings() (behavior string, direction string) {
+// makes parsing into json easier
+func (e *Elevator) MotionToStrings() (behavior string, dirn string) {
 	switch e.behaviour {
 	case EB_Idle:
 		behavior = "idle"
@@ -149,15 +151,15 @@ func (e *Elevator) MotionStrings() (behavior string, direction string) {
 	}
 	switch e.dirn {
 	case elevhw.MD_Up:
-		direction = "up"
+		dirn = "up"
 	case elevhw.MD_Down:
-		direction = "down"
+		dirn = "down"
 	case elevhw.MD_Stop:
-		direction = "stop"
+		dirn = "stop"
 	default:
-		direction = "stop"
+		dirn = "stop"
 	}
-	return behavior, direction
+	return behavior, dirn
 }
 
 func (e *Elevator) GetPrevFloor() int { return e.prevFloor }
@@ -170,17 +172,17 @@ func (e *Elevator) IsIdle() bool { return e.behaviour == EB_Idle }
 
 func (e *Elevator) onDoorTimerExpiry(now time.Time) (servicedRequests common.Requests) {
 	e.doorTimer = now
-	nextAnnounceDirection, serviceDir := requests_chooseNextAnnounceDir(e.requests, e.prevFloor, e.announceDir, e.dirn)
-	servicedRequests = e.clearServicedRequestsAtFloor(e.prevFloor, serviceDir)
+	nextAnnounceDirn, announceDir := requests_chooseNextAnnounceDirn(e.requests, e.prevFloor, e.announceDirn, e.dirn)
+	servicedRequests = e.clearRequestAtFloor(e.prevFloor, announceDir)
 
-	pair := requests_chooseDirection(e.requests, e.floor, e.dirn)
+	pair := requests_chooseDirn(e.requests, e.floor, e.dirn)
 	e.dirn = pair.dirn
 	e.behaviour = pair.behaviour
 	if e.behaviour == EB_Moving || e.behaviour == EB_Idle {
 		e.outputDevice.DoorLight(false)
 		e.outputDevice.MotorDirection(e.dirn)
 	}
-	e.announceDir = nextAnnounceDirection
+	e.announceDirn = nextAnnounceDirn
 
 	return servicedRequests
 }
@@ -207,7 +209,7 @@ func (e *Elevator) onRequest(buttonFloor int, buttonType elevhw.ButtonType) {
 		return
 	}
 	if e.behaviour == EB_Idle {
-		pair := requests_chooseDirection(e.requests, e.floor, e.dirn)
+		pair := requests_chooseDirn(e.requests, e.floor, e.dirn)
 		e.dirn = pair.dirn
 		e.behaviour = pair.behaviour
 		switch pair.behaviour {
@@ -220,12 +222,16 @@ func (e *Elevator) onRequest(buttonFloor int, buttonType elevhw.ButtonType) {
 	}
 }
 
-func (e *Elevator) clearServicedRequestsAtFloor(floor int, serviceDir elevhw.MotorDirection) (cleared common.Requests) {
+func (e *Elevator) clearRequestAtFloor(floor int, announceDirn elevhw.MotorDirection) (cleared common.Requests) {
 	e.floor = floor
-	e.requests, cleared = requests_clearAtFloorDir(e.requests, e.floor, serviceDir)
+	e.requests, cleared = requests_clearAtFloorDir(e.requests, e.floor, announceDirn)
 	return cleared
 }
 
-func (e *Elevator) pollSensors() (int, int) {
-	return e.inputDevice.Obstruction(), e.inputDevice.FloorSensor()
+func (e *Elevator) pollObstruction() int {
+	return e.inputDevice.Obstruction()
+}
+
+func (e *Elevator) pollFloor() int {
+	return e.inputDevice.FloorSensor()
 }

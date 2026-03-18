@@ -25,7 +25,7 @@ func networkThread(
 
 	wv.CalculateAlivePeers(time.Now())
 
-	initialSnapshot := common.DeepCopySnapshot(wv.SnapshotForBroadcast())
+	initialSnapshot := common.DeepCopySnapshot(wv.GetSnapshot())
 	initialSnapshot.UpdateKind = common.UK_Requests
 	network.SendSnapshot(initialSnapshot, wv.GetSelfAlive())
 
@@ -46,17 +46,17 @@ func networkThread(
 		select {
 		case elevatorSnapshot := <-elevUpdateNetCh:
 			elevatorErrorTimer.Reset(ELEVATOR_ERROR_TIMEOUT)
-			wv.HandleLocal(elevatorSnapshot, now)
+			wv.HandleLocalSnapshot(elevatorSnapshot, now)
 
-		case incomingMsg := <-network.Incoming():
-			filteredHallRequests, isFiltered := wv.HandleRemote(incomingMsg, now)
+		case incomingMsg := <-network.PeerMessageCh():
+			filteredHallRequests, isFiltered := wv.HandleRemoteMsg(incomingMsg, now)
 			// resend serviced request if inchoerent
 			if isFiltered {
 				snapshot := wv.ReapplyServicedHalls(filteredHallRequests)
 				network.SendSnapshot(snapshot, wv.GetSelfAlive())
 			}
-		case peerUpdate := <-network.PeerUpdates():
-			wv.HandlePeerUpdate(peerUpdate, now)
+		case peerUpdate := <-network.PeerUpdateCh():
+			wv.HandlePeerUpdate(peerUpdate)
 
 		case <-localPublishTicker.C:
 			wv.CalculateAlivePeers(now)
@@ -68,12 +68,12 @@ func networkThread(
 			wv.PublishLocally(netUpdateAssignerCh, netUpdateElevCh, isCoherent)
 			//broadcast more often if incoherent
 			if !isCoherent {
-				snapshot := wv.SnapshotForBroadcast()
+				snapshot := wv.GetSnapshot()
 				network.SendSnapshot(snapshot, wv.GetSelfAlive())
 			}
 
 		case <-heartbeatTicker.C:
-			snapshot := wv.SnapshotForBroadcast()
+			snapshot := wv.GetSnapshot()
 			network.SendSnapshot(snapshot, wv.GetSelfAlive())
 
 		case <-elevatorErrorTimer.C:

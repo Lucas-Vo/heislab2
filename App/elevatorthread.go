@@ -18,20 +18,20 @@ func elevatorThread(
 	elevUpdateNetCh chan<- common.Snapshot, // elev -> network
 	netUpdateElevCh <-chan common.Snapshot, // network -> elev
 ) {
-	sync := elevfsm.InitRequestManager(config)
+	requestManager := elevfsm.InitRequestManager(config)
 	elevator := elevfsm.InitElevator()
 
-	//dummy
-	behavior, direction := elevator.MotionStrings()
+	// send initial dummy snapshot
+	behavior, dirn := elevator.MotionToStrings()
 	initialSnapshot := common.BuildSnapshot(config.SelfKey, common.UK_Requests, common.Requests{},
-		elevator.GetPrevFloor(), behavior, direction, sync.GetNetRequests(), sync.GetLocalRequests())
+		elevator.GetPrevFloor(), behavior, dirn, requestManager.GetNetRequests(), requestManager.GetLocalRequests())
 	select {
 	case elevUpdateNetCh <- initialSnapshot:
 	default:
 	}
 
-	pollElevTicker := time.NewTicker(POLL_RATE_MS)
-	defer pollElevTicker.Stop()
+	pollLoop := time.NewTicker(POLL_RATE_MS)
+	defer pollLoop.Stop()
 
 	heartbeatTicker := time.NewTicker(HEARTBEAT_RATE_S)
 	defer heartbeatTicker.Stop()
@@ -40,43 +40,43 @@ func elevatorThread(
 		now := time.Now()
 		select {
 		case networkSnapshot := <-netUpdateElevCh:
-			sync.HandleNetworkSnapshot(networkSnapshot, now)
+			requestManager.HandleNetworkSnapshot(networkSnapshot, now)
 
 			if networkSnapshot.Coherent {
-				elevator.SetLights(sync.GetNetRequests())
+				elevator.SetLights(requestManager.GetNetRequests())
 			}
 
 		case hallAssignment := <-hallAssignmentCh:
-			revokedRequests := sync.HandleAssignment(hallAssignment)
-			elevator.RevokeRequests(revokedRequests)
+			removeAssignments := requestManager.HandleAssignment(hallAssignment)
+			elevator.RemoveAssignments(removeAssignments)
 
-		case <-pollElevTicker.C:
-			buttonPresses, newButtonPressed := elevator.PollButtonPresses()
-			newCabRequests, newHallRequests := sync.HandleButtonPresses(buttonPresses, elevator.GetFloor(), now)
+		case <-pollLoop.C:
+			buttonPresses, isButtonPressed := elevator.PollButtonPresses()
+			newCabRequests, newHallRequests := requestManager.HandleNewRequests(buttonPresses, elevator.GetFloor(), now)
 			elevator.ApplyNewRequests(newCabRequests)
-			if !sync.HasAlivePeer() {
+			if !requestManager.InDistributedMode() {
 				elevator.ApplyNewRequests(newHallRequests)
 			}
 
 			elevStateChange, servicedRequests, isServiced := elevator.ElevUpdate(now)
-
-			elevator.ApplyNewRequests(sync.TransferReadyRequests())
-			sync.ClearServicedRequests(elevator.GetPrevFloor(), servicedRequests)
+			readyRequests := requestManager.GetReadyRequests()
+			elevator.ApplyNewRequests(readyRequests)
+			requestManager.ClearServicedRequests(elevator.GetPrevFloor(), servicedRequests)
 
 			if isServiced {
-				behavior, direction := elevator.MotionStrings()
+				behavior, dirn := elevator.MotionToStrings()
 				snapshot := common.BuildSnapshot(config.SelfKey, common.UK_Serviced, servicedRequests,
-					elevator.GetPrevFloor(), behavior, direction, sync.GetNetRequests(), sync.GetLocalRequests())
+					elevator.GetPrevFloor(), behavior, dirn, requestManager.GetNetRequests(), requestManager.GetLocalRequests())
 				select {
 				case elevUpdateNetCh <- snapshot:
 				default:
 					log.Printf("fsmThread: elevSnapNetCh is full, skipping snapshot update")
 				}
 
-			} else if elevStateChange || newButtonPressed {
-				behavior, direction := elevator.MotionStrings()
+			} else if elevStateChange || isButtonPressed {
+				behavior, dirn := elevator.MotionToStrings()
 				snapshot := common.BuildSnapshot(config.SelfKey, common.UK_Requests, common.Requests{},
-					elevator.GetPrevFloor(), behavior, direction, sync.GetNetRequests(), sync.GetLocalRequests())
+					elevator.GetPrevFloor(), behavior, dirn, requestManager.GetNetRequests(), requestManager.GetLocalRequests())
 				select {
 				case elevUpdateNetCh <- snapshot:
 				default:
@@ -87,9 +87,9 @@ func elevatorThread(
 			if !elevator.IsIdle() {
 				continue
 			}
-			behavior, direction := elevator.MotionStrings()
+			behavior, dirn := elevator.MotionToStrings()
 			snapshot := common.BuildSnapshot(config.SelfKey, common.UK_Requests, common.Requests{},
-				elevator.GetPrevFloor(), behavior, direction, sync.GetNetRequests(), sync.GetLocalRequests())
+				elevator.GetPrevFloor(), behavior, dirn, requestManager.GetNetRequests(), requestManager.GetLocalRequests())
 			select {
 			case elevUpdateNetCh <- snapshot:
 			default:

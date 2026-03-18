@@ -12,7 +12,7 @@ func BuildSnapshot(
 	requestsCleared Requests,
 	floor int,
 	behavior string,
-	direction string,
+	dirn string,
 	netRequests Requests,
 	localRequests Requests,
 ) Snapshot {
@@ -44,7 +44,7 @@ func BuildSnapshot(
 			selfKey: {
 				Behavior:    behavior,
 				Floor:       floor,
-				Direction:   direction,
+				Direction:   dirn,
 				CabRequests: GetCabRequests(localRequests),
 			},
 		},
@@ -68,16 +68,16 @@ func RemoveDeadStates(networkSnapshot *Snapshot, selfKey string) error {
 	return err
 }
 
-func DeepCopySnapshot(snap Snapshot) Snapshot {
+func DeepCopySnapshot(snapshot Snapshot) Snapshot {
 	snapshotCopy := Snapshot{
-		HallRequests: snap.HallRequests,
-		States:       make(map[string]ElevState, len(snap.States)),
-		Alive:        make(map[string]bool, len(snap.Alive)),
-		Coherent:     snap.Coherent,
-		UpdateKind:   snap.UpdateKind,
+		HallRequests: snapshot.HallRequests,
+		States:       make(map[string]ElevState, len(snapshot.States)),
+		Alive:        make(map[string]bool, len(snapshot.Alive)),
+		Coherent:     snapshot.Coherent,
+		UpdateKind:   snapshot.UpdateKind,
 	}
-	maps.Copy(snapshotCopy.States, snap.States)
-	maps.Copy(snapshotCopy.Alive, snap.Alive)
+	maps.Copy(snapshotCopy.States, snapshot.States)
+	maps.Copy(snapshotCopy.Alive, snapshot.Alive)
 	return snapshotCopy
 }
 

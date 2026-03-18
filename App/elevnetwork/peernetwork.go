@@ -5,7 +5,6 @@ import (
 	"Network-go/network/peers"
 	"elevator/common"
 	"log"
-	"time"
 )
 
 const NETWORK_CHAN_SIZE = 128
@@ -63,24 +62,24 @@ func (pn *PeerNetwork) SendSnapshot(snapshot common.Snapshot, selfAlive bool) bo
 	}
 }
 
-func (wv *WorldView) HandlePeerUpdate(update peers.PeerUpdate, _ time.Time) {
+func (wv *WorldView) HandlePeerUpdate(update peers.PeerUpdate) {
 	for _, id := range update.Lost {
 		if id == "" || id == wv.selfKey {
 			continue
 		}
-		delete(wv.latestCount, id)
+		delete(wv.latestMsgCount, id)
 	}
 }
 
-func (pn *PeerNetwork) PeerUpdates() <-chan peers.PeerUpdate {
+func (pn *PeerNetwork) PeerUpdateCh() <-chan peers.PeerUpdate {
 	return pn.peerUpdates
 }
 
-func (pn *PeerNetwork) Incoming() <-chan common.NetMsg {
+func (pn *PeerNetwork) PeerMessageCh() <-chan common.NetMsg {
 	return pn.incoming
 }
 
-func (pn *PeerNetwork) LastSentSnapshot() (common.Snapshot, bool) {
+func (pn *PeerNetwork) LastSentSnapshot() (snapshot common.Snapshot, ok bool) {
 	if !pn.hasLastSnapshot {
 		return common.Snapshot{}, false
 	}
