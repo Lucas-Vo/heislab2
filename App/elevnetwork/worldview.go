@@ -10,7 +10,7 @@ import (
 const (
 	WV_TIMEOUT           = 4 * time.Second
 	VALID_SERVICE_WINDOW = 1 * time.Second
-	VALID_COUNTER_WINDOW = 10
+	VALID_COUNTER_WINDOW = 2
 )
 
 type ServicedRequest [elevhw.N_FLOORS][elevhw.N_BUTTONS]time.Time
