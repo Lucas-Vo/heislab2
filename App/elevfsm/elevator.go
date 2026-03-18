@@ -80,7 +80,7 @@ func (e *Elevator) ElevUpdate(now time.Time) (stateChanged bool, servicedRequest
 
 	if e.prevBehaviour != e.behaviour && e.behaviour == EB_DoorOpen {
 		arrivalDirn := e.dirn
-		e.announceDirn = requests_chooseNewDirnAtFloor(e.requests, e.prevFloor, arrivalDirn)
+		e.announceDirn = requestsNewDirnAtFloor(e.requests, e.prevFloor, arrivalDirn)
 		e.doorTimer = now
 	}
 	e.prevBehaviour = e.behaviour
@@ -172,10 +172,10 @@ func (e *Elevator) IsIdle() bool { return e.behaviour == EB_Idle }
 
 func (e *Elevator) onDoorTimerExpiry(now time.Time) (servicedRequests common.Requests) {
 	e.doorTimer = now
-	nextAnnounceDirn, announceDir := requests_chooseNextAnnounceDirn(e.requests, e.prevFloor, e.announceDirn, e.dirn)
+	nextAnnounceDirn, announceDir := requestsNextAnnounceDirn(e.requests, e.prevFloor, e.announceDirn, e.dirn)
 	servicedRequests = e.clearRequestAtFloor(e.prevFloor, announceDir)
 
-	pair := requests_chooseDirn(e.requests, e.floor, e.dirn)
+	pair := requestsChooseDirn(e.requests, e.floor, e.dirn)
 	e.dirn = pair.dirn
 	e.behaviour = pair.behaviour
 	if e.behaviour == EB_Moving || e.behaviour == EB_Idle {
@@ -192,7 +192,7 @@ func (e *Elevator) onFloorArrival(newFloor int) {
 	e.floor = newFloor
 	e.prevFloor = e.floor
 	e.outputDevice.FloorIndicator(e.floor)
-	if e.behaviour == EB_Moving && requests_shouldStop(e.requests, e.floor, e.dirn) != 0 {
+	if e.behaviour == EB_Moving && requestsShouldStop(e.requests, e.floor, e.dirn) {
 		e.outputDevice.MotorDirection(elevhw.MD_Stop)
 		e.outputDevice.DoorLight(true)
 		e.behaviour = EB_DoorOpen
@@ -209,7 +209,7 @@ func (e *Elevator) onRequest(buttonFloor int, buttonType elevhw.ButtonType) {
 		return
 	}
 	if e.behaviour == EB_Idle {
-		pair := requests_chooseDirn(e.requests, e.floor, e.dirn)
+		pair := requestsChooseDirn(e.requests, e.floor, e.dirn)
 		e.dirn = pair.dirn
 		e.behaviour = pair.behaviour
 		switch pair.behaviour {
@@ -224,7 +224,7 @@ func (e *Elevator) onRequest(buttonFloor int, buttonType elevhw.ButtonType) {
 
 func (e *Elevator) clearRequestAtFloor(floor int, announceDirn elevhw.MotorDirection) (cleared common.Requests) {
 	e.floor = floor
-	e.requests, cleared = requests_clearAtFloorDir(e.requests, e.floor, announceDirn)
+	e.requests, cleared = requestsClearAtFloorDir(e.requests, e.floor, announceDirn)
 	return cleared
 }
 

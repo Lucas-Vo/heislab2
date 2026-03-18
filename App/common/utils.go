@@ -52,20 +52,20 @@ func BuildSnapshot(
 	}
 }
 
-// removes the elevator states for the nodes marked dead.
-func RemoveDeadStates(networkSnapshot *Snapshot, selfKey string) error {
+func RemoveDeadStates(networkSnapshot Snapshot, selfKey string) (Snapshot, error) {
+	snapshotCopy := DeepCopySnapshot(networkSnapshot)
 	err := errors.New("no elevator states marked alive")
-	for key, alive := range networkSnapshot.Alive {
+	for key, alive := range snapshotCopy.Alive {
 		if key == selfKey && !alive {
-			return errors.New("local elevator is not alive, stopping assignment")
+			return snapshotCopy, errors.New("local elevator is not alive, stopping assignment")
 		}
-		if !alive || networkSnapshot.States[key].Floor == -1 {
-			delete(networkSnapshot.States, key)
+		if !alive || snapshotCopy.States[key].Floor == -1 {
+			delete(snapshotCopy.States, key)
 		} else {
 			err = nil
 		}
 	}
-	return err
+	return snapshotCopy, err
 }
 
 func DeepCopySnapshot(snapshot Snapshot) Snapshot {

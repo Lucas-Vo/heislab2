@@ -73,23 +73,22 @@ func (wv *WorldView) PublishLocally(netSnap1Ch, netSnap2Ch chan<- common.Snapsho
 
 func (wv *WorldView) HandleLocalSnapshot(snapshot common.Snapshot, now time.Time) {
 	wv.SetSelfAlive(true)
-	filteredSnap, _, _ := wv.filterRecentlyServicedHalls(snapshot, now)
+	filteredSnap, _ := wv.filterServicedHalls(snapshot, now)
 	if filteredSnap.UpdateKind == common.UK_Serviced {
-		wv.markRecentlyServicedRequests(filteredSnap, now)
+		wv.markServicedRequests(filteredSnap, now)
 	}
-	wv.mergeWorldView(wv.selfKey, filteredSnap)
+	wv.mergeSnapshot(wv.selfKey, filteredSnap)
 }
 
-func (wv *WorldView) HandleRemoteMsg(msg common.NetMsg, now time.Time) (common.HallRequests, bool) {
+func (wv *WorldView) HandleRemoteMsg(msg common.NetMsg, now time.Time) bool {
 	if msg.Origin == "" || msg.Origin == wv.selfKey {
-		return common.HallRequests{}, false
+		return false
 	}
 
 	msgToMerge := msg
-	var filteredHalls common.HallRequests
 	isFiltered := false
 
-	msgToMerge.Snapshot, filteredHalls, isFiltered = wv.filterRecentlyServicedHalls(msg.Snapshot, now)
+	msgToMerge.Snapshot, isFiltered = wv.filterServicedHalls(msg.Snapshot, now)
 
 	switch msgToMerge.Origin {
 	case "1":
@@ -112,31 +111,15 @@ func (wv *WorldView) HandleRemoteMsg(msg common.NetMsg, now time.Time) (common.H
 		msgToMerge.Counter <= prevCounter &&
 		withinCounterWindow {
 		log.Printf("drop dead/duplicate frame origin=%s counter=%d prev=%d", msgToMerge.Origin, msgToMerge.Counter, prevCounter)
-		return common.HallRequests{}, false
+		return false
 	}
 	wv.latestMsgCount[msgToMerge.Origin] = msgToMerge.Counter
 
 	if isFiltered {
 		wv.CalculateAlivePeers(now)
 	}
-	wv.mergeWorldView(msgToMerge.Origin, msgToMerge.Snapshot)
-	return filteredHalls, isFiltered
-}
-
-func (wv *WorldView) ReapplyServicedHalls(serviced common.HallRequests) common.Snapshot {
-	snapshot := common.DeepCopySnapshot(wv.localSnapshot)
-	if wv.inStartupPeriod {
-		return snapshot
-	}
-	snapshot.UpdateKind = common.UK_Serviced
-	for floor := range elevhw.N_FLOORS {
-		for button := 0; button < 2; button++ {
-			if serviced[floor][button] {
-				snapshot.HallRequests[floor][button] = false
-			}
-		}
-	}
-	return snapshot
+	wv.mergeSnapshot(msgToMerge.Origin, msgToMerge.Snapshot)
+	return isFiltered
 }
 
 func (wv *WorldView) CalculateAlivePeers(now time.Time) {
@@ -202,13 +185,47 @@ func (wv *WorldView) GetSelfAlive() bool {
 	return wv.selfAlive
 }
 
-func (wv *WorldView) GetSnapshot() common.Snapshot {
+func (wv *WorldView) GetLocalSnapshot() common.Snapshot {
 	return common.DeepCopySnapshot(wv.localSnapshot)
 }
 
 // ------------ Unexported Methods -------------
 
-func (wv *WorldView) markRecentlyServicedRequests(snapshot common.Snapshot, now time.Time) {
+// removes requests from incoming snapshot if requests were recently serviced
+func (wv *WorldView) filterServicedHalls(snapshot common.Snapshot, now time.Time) (common.Snapshot, bool) {
+	var serviced common.HallRequests
+	snapIsFiltered := false
+	if wv.inStartupPeriod {
+		snapshot.UpdateKind = common.UK_Requests
+		return snapshot, snapIsFiltered
+	}
+
+	for floor := range elevhw.N_FLOORS {
+		for button := 0; button < 2; button++ {
+			if snapshot.HallRequests[floor][button] && wv.isRequestServiced(floor, elevhw.ButtonType(button), now) {
+				snapshot.HallRequests[floor][button] = false
+				serviced[floor][button] = true
+				snapIsFiltered = true
+			}
+		}
+	}
+
+	for key, state := range snapshot.States {
+		if key != wv.selfKey {
+			continue
+		}
+		for floor := range elevhw.N_FLOORS {
+			if state.CabRequests[floor] && wv.isRequestServiced(floor, elevhw.BT_Cab, now) {
+				state.CabRequests[floor] = false
+				snapIsFiltered = true
+			}
+		}
+		snapshot.States[key] = state
+	}
+	return snapshot, snapIsFiltered
+}
+
+func (wv *WorldView) markServicedRequests(snapshot common.Snapshot, now time.Time) {
 	for floor := range elevhw.N_FLOORS {
 		for button := 0; button < 2; button++ {
 			if wv.localSnapshot.HallRequests[floor][button] && !snapshot.HallRequests[floor][button] {
@@ -229,41 +246,7 @@ func (wv *WorldView) markRecentlyServicedRequests(snapshot common.Snapshot, now 
 	}
 }
 
-// removes requests from incoming snapshot if requests were recently serviced
-func (wv *WorldView) filterRecentlyServicedHalls(snapshot common.Snapshot, now time.Time) (common.Snapshot, common.HallRequests, bool) {
-	var serviced common.HallRequests
-	snapIsFiltered := false
-	if wv.inStartupPeriod {
-		snapshot.UpdateKind = common.UK_Requests
-		return snapshot, serviced, snapIsFiltered
-	}
-
-	for floor := range elevhw.N_FLOORS {
-		for button := 0; button < 2; button++ {
-			if snapshot.HallRequests[floor][button] && wv.isRequestRecentlyServiced(floor, elevhw.ButtonType(button), now) {
-				snapshot.HallRequests[floor][button] = false
-				serviced[floor][button] = true
-				snapIsFiltered = true
-			}
-		}
-	}
-
-	for key, state := range snapshot.States {
-		if key != wv.selfKey {
-			continue
-		}
-		for floor := range elevhw.N_FLOORS {
-			if state.CabRequests[floor] && wv.isRequestRecentlyServiced(floor, elevhw.BT_Cab, now) {
-				state.CabRequests[floor] = false
-				snapIsFiltered = true
-			}
-		}
-		snapshot.States[key] = state
-	}
-	return snapshot, serviced, snapIsFiltered
-}
-
-func (wv *WorldView) isRequestRecentlyServiced(floor int, button elevhw.ButtonType, now time.Time) bool {
+func (wv *WorldView) isRequestServiced(floor int, button elevhw.ButtonType, now time.Time) bool {
 	if button < 0 || button >= elevhw.ButtonType(elevhw.N_BUTTONS) {
 		return false
 	}
@@ -274,7 +257,7 @@ func (wv *WorldView) isRequestRecentlyServiced(floor int, button elevhw.ButtonTy
 	return now.Sub(lastServiced) <= VALID_SERVICE_WINDOW
 }
 
-func (wv *WorldView) mergeWorldView(fromKey string, snapshot common.Snapshot) {
+func (wv *WorldView) mergeSnapshot(fromKey string, snapshot common.Snapshot) {
 	if fromKey != wv.selfKey {
 		wv.lastSnapshot[fromKey] = common.DeepCopySnapshot(snapshot)
 		if wv.inStartupPeriod {

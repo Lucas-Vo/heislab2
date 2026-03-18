@@ -29,20 +29,20 @@ func assignerThread(config common.Config,
 			continue
 		}
 
-		err := common.RemoveDeadStates(&networkSnapshot, selfKey)
+		filteredSnapshot, err := common.RemoveDeadStates(networkSnapshot, selfKey)
 		if err != nil {
 			log.Printf("Remove dead states error: %v", err)
 			continue
 		}
 		// parses snapshot into json format
-		jsonBytes, err := json.Marshal(networkSnapshot)
+		jsonBytes, err := json.Marshal(filteredSnapshot)
 		if err != nil {
 			log.Println("json.Marshal error:", err)
 			continue
 		}
 		ret, err := exec.Command(HRA_EXECUTABLE_PATH, "-i", string(jsonBytes)).CombinedOutput()
 		if err != nil {
-			log.Printf("exec.Command error: %v (states=%d, hall=%d)\n", err, len(networkSnapshot.States), len(networkSnapshot.HallRequests))
+			log.Printf("exec.Command error: %v (states=%d, hall=%d)\n", err, len(filteredSnapshot.States), len(filteredSnapshot.HallRequests))
 			log.Println(string(ret))
 			continue
 		}

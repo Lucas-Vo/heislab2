@@ -20,14 +20,15 @@ func networkThread(
 	netUpdateAssignerCh chan<- common.Snapshot, // net -> assigner
 	netUpdateElevCh chan<- common.Snapshot, // net -> elev
 ) {
-	wv := elevnetwork.InitWorldView(config)
-	network := elevnetwork.InitPeerNetwork(config)
+	worldView := elevnetwork.InitWorldView(config)
+	peerNetwork := elevnetwork.InitPeerNetwork(config)
 
-	wv.CalculateAlivePeers(time.Now())
+	worldView.CalculateAlivePeers(time.Now())
 
-	initialSnapshot := common.DeepCopySnapshot(wv.GetSnapshot())
+	// send initial dummy snapshot
+	initialSnapshot := worldView.GetLocalSnapshot()
 	initialSnapshot.UpdateKind = common.UK_Requests
-	network.SendSnapshot(initialSnapshot, wv.GetSelfAlive())
+	peerNetwork.SendSnapshot(initialSnapshot, worldView.GetSelfAlive())
 
 	localPublishTicker := time.NewTicker(LOCAL_PUBLISH_PERIOD)
 	defer localPublishTicker.Stop()
@@ -46,45 +47,46 @@ func networkThread(
 		select {
 		case elevatorSnapshot := <-elevUpdateNetCh:
 			elevatorErrorTimer.Reset(ELEVATOR_ERROR_TIMEOUT)
-			wv.HandleLocalSnapshot(elevatorSnapshot, now)
+			worldView.HandleLocalSnapshot(elevatorSnapshot, now)
 
-		case incomingMsg := <-network.PeerMessageCh():
-			filteredHallRequests, isFiltered := wv.HandleRemoteMsg(incomingMsg, now)
-			// resend serviced request if inchoerent
+		case incomingMsg := <-peerNetwork.PeerMessageCh():
+			isFiltered := worldView.HandleRemoteMsg(incomingMsg, now)
+			// resend serviced request if incoherent
 			if isFiltered {
-				snapshot := wv.ReapplyServicedHalls(filteredHallRequests)
-				network.SendSnapshot(snapshot, wv.GetSelfAlive())
+				snapshot := worldView.GetLocalSnapshot()
+				snapshot.UpdateKind = common.UK_Serviced
+				peerNetwork.SendSnapshot(snapshot, worldView.GetSelfAlive())
 			}
-		case peerUpdate := <-network.PeerUpdateCh():
-			wv.HandlePeerUpdate(peerUpdate)
+		case peerUpdate := <-peerNetwork.PeerUpdateCh():
+			worldView.HandlePeerUpdate(peerUpdate)
 
 		case <-localPublishTicker.C:
-			wv.CalculateAlivePeers(now)
-			lastSnapshot, ok := network.LastSentSnapshot()
+			worldView.CalculateAlivePeers(now)
+			lastSnapshot, ok := peerNetwork.LastSentSnapshot()
 			isCoherent := false
 			if ok {
-				isCoherent = wv.SnapshotsAreCoherent(lastSnapshot)
+				isCoherent = worldView.SnapshotsAreCoherent(lastSnapshot)
 			}
-			wv.PublishLocally(netUpdateAssignerCh, netUpdateElevCh, isCoherent)
+			worldView.PublishLocally(netUpdateAssignerCh, netUpdateElevCh, isCoherent)
 			//broadcast more often if incoherent
 			if !isCoherent {
-				snapshot := wv.GetSnapshot()
-				network.SendSnapshot(snapshot, wv.GetSelfAlive())
+				snapshot := worldView.GetLocalSnapshot()
+				peerNetwork.SendSnapshot(snapshot, worldView.GetSelfAlive())
 			}
 
 		case <-heartbeatTicker.C:
-			snapshot := wv.GetSnapshot()
-			network.SendSnapshot(snapshot, wv.GetSelfAlive())
+			snapshot := worldView.GetLocalSnapshot()
+			peerNetwork.SendSnapshot(snapshot, worldView.GetSelfAlive())
 
 		case <-elevatorErrorTimer.C:
-			if wv.GetSelfAlive() {
-				wv.SetSelfAlive(false)
+			if worldView.GetSelfAlive() {
+				worldView.SetSelfAlive(false)
 				log.Printf("networkThread: No behavior change detected, marking Elevator as dead")
 			}
 
 		case <-startupTimer.C:
 			log.Printf("networkThread: forcing end of startup phase")
-			wv.EndStartupPeriod()
+			worldView.EndStartupPeriod()
 		}
 	}
 }
