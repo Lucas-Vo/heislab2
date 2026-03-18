@@ -26,7 +26,8 @@ The controller runs one elevator per process and coordinates hall requests acros
 - `networkthread.go`: merges local and remote snapshots and tracks peer liveness.
 - `assignerthread.go`: runs the external hall request assigner on coherent snapshots.
 - `common/`: shared configuration and utilities, request/snapshot types.
-- `elevfsm/`: local elevator state machine, door logic, elevator I/O wrappers, and request synchronization.
+- `elevfsm/`: local elevator state machine, door logic, and request synchronization.
+- `elevhw/`: elevator I/O and elevator I/O wrappers
 - `elevnetwork/`: network wrapper and merged world-view logic.
 - `elevassigner/`: the bundled `hall_request_assigner` executable + readme.
 - `Network-go/`: bundled UDP peer discovery and broadcast library.
@@ -88,13 +89,13 @@ For each participating machine:
 The executable starts three long-running goroutines:
 
 1. `elevatorThread`
-   - Owns the local FSM in `elevfsm.Elevator`.
+   - Owns the local FSM in `elevfsm.Elevator`, `elevfsm.RequestManager`.
    - Polls buttons, floor sensor, and obstruction.
    - Applies assigned hall requests and local cab requests.
    - Publishes local snapshots and serviced updates.
 
 2. `networkThread`
-   - Owns `elevnetwork.WorldView`.
+   - Owns `elevnetwork.WorldView` and `elevnetwork.PeerNetwork`.
    - Merges local and remote snapshots.
    - Tracks peer liveness and startup/coherence state.
    - Republishes a coherent world view to the assigner and local FSM.
