@@ -13,9 +13,11 @@ type RequestManager struct {
 	distributedMode bool
 	coherent        bool
 
-	assignedHall      common.HallAssignment
-	netRequests       common.Requests
-	localRequests     common.Requests
+	assignedHall  common.HallAssignment
+	netRequests   common.Requests
+	localRequests common.Requests
+	// deliveredRequests tracks whether each active request has already been emitted:
+	// true after this manager emits it with DeliverReadyRequests(), false until then.
 	deliveredRequests common.Requests
 }
 
@@ -102,7 +104,7 @@ func (rm *RequestManager) HandleNewRequests(edgePresses common.Requests, current
 	return newCabRequests, newHallRequests
 }
 
-func (rm *RequestManager) GetReadyRequests() (readyRequests common.Requests) {
+func (rm *RequestManager) DeliverReadyRequests() (readyRequests common.Requests) {
 	for floor := range elevhw.N_FLOORS {
 		if rm.localRequests[floor][elevhw.BT_Cab] && !rm.deliveredRequests[floor][elevhw.BT_Cab] {
 			readyRequests[floor][elevhw.BT_Cab] = true

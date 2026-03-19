@@ -5,7 +5,7 @@ This directory is the Go controller for the TTK4145 elevator project
 The controller runs one elevator per process and coordinates hall requests across multiple elevators over peer-to-peer UDP. The design separates:
 
 - local elevator control and door/state-machine logic
-- distributed world-view replication and peer liveness tracking
+- distributed worldview replication and peer liveness tracking
 - hall-request assignment through the bundled `hall_request_assigner`
 
 ## Features
@@ -24,17 +24,17 @@ The controller runs one elevator per process and coordinates hall requests acros
 - `main.go`: starts the controller and wires the three long-running threads together.
 - `elevatorthread.go`: manages elevator FSM transitions and requests.
 - `networkthread.go`: merges local and remote snapshots and tracks peer liveness.
-- `assignerthread.go`: runs the external hall request assigner on coherent snapshots.
+- `assignerthread.go`: runs the hall request assigner on coherent snapshots.
 - `common/`: shared configuration and utilities, request/snapshot types.
 - `elevfsm/`: local elevator state machine, door logic, and request synchronization.
 - `elevhw/`: elevator I/O and elevator I/O wrappers
-- `elevnetwork/`: network wrapper and merged world-view logic.
+- `elevnetwork/`: network and merged worldview logic.
 - `elevassigner/`: the bundled `hall_request_assigner` executable + readme.
 - `Network-go/`: bundled UDP peer discovery and broadcast library.
 
-the Network-go submodule is taken from (link), and the assigner, a build of the hall_request_assigner.d from (link).
+the Network-go submodule is taken from `https://github.com/TTK4145/Network-go`, and the assigner, a build of the hall request assigner from `https://github.com/TTK4145/Project-resources/tree/master/cost_fns/hall_request_assigner`.
 
-## Build
+## Build and Run
 
 Prerequisites:
 
@@ -42,20 +42,16 @@ Prerequisites:
 - An elevator server/simulator available on `localhost:15657`.
 - The bundled hall request assigner executable at `./elevassigner/hall_request_assigner`.
 
-Build from this directory:
-
-```bash
-go build -o elevator .
-```
-
-
-## Run
 
 Start the simulator/elevator server first, then run:
 
 ```bash
-./elevator
+go run .
 ```
+
+## Startup period
+
+- During the first 5 seconds, lights remain off while the controller attempts to recover cab requests.
 
 ## Elevator identity
 
@@ -98,10 +94,10 @@ The executable starts three long-running goroutines:
    - Owns `elevnetwork.WorldView` and `elevnetwork.PeerNetwork`.
    - Merges local and remote snapshots.
    - Tracks peer liveness and startup/coherence state.
-   - Republishes a coherent world view to the assigner and local FSM.
+   - Republishes a coherent worldview to the assigner and local FSM.
 
 3. `assignerThread`
-   - Receives coherent snapshots only.
+   - Receives snapshots only and parses them if they are marked as coherent.
    - Removes stale peers from the assigner input.
    - Runs the external `hall_request_assigner`.
    - Returns this elevator's assigned hall tasks to `elevatorThread`.
@@ -125,7 +121,7 @@ The executable starts three long-running goroutines:
 
 ### Hall Requests
 
-- New hall requests are merged into the shared world view with logical OR.
+- New hall requests are merged into the shared worldview with logical OR.
 - Serviced hall requests are merged with logical AND.
 - If delayed packets try to reintroduce a hall request that was just served, `WorldView` filters that update for a short validity window and re-broadcasts the now filtered snapshot.
 

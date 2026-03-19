@@ -59,7 +59,7 @@ func elevatorThread(
 			}
 
 			elevStateChange, servicedRequests, isServiced := elevator.ElevUpdate(now)
-			readyRequests := requestManager.GetReadyRequests()
+			readyRequests := requestManager.DeliverReadyRequests()
 			elevator.ApplyNewRequests(readyRequests)
 			requestManager.ClearServicedRequests(elevator.GetPrevFloor(), servicedRequests)
 
